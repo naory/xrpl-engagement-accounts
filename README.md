@@ -2,6 +2,8 @@
 
 **Single-use, multi-party joint accounts on the XRP Ledger, with quorum enforced by the ledger, for agent payments, escrow-with-recourse, and stake-backed trust.**
 
+**▶ [Try the live demo](https://naory.github.io/xrpl-engagement-accounts/)** — an interactive, no-backend walkthrough: an agent spends, gets blocked, settles a dispute, and pays across rails. (The same page also runs against live XRPL Testnet via `npm run web`.)
+
 > Status: **core mechanics proven on Testnet; policy co-signer and x402 shipped** (October 2026). This README is the design document.
 > - **Ledger mechanics** — atomic open, pre-signed ticket-based defaults, settle-and-close with `AccountDelete`, and the ruling path without the service — are proven on XRPL Testnet (21/21).
 > - **Policy co-signer** — the template validator, the `cel-eng/1` policy engine, the co-signer service and the conformance vectors — is built in [`packages/`](packages). The B1 procurement agent runs end to end on Testnet (11/11). Walkthrough: [`docs/demo/b1-procurement.md`](docs/demo/b1-procurement.md).
