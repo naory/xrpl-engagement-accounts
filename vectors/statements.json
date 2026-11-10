@@ -1,0 +1,145 @@
+{
+  "format": "eng-vectors/statements@1",
+  "prefix": "ENGA\\0",
+  "note": "digest = SHA-512Half(\"ENGA\\0\" || JCS(body)); id = \"att:\" + digest; signature = XRPL key over digest",
+  "cases": [
+    {
+      "name": "approval.ed25519",
+      "valid": true,
+      "keyDerivation": "xrpl Wallet.fromEntropy(16 × 0x01, ed25519): TEST ONLY",
+      "jcs": "{\"attester\":{\"account\":\"r3sNTMefq5gsRumMYsNznnX6yzzxVH6dTC\",\"kind\":\"APPROVER\"},\"claim\":{\"approverRole\":\"controller\",\"comment\":\"naïve café — ünïcödé\",\"notAfter\":\"2026-11-20T00:00:00Z\"},\"engagementId\":\"eng_vectors\",\"issuedAt\":\"2026-11-18T09:31:02Z\",\"nonce\":\"0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\",\"observedAt\":\"2026-11-18T09:31:00Z\",\"subject\":{\"intentHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"},\"type\":\"approval.payment/1\",\"v\":\"eng.att/1\"}",
+      "digest": "54A05881F5AE21B8A052B0D16E6347C644D97FEF2C7EE95BBC1E43B2DAEC6642",
+      "statement": {
+        "v": "eng.att/1",
+        "type": "approval.payment/1",
+        "engagementId": "eng_vectors",
+        "subject": {"intentHash":"sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+        "claim": {"approverRole":"controller","notAfter":"2026-11-20T00:00:00Z","comment":"naïve café — ünïcödé"},
+        "observedAt": "2026-11-18T09:31:00Z",
+        "issuedAt": "2026-11-18T09:31:02Z",
+        "nonce": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "attester": {"account":"r3sNTMefq5gsRumMYsNznnX6yzzxVH6dTC","kind":"APPROVER"},
+        "proof": {
+          "alg": "xrpl-ed25519",
+          "publicKey": "ED06895BEC3FDE4090F06D840770D888D49E3089B3757C4285E3851BC33964E0F9",
+          "signature": "5F544FC31C14FCC9DC35954EFEEF3EA1A2E5B01167C0B23FAE2B77AD346C159B1BE76C0D591D4C8583A9D1F841168CC411604778B2CDEA30B8D99239D3B07407"
+        },
+        "id": "att:54A05881F5AE21B8A052B0D16E6347C644D97FEF2C7EE95BBC1E43B2DAEC6642"
+      },
+      "expect": {"ok":true,"signerAddress":"r3sNTMefq5gsRumMYsNznnX6yzzxVH6dTC"}
+    },
+    {
+      "name": "approval.ed25519.tampered-claim",
+      "valid": false,
+      "statement": {
+        "v": "eng.att/1",
+        "type": "approval.payment/1",
+        "engagementId": "eng_vectors",
+        "subject": {"intentHash":"sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+        "claim": {"approverRole":"cfo","notAfter":"2026-11-20T00:00:00Z","comment":"naïve café — ünïcödé"},
+        "observedAt": "2026-11-18T09:31:00Z",
+        "issuedAt": "2026-11-18T09:31:02Z",
+        "nonce": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "attester": {"account":"r3sNTMefq5gsRumMYsNznnX6yzzxVH6dTC","kind":"APPROVER"},
+        "proof": {
+          "alg": "xrpl-ed25519",
+          "publicKey": "ED06895BEC3FDE4090F06D840770D888D49E3089B3757C4285E3851BC33964E0F9",
+          "signature": "5F544FC31C14FCC9DC35954EFEEF3EA1A2E5B01167C0B23FAE2B77AD346C159B1BE76C0D591D4C8583A9D1F841168CC411604778B2CDEA30B8D99239D3B07407"
+        },
+        "id": "att:54A05881F5AE21B8A052B0D16E6347C644D97FEF2C7EE95BBC1E43B2DAEC6642"
+      },
+      "expect": {"ok":false,"reason":"BAD_ID"}
+    },
+    {
+      "name": "approval.ed25519.wrong-key",
+      "valid": false,
+      "statement": {
+        "v": "eng.att/1",
+        "type": "approval.payment/1",
+        "engagementId": "eng_vectors",
+        "subject": {"intentHash":"sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+        "claim": {"approverRole":"controller","notAfter":"2026-11-20T00:00:00Z","comment":"naïve café — ünïcödé"},
+        "observedAt": "2026-11-18T09:31:00Z",
+        "issuedAt": "2026-11-18T09:31:02Z",
+        "nonce": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "attester": {"account":"r3sNTMefq5gsRumMYsNznnX6yzzxVH6dTC","kind":"APPROVER"},
+        "proof": {
+          "alg": "xrpl-ed25519",
+          "publicKey": "ED30561A14A0B8D9986C215C210140D76DEEAB1EE619FE41D210572EAFE51495FF",
+          "signature": "5F544FC31C14FCC9DC35954EFEEF3EA1A2E5B01167C0B23FAE2B77AD346C159B1BE76C0D591D4C8583A9D1F841168CC411604778B2CDEA30B8D99239D3B07407"
+        },
+        "id": "att:54A05881F5AE21B8A052B0D16E6347C644D97FEF2C7EE95BBC1E43B2DAEC6642"
+      },
+      "expect": {"ok":false,"reason":"BAD_SIGNATURE"}
+    },
+    {
+      "name": "approval.secp256k1",
+      "valid": true,
+      "keyDerivation": "xrpl Wallet.fromEntropy(16 × 0x02, secp256k1): TEST ONLY",
+      "jcs": "{\"attester\":{\"account\":\"raa1x16A7hZRavaSTL8F8LQhFw7i3cUa4A\",\"kind\":\"APPROVER\"},\"claim\":{\"approverRole\":\"controller\",\"comment\":\"naïve café — ünïcödé\",\"notAfter\":\"2026-11-20T00:00:00Z\"},\"engagementId\":\"eng_vectors\",\"issuedAt\":\"2026-11-18T09:31:02Z\",\"nonce\":\"0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\",\"observedAt\":\"2026-11-18T09:31:00Z\",\"subject\":{\"intentHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"},\"type\":\"approval.payment/1\",\"v\":\"eng.att/1\"}",
+      "digest": "41A69D855553660AB09D8C405ADB082F108FCFD312175638E69466E01052AD49",
+      "statement": {
+        "v": "eng.att/1",
+        "type": "approval.payment/1",
+        "engagementId": "eng_vectors",
+        "subject": {"intentHash":"sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+        "claim": {"approverRole":"controller","notAfter":"2026-11-20T00:00:00Z","comment":"naïve café — ünïcödé"},
+        "observedAt": "2026-11-18T09:31:00Z",
+        "issuedAt": "2026-11-18T09:31:02Z",
+        "nonce": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "attester": {"account":"raa1x16A7hZRavaSTL8F8LQhFw7i3cUa4A","kind":"APPROVER"},
+        "proof": {
+          "alg": "xrpl-secp256k1",
+          "publicKey": "03FBFD40E353E4829EE084AB6D150980D880C430C2BE12C567A732011B95EAA124",
+          "signature": "3044022009B990999C21B72A8894669E9A90C6C1825FED0F2C661DC115A820266CB1E32602207713E713E6E2438FC4997382A160567B6FFB00D622A9C9ABD1AB18E87CEDDEFA"
+        },
+        "id": "att:41A69D855553660AB09D8C405ADB082F108FCFD312175638E69466E01052AD49"
+      },
+      "expect": {"ok":true,"signerAddress":"raa1x16A7hZRavaSTL8F8LQhFw7i3cUa4A"}
+    },
+    {
+      "name": "approval.secp256k1.tampered-claim",
+      "valid": false,
+      "statement": {
+        "v": "eng.att/1",
+        "type": "approval.payment/1",
+        "engagementId": "eng_vectors",
+        "subject": {"intentHash":"sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+        "claim": {"approverRole":"cfo","notAfter":"2026-11-20T00:00:00Z","comment":"naïve café — ünïcödé"},
+        "observedAt": "2026-11-18T09:31:00Z",
+        "issuedAt": "2026-11-18T09:31:02Z",
+        "nonce": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "attester": {"account":"raa1x16A7hZRavaSTL8F8LQhFw7i3cUa4A","kind":"APPROVER"},
+        "proof": {
+          "alg": "xrpl-secp256k1",
+          "publicKey": "03FBFD40E353E4829EE084AB6D150980D880C430C2BE12C567A732011B95EAA124",
+          "signature": "3044022009B990999C21B72A8894669E9A90C6C1825FED0F2C661DC115A820266CB1E32602207713E713E6E2438FC4997382A160567B6FFB00D622A9C9ABD1AB18E87CEDDEFA"
+        },
+        "id": "att:41A69D855553660AB09D8C405ADB082F108FCFD312175638E69466E01052AD49"
+      },
+      "expect": {"ok":false,"reason":"BAD_ID"}
+    },
+    {
+      "name": "approval.secp256k1.wrong-key",
+      "valid": false,
+      "statement": {
+        "v": "eng.att/1",
+        "type": "approval.payment/1",
+        "engagementId": "eng_vectors",
+        "subject": {"intentHash":"sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+        "claim": {"approverRole":"controller","notAfter":"2026-11-20T00:00:00Z","comment":"naïve café — ünïcödé"},
+        "observedAt": "2026-11-18T09:31:00Z",
+        "issuedAt": "2026-11-18T09:31:02Z",
+        "nonce": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "attester": {"account":"raa1x16A7hZRavaSTL8F8LQhFw7i3cUa4A","kind":"APPROVER"},
+        "proof": {
+          "alg": "xrpl-secp256k1",
+          "publicKey": "0322DC9BB14903F71186BC46B0107D55A069D23CD97BBD205491A992EC68FA0ABE",
+          "signature": "3044022009B990999C21B72A8894669E9A90C6C1825FED0F2C661DC115A820266CB1E32602207713E713E6E2438FC4997382A160567B6FFB00D622A9C9ABD1AB18E87CEDDEFA"
+        },
+        "id": "att:41A69D855553660AB09D8C405ADB082F108FCFD312175638E69466E01052AD49"
+      },
+      "expect": {"ok":false,"reason":"BAD_SIGNATURE"}
+    }
+  ]
+}

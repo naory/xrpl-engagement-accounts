@@ -1,0 +1,22 @@
+{
+  "templateId": "owner-wallet/procurement@1",
+  "class": "owner-wallet",
+  "description": "Bounded procurement budget for an agent: agent + co-signer spend within policy; the owner (treasury) can always act alone (catalog B1)",
+  "asset": { "code": "RLUSD" },
+  "roles": {
+    "owner":    { "weight": 2, "kind": "owner",    "operatedBy": "external" },
+    "agent":    { "weight": 1, "kind": "agent",    "operatedBy": "external" },
+    "cosigner": { "weight": 1, "kind": "cosigner", "operatedBy": "service" }
+  },
+  "quorum": 2,
+  "outcomes": {
+    "spend":       { "signers": [["agent", "cosigner"]], "blueprint": "spend.payments", "policyStage": "spend", "enforcement": "ledger" },
+    "owner.close": { "signers": [["owner"]], "blueprint": "close.sweep", "policyStage": "close.owner", "enforcement": "advisory" }
+  },
+  "blueprints": {
+    "spend.payments": { "steps": ["pay.vendor", "pay.vendor?", "pay.vendor?", "pay.vendor?"], "closes": false },
+    "close.sweep":    { "steps": ["pay.owner", "trustline.remove", "account.delete"], "closes": true }
+  },
+  "reserveObjects": { "trustlines": 1, "signerList": 1 },
+  "policyRef": "pol_procurement@1.3.0"
+}

@@ -1,0 +1,1011 @@
+<title>Engagement Accounts</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: a "control room" — pick a template, see its mandate + signer list, then drive the
+     account: the agent's repeated spends, or the escrow's one settlement, each through the policy
+     gate + a weighted quorum lock. */
+  :root{
+    --bg:#0a0e14; --panel:#111823; --panel-2:#17202c; --line:#243041;
+    --fg:#e9eff6; --muted:#90a2b6; --faint:#6a7d91;
+    --accent:#5b9dff; --good:#32d49a; --bad:#ff6a74; --warn:#f3b34c; --violet:#b48cff;
+    --radius:14px; --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    color-scheme:dark;
+  }
+  @media (prefers-color-scheme:light){ :root:not([data-theme="dark"]){
+    --bg:#eaeff5; --panel:#ffffff; --panel-2:#f4f8fc; --line:#d8e1ec;
+    --fg:#13202d; --muted:#566475; --faint:#78879a;
+    --accent:#2f6fe0; --good:#12996a; --bad:#d23b45; --warn:#9c6a12; --violet:#7b4fd6;
+    color-scheme:light;
+  }}
+  :root[data-theme="light"]{
+    --bg:#eaeff5; --panel:#ffffff; --panel-2:#f4f8fc; --line:#d8e1ec;
+    --fg:#13202d; --muted:#566475; --faint:#78879a;
+    --accent:#2f6fe0; --good:#12996a; --bad:#d23b45; --warn:#9c6a12; --violet:#7b4fd6;
+    color-scheme:light;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0a0e14; --panel:#111823; --panel-2:#17202c; --line:#243041;
+    --fg:#e9eff6; --muted:#90a2b6; --faint:#6a7d91;
+    --accent:#5b9dff; --good:#32d49a; --bad:#ff6a74; --warn:#f3b34c; --violet:#b48cff;
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.5;
+    -webkit-font-smoothing:antialiased;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;
+    padding-left:max(16px,env(safe-area-inset-left,0px));
+    padding-right:max(16px,env(safe-area-inset-right,0px));
+    padding-block:22px 48px;display:flex;flex-direction:column;gap:20px}
+  h1,h2,h3{margin:0;text-wrap:balance;line-height:1.2}
+  a{color:var(--accent)}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .num{font-variant-numeric:tabular-nums}
+
+  .top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .glyph{width:30px;height:30px;flex:0 0 auto}
+  .brand b{font-weight:700;font-size:17px;letter-spacing:-.01em}
+  .brand span{color:var(--faint);font-size:12.5px;display:block;margin-top:1px}
+  .top-right{display:flex;align-items:center;gap:8px}
+  .badge{font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+    padding:5px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);
+    display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+  .badge.live{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,transparent)}
+  .badge .dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+  .badge.live .dot{animation:pulse 1.8s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .iconbtn{background:var(--panel);border:1px solid var(--line);color:var(--muted);
+    width:34px;height:34px;border-radius:9px;cursor:pointer;display:grid;place-items:center;font-size:15px}
+  .iconbtn:hover{color:var(--fg);border-color:var(--accent)}
+
+  .scenario-bar{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+  .scenario-bar label{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+  select{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--fg);background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;padding:9px 12px;cursor:pointer;min-width:220px}
+  select:hover{border-color:var(--accent)}
+
+  .hero h1{font-size:clamp(22px,4.2vw,32px);font-weight:700;letter-spacing:-.02em}
+  .hero h1 em{font-style:normal;color:var(--accent)}
+  .hero p{color:var(--muted);margin:9px 0 0;max-width:64ch;font-size:15.5px}
+  .moreinfo{background:none;border:0;color:var(--accent);font-family:var(--sans);font-size:inherit;font-weight:600;cursor:pointer;padding:0;white-space:nowrap}
+  .moreinfo:hover{text-decoration:underline}
+  .modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:max(24px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(24px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+  .modal-backdrop{position:absolute;inset:0;background:rgba(3,7,12,.66)}
+  .modal-box{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:16px;width:100%;max-width:620px;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.45)}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 20px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .modal-head h2{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .modal-x{background:var(--panel-2);border:1px solid var(--line);color:var(--muted);width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:19px;line-height:1;display:grid;place-items:center;flex:0 0 auto}
+  .modal-x:hover{color:var(--fg);border-color:var(--accent)}
+  .modal-body{padding:18px 20px;overflow-y:auto;overscroll-behavior:contain}
+  .modal-body section{margin-bottom:20px}
+  .modal-body section:last-child{margin-bottom:0}
+  .modal-body h3{font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:600;margin:0 0 10px}
+  .modal-body p{margin:0 0 10px;color:var(--muted);font-size:14px;line-height:1.62}
+  .modal-body p:last-child{margin-bottom:0}
+  .modal-body code{font-family:var(--mono);font-size:.9em;color:var(--fg)}
+  .modal-body b{color:var(--fg)}
+  .modal-parties{display:flex;flex-direction:column;gap:8px}
+  .modal-party{display:flex;gap:12px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px}
+  .modal-party .pr{font-weight:600;font-size:13.5px;color:var(--fg);flex:0 0 32%;min-width:0}
+  .modal-party .pd{font-size:13px;color:var(--muted);line-height:1.5;min-width:0}
+  @media (max-width:480px){ .modal-party{flex-direction:column;gap:3px} .modal-party .pr{flex-basis:auto} }
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .ptitle{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);
+    display:flex;align-items:center;gap:8px;margin-bottom:13px}
+  .ptitle .n{font-family:var(--mono);color:var(--accent)}
+
+  .chips{display:flex;flex-direction:column;gap:9px}
+  .chip{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    padding:9px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px}
+  .chip .k{color:var(--muted);font-size:13px}
+  .chip .v{font-weight:600;font-family:var(--mono);font-size:13.5px;text-align:right}
+  .vendors{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .tag{font-size:11px;padding:3px 8px;border-radius:7px;background:color-mix(in srgb,var(--accent) 15%,transparent);
+    color:var(--accent);font-weight:600}
+
+  .signers{display:flex;flex-direction:column;gap:9px}
+  .srow{display:flex;align-items:center;gap:11px;padding:9px 12px;border:1px solid var(--line);
+    border-radius:10px;background:var(--panel-2);transition:border-color .3s}
+  .srow.on{border-color:color-mix(in srgb,var(--good) 55%,transparent)}
+  .srow .keyi{width:24px;height:24px;flex:0 0 auto;opacity:.3;transition:opacity .4s}
+  .srow.on .keyi{opacity:1}
+  .srow.attester .keyi{opacity:1}
+  .srow .role{font-weight:600;font-size:14px;text-transform:capitalize}
+  .srow .addr{font-family:var(--mono);font-size:11.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .srow .mid{flex:1 1 auto;min-width:0}
+  .srow .wt{font-family:var(--mono);font-size:12px;color:var(--muted);flex:0 0 auto;border:1px solid var(--line);border-radius:7px;padding:2px 8px;white-space:nowrap}
+  .srow .pop{font-size:11px;font-weight:600;color:var(--good);flex:0 0 auto;opacity:0;transition:opacity .4s}
+  .srow.on .pop{opacity:1}
+  .srow.attester{border-style:dashed}
+  .srow.optional{border-style:dashed}
+  .srow .opt{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--violet);border:1px solid color-mix(in srgb,var(--violet) 40%,transparent);border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .srow.attester .wt{color:var(--violet);border-color:color-mix(in srgb,var(--violet) 40%,transparent)}
+  .quorum{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;
+    padding:11px 13px;border-radius:10px;background:var(--panel-2);border:1px dashed var(--line)}
+  .quorum .lbl{font-size:12.5px;color:var(--muted)}
+  .quorum b{font-family:var(--mono);font-size:13px;color:var(--fg)}
+  .solo-note{margin-top:10px;font-size:12.5px;color:var(--faint);display:flex;gap:8px;align-items:flex-start}
+  .solo-note svg{flex:0 0 auto;margin-top:1px}
+
+  .stepper{display:flex;gap:8px;list-style:none;padding:0;margin:2px 0 0}
+  .stepper li{flex:1;display:flex;align-items:center;gap:9px;padding:11px 13px;border:1px solid var(--line);
+    border-radius:10px;background:var(--panel);color:var(--muted);font-size:13.5px;font-weight:500;transition:.3s}
+  .stepper li .si{font-family:var(--mono);font-size:12px;width:21px;height:21px;flex:0 0 auto;display:grid;place-items:center;border-radius:50%;border:1px solid var(--line);color:var(--faint)}
+  .stepper li.done{color:var(--fg);border-color:color-mix(in srgb,var(--good) 40%,transparent)}
+  .stepper li.done .si{background:var(--good);border-color:var(--good);color:#04120c}
+  .stepper li.active{color:var(--fg);border-color:var(--accent)}
+  .stepper li.active .si{border-color:var(--accent);color:var(--accent)}
+
+  .btn{font-family:var(--sans);font-size:14px;font-weight:600;cursor:pointer;border-radius:10px;
+    padding:11px 16px;border:1px solid var(--line);background:var(--panel-2);color:var(--fg);transition:.2s;
+    display:inline-flex;align-items:center;gap:9px;justify-content:center}
+  .btn:hover:not(:disabled){border-color:var(--accent)}
+  .btn:disabled{opacity:.42;cursor:not-allowed}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#04111f;font-weight:700}
+  .btn.primary:hover:not(:disabled){filter:brightness(1.08)}
+  .btn.ghost{background:transparent}
+  .btn .sub{font-weight:500;color:inherit;opacity:.72;font-size:12px}
+  .btn .amt{font-family:var(--mono);margin-left:auto;font-size:13px;white-space:nowrap}
+
+  .stage{display:flex;flex-direction:column;gap:14px}
+  .cta-card{align-items:center;text-align:center;display:flex;flex-direction:column;gap:14px;padding:30px 18px}
+  .cta-card p{color:var(--muted);max-width:58ch;margin:0}
+  .provsteps{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;font-size:12px;color:var(--faint)}
+  .provsteps span{padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel-2)}
+
+  .acct{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:space-between}
+  .acct .bal{font-family:var(--mono);font-size:26px;font-weight:600}
+  .acct .bal .u{font-size:14px;color:var(--muted);margin-left:4px}
+  .acct .meta{font-size:12.5px;color:var(--muted)}
+  .acct .meta .mono{color:var(--fg)}
+  .actions-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .actions.one{grid-template-columns:1fr}
+  .actions .btn{justify-content:flex-start;text-align:left}
+  .actcol{display:flex;flex-direction:column;gap:1px;min-width:0}
+  .actcol b{font-weight:600;font-size:13.5px}
+
+  .decision{overflow:hidden}
+  .dc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .dc-head .req{font-weight:600;font-size:15px}
+  .dc-head .req .mono{color:var(--accent)}
+  .verdict{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:5px 11px;border-radius:999px}
+  .verdict.sign{background:color-mix(in srgb,var(--good) 20%,transparent);color:var(--good)}
+  .verdict.refuse{background:color-mix(in srgb,var(--bad) 20%,transparent);color:var(--bad)}
+  .verdict.pending{background:var(--panel-2);color:var(--muted)}
+  .flow{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:stretch}
+  .flow .node{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:13px;min-width:0}
+  .flow .node h4{margin:0 0 9px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  .checks{display:flex;flex-direction:column;gap:7px}
+  .check{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);opacity:.4;transition:opacity .3s;min-width:0}
+  .check.show{opacity:1}
+  .check span:last-child{min-width:0}
+  .check .mk{width:18px;height:18px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;font-size:11px;border:1.5px solid var(--line);color:var(--faint)}
+  .check.pass .mk{background:var(--good);border-color:var(--good);color:#04120c}
+  .check.fail .mk{background:var(--bad);border-color:var(--bad);color:#1a0406}
+  .check.pass,.check.fail{color:var(--fg)}
+  .lgd{display:flex;flex-direction:column;gap:6px;font-size:13px}
+  .lgd .lrow{display:flex;justify-content:space-between;gap:10px}
+  .lgd .lrow .mono{color:var(--fg)}
+  .qsec{margin-top:12px;border-top:1px solid var(--line);padding-top:11px}
+  .qtiles{display:flex;gap:6px;flex-wrap:wrap}
+  .qtile{display:flex;align-items:center;gap:6px;font-size:11.5px;padding:4px 9px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--muted);opacity:.45;transition:.3s}
+  .qtile.on{opacity:1;border-color:var(--good);color:var(--fg)}
+  .qtile.withheld{opacity:1;border-color:var(--bad);color:var(--fg)}
+  .qtile .w{font-family:var(--mono);color:var(--faint)}
+  .qtile.on .w{color:var(--good)}
+  .qstate{margin-top:8px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .arrow{align-self:center;color:var(--faint);font-size:18px}
+  .receipt{margin-top:13px;padding:12px 14px;border-radius:10px;font-size:13px;display:flex;gap:10px;align-items:flex-start}
+  .receipt.ok{background:color-mix(in srgb,var(--good) 13%,transparent);border:1px solid color-mix(in srgb,var(--good) 40%,transparent)}
+  .receipt.no{background:color-mix(in srgb,var(--bad) 12%,transparent);border:1px solid color-mix(in srgb,var(--bad) 38%,transparent)}
+  .receipt .ri{flex:0 0 auto;margin-top:1px}
+  .receipt b{font-weight:600}
+  .receipt .mono{word-break:break-all}
+  .payouts{display:flex;flex-direction:column;gap:4px;margin-top:7px}
+  .payouts .prow{display:flex;justify-content:space-between;gap:12px;font-size:12.5px}
+  .payouts .prow .mono{color:var(--fg)}
+
+  .log table{width:100%;border-collapse:collapse;font-size:13px}
+  .log th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:0 10px 9px;border-bottom:1px solid var(--line)}
+  .log td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .log tr:last-child td{border-bottom:none}
+  .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .pill.sign{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+  .pill.refuse{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+  .log .empty{color:var(--faint);padding:16px 10px;font-size:13.5px}
+  .log .mono{font-size:11.5px;color:var(--muted);word-break:break-all}
+  .log-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:13px}
+  .log-head .ptitle{margin:0}
+  .tabs{display:flex;gap:4px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:3px}
+  .tab{font-family:var(--sans);font-size:12.5px;font-weight:600;color:var(--muted);background:transparent;border:0;border-radius:7px;padding:5px 11px;cursor:pointer}
+  .tab:hover{color:var(--fg)}
+  .tab.active{background:var(--panel);color:var(--fg)}
+  .events{display:flex;flex-direction:column;gap:2px;font-family:var(--mono);font-size:12px;max-height:360px;overflow-y:auto}
+  .ev{display:flex;gap:10px;padding:6px 8px;border-radius:7px;align-items:baseline}
+  .ev:nth-child(odd){background:var(--panel-2)}
+  .ev .ts{color:var(--faint);flex:0 0 auto}
+  .ev .tag{flex:0 0 auto;font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:5px;border:1px solid var(--line);color:var(--muted);min-width:56px;text-align:center}
+  .ev .tag.sign,.ev .tag.settle{color:var(--good);border-color:color-mix(in srgb,var(--good) 40%,transparent)}
+  .ev .tag.refuse{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 38%,transparent)}
+  .ev .tag.prov,.ev .tag.open{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
+  .ev .tag.att{color:var(--violet);border-color:color-mix(in srgb,var(--violet) 40%,transparent)}
+  .ev .msg{min-width:0;word-break:break-word;color:var(--fg)}
+  .ev .msg a{word-break:break-all}
+
+  footer{color:var(--faint);font-size:12.5px;line-height:1.6;border-top:1px solid var(--line);padding-top:16px}
+  footer code{font-family:var(--mono);color:var(--muted)}
+
+  @media (max-width:760px){
+    .grid2{grid-template-columns:1fr}
+    .stepper{flex-direction:column}
+    .actions{grid-template-columns:1fr}
+    .flow{grid-template-columns:1fr}
+    .arrow{transform:rotate(90deg)}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg class="glyph" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="29" height="29" rx="8" stroke="var(--accent)" stroke-width="1.5"/>
+        <path d="M16 7l7 4v6c0 4.2-2.9 6.6-7 8-4.1-1.4-7-3.8-7-8v-6l7-4z" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M12.3 16.2l2.6 2.6 4.8-5" stroke="var(--good)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <b>Engagement Accounts</b>
+        <span>Agent &amp; escrow payments on XRPL, governed by a policy co-signer</span>
+      </div>
+    </div>
+    <div class="top-right">
+      <span class="badge" id="mode"><span class="dot"></span><span id="modeLabel">Simulated</span></span>
+      <button class="iconbtn" id="theme" title="Toggle theme" aria-label="Toggle light/dark">◐</button>
+    </div>
+  </header>
+
+  <div class="scenario-bar">
+    <label for="scenario">Template</label>
+    <select id="scenario">
+      <option value="procurement">Procurement agent — owner wallet</option>
+      <option value="escrow">Escrow with arbiter — settlement vault</option>
+      <option value="bond">Bonded marketplace — collateral &amp; slashing</option>
+      <option value="x402">x402 metered purchase — pay-per-use</option>
+      <option value="mpp">MPP push payment — Stripe/Tempo rail</option>
+    </select>
+  </div>
+
+  <section class="hero" id="hero"></section>
+
+  <section class="context grid2">
+    <div class="panel">
+      <div class="ptitle"><span class="n">01</span> <span id="mandateTitle">The mandate</span></div>
+      <div class="chips" id="mandate"></div>
+    </div>
+    <div class="panel">
+      <div class="ptitle"><span class="n">02</span> The signer list — who can move funds</div>
+      <div class="signers" id="signers"></div>
+      <div class="quorum"><span class="lbl">Quorum to move funds</span><b id="quorumText">—</b></div>
+      <div class="solo-note" id="soloNote"></div>
+    </div>
+  </section>
+
+  <ol class="stepper" id="stepper">
+    <li data-step="provision"><span class="si">1</span><span id="st1">Provision keys &amp; open the account</span></li>
+    <li data-step="act"><span class="si">2</span><span id="st2">Requests flow in</span></li>
+    <li data-step="done"><span class="si">3</span><span id="st3">Co-signer settles or blocks</span></li>
+  </ol>
+
+  <section class="stage" id="stage"></section>
+  <section class="panel decision" id="decision" hidden></section>
+
+  <section class="panel log">
+    <div class="log-head">
+      <div class="ptitle"><span class="n">03</span> Activity</div>
+      <div class="tabs"><button class="tab active" data-tab="decisions">Decisions</button><button class="tab" data-tab="events">Event log</button></div>
+    </div>
+    <div id="tab-decisions">
+      <table><thead><tr><th>Request</th><th>Outcome</th><th>Detail</th></tr></thead>
+        <tbody id="logbody"><tr><td colspan="3" class="empty">No activity yet — provision the account, then drive it.</td></tr></tbody>
+      </table>
+    </div>
+    <div id="tab-events" hidden><div class="events" id="events"><div class="ev"><span class="msg" style="color:var(--faint)">Events appear here as you provision and drive the account.</span></div></div></div>
+  </section>
+
+  <footer id="footer"></footer>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-backdrop" id="modalBackdrop"></div>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head"><h2 id="modalTitle"></h2><button class="modal-x" id="modalClose" aria-label="Close">×</button></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var CFG = window.__ENG_API__ || null;
+  var LIVE = !!(CFG && CFG.live);
+  var POOLED = !!(CFG && CFG.pooled);
+  var EXPLORER = (CFG && CFG.explorer) || "https://testnet.xrpl.org/transactions/";
+  var REDUCE = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var $ = function(s){ return document.querySelector(s); };
+  var delay = function(ms){ return REDUCE ? Promise.resolve() : new Promise(function(r){ setTimeout(r, ms); }); };
+  var esc = function(s){ return String(s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]); }); };
+  var short = function(a){ return a ? a.slice(0,6) + "…" + a.slice(-4) : "—"; };
+  var fmt = function(n){ return Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); };
+
+  var RULE_TEXT = {
+    B6:"payee has no accepted KYB credential", W2:"payee is not in the mandate", W3:"daily spend cap exceeded",
+    W5:"approval required above the threshold", W6:"approval missing or not bound to this payment",
+    B2:"transaction carries a forbidden account change"
+  };
+
+  // ---- theme --------------------------------------------------------------
+  try { var sv = localStorage.getItem("eng-theme"); if (sv) document.documentElement.setAttribute("data-theme", sv); } catch(e){}
+  $("#theme").addEventListener("click", function(){
+    var cur = document.documentElement.getAttribute("data-theme");
+    var isDark = cur ? cur === "dark" : !(window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches);
+    var next = isDark ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("eng-theme", next); } catch(e){}
+  });
+  var modeEl = $("#mode");
+  if (LIVE){ modeEl.classList.add("live"); $("#modeLabel").textContent = "Live · XRPL Testnet"; }
+
+  // ---- scenarios ----------------------------------------------------------
+  var SCENARIOS = {
+    procurement: {
+      id:"procurement", label:"Procurement agent",
+      heroTitle:'An AI agent that can spend — <em>but can’t go rogue</em>',
+      heroText:"The agent holds one key below quorum. Every payment needs a second signature from the policy co-signer, which signs only what the mandate allows. Send it on errands and watch it get stopped when it shouldn’t.",
+      proves:"An autonomous agent can hold a spending key and pay in real time, yet never exceed its mandate. The policy co-signer enforces the vendor allowlist, the daily cap, and the approval threshold at signing time, and the agent’s key alone sits below quorum — so a compromised agent can’t move funds, and any over-cap or out-of-mandate payment is refused before it reaches the ledger.",
+      mandateTitle:"The mandate — what the agent may do",
+      parties:[
+        {role:"Owner",desc:"Sets the mandate and holds the controlling key (weight 2 = quorum). Can override the agent or close the account alone."},
+        {role:"Agent",desc:"The autonomous AI that proposes payments. Its key is weight 1 (below quorum), so it can never move funds by itself."},
+        {role:"Co-signer",desc:"A deterministic policy service. Checks each payment against the mandate at signing time and adds the second signature only if it complies."},
+        {role:"Approver",desc:"A human who signs off on payments above the threshold. An attester (signs a statement), not a quorum member."},
+        {role:"Vendors",desc:"The KYB-verified payees the agent is allowed to pay; anyone else is refused."}
+      ],
+      mandate:[{k:"Budget",v:"$5,000.00"},{k:"Daily cap",v:"$3,000.00"},{k:"Approval required over",v:"$1,000.00"},{k:"Allowed payees",v:["Vendor A","Vendor B"]}],
+      signers:[{role:"owner",weight:2},{role:"agent",weight:1},{role:"cosigner",weight:1}],
+      attester:{role:"approver", as:"human sign-off", note:"signs off over-threshold — not a signer"},
+      quorum:2, quorumText:"2 of 4 weight",
+      solo:"The agent’s key is weight 1 — below the quorum of 2. On its own it can sign a payment, but the ledger rejects it (tefBAD_QUORUM). It needs the co-signer.",
+      kind:"spend",
+      actions:[
+        {id:"a", title:"Pay Vendor A", sub:"within policy", amount:"800.00", invoiceRef:"inv:A-001", dest:"vendorA"},
+        {id:"b", title:"Pay Vendor B", sub:"over $1,000, no approval", amount:"1500.00", invoiceRef:"inv:B-001", dest:"vendorB"},
+        {id:"c", title:"Approve &amp; pay Vendor B", sub:"same payment, with sign-off", amount:"1500.00", invoiceRef:"inv:B-001", dest:"vendorB", withApproval:true},
+        {id:"d", title:"Pay a stranger", sub:"not in the mandate", amount:"200.00", invoiceRef:"inv:X-001", dest:"stranger"}
+      ]
+    },
+    escrow: {
+      id:"escrow", label:"Escrow with arbiter",
+      heroTitle:'Money held in escrow — <em>released only when the rules say so</em>',
+      heroText:"A buyer’s payment sits in a neutral account that nobody controls alone. It goes to the seller only when the delivery is attested and the parties (plus the co-signer) agree — or, in a dispute, when the arbiter rules how to split it. No single party can take the funds.",
+      proves:"Money can sit in a neutral account that no single party controls, releasing only on agreement or an arbiter’s ruling. A delivery attester’s confirmation unlocks the co-signed release to the seller; in a dispute the arbiter plus one party reach quorum to split the funds — without the service operator. It’s recourse without custody: nobody can seize the money, and neither party can take it alone.",
+      mandateTitle:"The booking — what’s held in escrow",
+      parties:[
+        {role:"Buyer (principal)",desc:"Funds the escrow and sets the mandate. Delegates signing to its AI booking agent — it holds no signing key in the vault itself."},
+        {role:"Booking agent",desc:"The buyer’s AI delegate (weight 2). Holds the buyer’s signing authority: proposes and co-signs the release, but can’t move funds without the seller + co-signer."},
+        {role:"Seller",desc:"The payee on delivery (weight 2). Co-signs the agreed release."},
+        {role:"Arbiter",desc:"A neutral adjudicator (weight 3). On a dispute, arbiter plus one party reach quorum to split the funds, without the service."},
+        {role:"Co-signer",desc:"The deterministic policy service (weight 1). Part of the agreed-release quorum; enforces the settlement shape and fee."},
+        {role:"Attester",desc:"A delivery oracle. Confirms delivery with a signed statement (not a quorum member); its confirmation unlocks the happy-path release."}
+      ],
+      mandate:[{k:"Booking",v:"3 nights · Lisbon"},{k:"Held in escrow",v:"$412.00"},{k:"Service fee",v:"0.5%"},{k:"Arbiter",v:[ "Fairwind" ]}],
+      signers:[{role:"agent",weight:2,as:"buyer's delegate",note:"the buyer funds the vault and delegated signing to this agent"},{role:"counterparty",weight:2,as:"seller"},{role:"arbiter",weight:3},{role:"cosigner",weight:1}],
+      attester:{role:"attester",as:"delivery oracle",note:"attests delivery — not a signer"},
+      quorum:5, quorumText:"5 of 8 weight",
+      solo:"No one can move the money alone: the arbiter is weight 3, the seller 2, the co-signer 1 — all below the quorum of 5. Every ending needs a real coalition.",
+      kind:"escrow",
+      actions:[
+        {id:"happy", title:"Confirm delivery &amp; release", sub:"oracle attests → agent (buyer’s delegate) + seller + co-signer", path:"agreed", settles:true},
+        {id:"dispute", title:"Raise dispute → arbiter rules 70/30", sub:"arbiter + buyer’s agent sign the split", path:"ruling", settles:true},
+        {id:"solo", title:"Seller tries to grab the funds", sub:"alone — weight 2 of 5", path:"solo", settles:false}
+      ]
+    },
+    bond: {
+      id:"bond", label:"Bonded marketplace",
+      heroTitle:'A seller stakes a bond — <em>cheat, and the arbiter slashes it</em>',
+      heroText:"To earn trust, a seller locks a collateral bond that nobody controls alone. Deliver as promised and the bond comes back; harm the buyer and the arbiter can slash it, sending compensation to the buyer. The seller can never just take it back.",
+      proves:"A seller can post a collateral bond as a verifiable, on-ledger trust signal and still be safe from theft. The bond returns on delivery, but the seller can never reclaim it alone (weight 2 of 5). If the buyer is harmed, the arbiter can slash it and redirect compensation to the buyer, bounded by the bond. Reputation backed by stake, not promises — and enforced by the ledger, not the platform.",
+      mandateTitle:"The bond — the seller’s stake",
+      parties:[
+        {role:"Seller (principal)",desc:"Stakes the collateral bond and sets the terms. Delegates signing to its AI agent — it holds no signing key in the vault itself."},
+        {role:"Seller’s agent",desc:"The seller’s AI delegate (weight 2). Holds the seller’s signing authority: co-signs the bond’s return on delivery, but can never reclaim it without the buyer + co-signer."},
+        {role:"Buyer",desc:"The protected party (weight 2). Co-signs the release on delivery, or receives compensation if the bond is slashed."},
+        {role:"Arbiter",desc:"Rules on harm (weight 3). Arbiter plus buyer can slash the bond and compensate the buyer, without the seller or the service."},
+        {role:"Co-signer",desc:"The deterministic policy service (weight 1). Part of the release quorum; enforces that the payout matches the ruling."}
+      ],
+      mandate:[{k:"Seller’s bond",v:"$1,000.00"},{k:"Deal",v:"Custom build · 2 weeks"},{k:"Slash on harm",v:"up to 100%"},{k:"Arbiter",v:["Fairwind"]}],
+      signers:[{role:"agent",weight:2,as:"seller's delegate",note:"the seller stakes the bond and delegated signing to this agent"},{role:"buyer",weight:2},{role:"arbiter",weight:3},{role:"cosigner",weight:1}],
+      quorum:5, quorumText:"5 of 8 weight",
+      solo:"The seller can’t reclaim its own bond alone (weight 2 < 5). It comes back only when the buyer agrees, or the arbiter rules — the whole point of a bond.",
+      kind:"escrow",
+      actions:[
+        {id:"release", title:"Deal delivered → release the bond", sub:"seller’s agent + buyer + co-signer return it", path:"bond_release", settles:true},
+        {id:"slash", title:"Buyer harmed → arbiter slashes 70%", sub:"arbiter + buyer compensate the buyer", path:"bond_slash", settles:true},
+        {id:"solo", title:"Seller’s agent grabs the bond back", sub:"alone — weight 2 of 5", path:"solo", settles:false}
+      ]
+    },
+    x402: {
+      id:"x402", label:"x402 metered purchase",
+      heroTitle:'An agent that pays per request — <em>bound to the merchant’s challenge</em>',
+      heroText:"A merchant answers the agent with an HTTP 402 and a payment challenge. The co-signer signs only a payment bound to that exact challenge — the right merchant, the right amount, the right invoice — so a buggy or compromised agent can’t be redirected to pay someone else, or replay a charge.",
+      proves:"An agent can pay for services per request without becoming a liability. The co-signer binds every payment to the merchant’s x402 challenge — checked against the account’s spend policy, which requires the payee, amount and invoice to match the challenge the merchant issued — so even a buggy or compromised agent can’t be redirected to a different party or replay a settled charge. The agent keeps autonomy over what it buys; the co-signer guarantees it pays exactly who the challenge names, exactly once.",
+      mandateTitle:"The agent’s budget",
+      parties:[
+        {role:"Owner",desc:"Sets the budget and holds the controlling key (weight 2 = quorum)."},
+        {role:"Agent",desc:"Pays merchants per request. Its key is weight 1 (below quorum), so it can't settle anything alone."},
+        {role:"Co-signer",desc:"Binds every payment to the merchant's x402 challenge — the right merchant, amount and invoice, before adding its signature."},
+        {role:"Merchant",desc:"The service being paid. Issues the HTTP 402 challenge (who to pay, how much, which invoice) and delivers the resource once the payment settles."}
+      ],
+      mandate:[{k:"Budget",v:"$5,000.00"},{k:"Pricing",v:"metered (x402)"},{k:"Binding",v:"challenge-bound"},{k:"Merchants",v:["DataCo","MapsAPI"]}],
+      signers:[{role:"owner",weight:2},{role:"agent",weight:1},{role:"cosigner",weight:1}],
+      quorum:2, quorumText:"2 of 4 weight",
+      solo:"The co-signer binds each payment to the merchant’s x402 challenge. Even a correct-looking payment to a known merchant is refused if it isn’t the one the challenge names.",
+      kind:"x402",
+      actions:[
+        {id:"buy", title:"Buy a dataset", sub:"pay the exact challenge → resource unlocked", path:"x402_ok", amount:"800.00"},
+        {id:"redirect", title:"Redirect the payment", sub:"pay a different merchant than the challenge", path:"x402_redirect", amount:"800.00"},
+        {id:"replay", title:"Replay a spent challenge", sub:"reuse the same invoice (buy first)", path:"x402_replay", amount:"800.00"}
+      ]
+    },
+    mpp: {
+      id:"mpp", label:"MPP push payment",
+      heroTitle:'The same governed account — <em>now on the MPP rail</em>',
+      heroText:"Instead of answering a 402, the agent pushes a charge to a Stripe/Tempo (MPP) merchant. The co-signer binds its signature to the MPP charge with the very same rule it uses for x402 — one governed account, any agentic-payment rail, because it binds to the challenge, not the protocol.",
+      proves:"The engagement account and its policy co-signer are rail-neutral. x402 (pull) and MPP (Stripe/Tempo, push) are different protocols, but the co-signer enforces the same challenge-binding rule on both — one rule in the account’s spend policy — so an agent can transact across rails under one mandate, and on every rail it still can't be redirected to the wrong merchant or replay a charge. The governance travels with the account, not the payment method.",
+      mandateTitle:"The agent's budget (rail-neutral)",
+      parties:[
+        {role:"Owner",desc:"Sets the budget and holds the controlling key (weight 2 = quorum)."},
+        {role:"Agent",desc:"Pushes MPP charges to merchants. Its key is weight 1 (below quorum), so it can't settle anything alone."},
+        {role:"Co-signer",desc:"Binds every charge to the merchant's MPP payment challenge — the same rail-neutral rule it uses for x402 — before adding its signature."},
+        {role:"Merchant",desc:"A Stripe/Tempo (MPP) merchant. The agent pushes the charge over the pinned XRPL charge wire format; the merchant confirms settlement."}
+      ],
+      mandate:[{k:"Budget",v:"$5,000.00"},{k:"Rail",v:"MPP · Stripe/Tempo"},{k:"Binding",v:"challenge-bound"},{k:"Merchants",v:["DataCo","MapsAPI"]}],
+      signers:[{role:"owner",weight:2},{role:"agent",weight:1},{role:"cosigner",weight:1}],
+      quorum:2, quorumText:"2 of 4 weight",
+      solo:"Same guarantee as x402, different rail: the co-signer binds each MPP charge to the merchant it names, so a buggy or compromised agent can't redirect the push to someone else.",
+      kind:"x402",
+      actions:[
+        {id:"push", title:"Push an MPP charge", sub:"settle to the merchant on the Stripe/Tempo rail", path:"x402_ok", amount:"800.00"},
+        {id:"redirect", title:"Redirect the charge", sub:"push to a different merchant than the charge names", path:"x402_redirect", amount:"800.00"}
+      ]
+    }
+  };
+
+  // ---- simulated backend --------------------------------------------------
+  var AC = "rpshnaf39wBUDNEGHJKLMoPQRSTVWXYZ2bcdeghijkm";
+  function randAddr(){ var s="r"; for(var i=0;i<28;i++) s+=AC[Math.floor(Math.random()*AC.length)]; return s; }
+  function randHash(){ var c="0123456789ABCDEF",s=""; for(var i=0;i<64;i++) s+=c[Math.floor(Math.random()*16)]; return s; }
+  var SIM = {};
+
+  var api = {
+    provision: function(scn){
+      if (LIVE) return fetch("/api/provision",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({scenario:scn.id})}).then(okJson);
+      return delay(400).then(function(){
+        var accounts = {}, signers = [];
+        scn.signers.forEach(function(s){ var a=randAddr(); accounts[s.role]=a; signers.push({role:s.role,address:a,weight:s.weight,proofVerified:true,as:s.as}); });
+        signers.sort(function(a,b){ return a.address<b.address?-1:a.address>b.address?1:0; });
+        if (scn.attester){ accounts.attester = randAddr(); }
+        if (scn.id==="procurement"){ accounts.vendorA=randAddr(); accounts.vendorB=randAddr(); accounts.stranger=randAddr();
+          SIM={ spent:0, bal:{}, stranger:accounts.stranger }; SIM.bal[accounts.vendorA]=0; SIM.bal[accounts.vendorB]=0;
+          return { scenario:"procurement", account:randAddr(), explorer:EXPLORER, quorum:scn.quorum, signers:signers, accounts:accounts, openTx:randHash(), balance:"5000" };
+        }
+        return { scenario:scn.id, account:randAddr(), explorer:EXPLORER, quorum:scn.quorum, signers:signers, accounts:accounts, openTx:randHash(), balance:(scn.id==="bond"?"1000.00":"412.00") };
+      });
+    },
+    pay: function(req){
+      if (LIVE) return fetch("/api/pay",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(req)}).then(okJson);
+      return delay(300).then(function(){
+        var amt=parseFloat(req.amount), failing=[];
+        if (req.destination===SIM.stranger) failing=["B6","W2"];
+        else if (amt>1000 && !req.withApproval) failing=["W5"];
+        else if (SIM.spent+amt>3000) failing=["W3"];
+        var signed = failing.length===0, tx, final, balance=null;
+        if (signed){ SIM.spent+=amt; SIM.bal[req.destination]=(SIM.bal[req.destination]||0)+amt; tx=randHash(); final="tesSUCCESS"; balance=SIM.bal[req.destination].toFixed(2); }
+        return { decision:signed?"SIGN":"REFUSE", failing:failing, settled:signed, tx:tx, final:final, balance:balance };
+      });
+    },
+    escrow: function(req){
+      if (LIVE) return fetch("/api/escrow",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(req)}).then(okJson);
+      return delay(350).then(function(){
+        var total=412.00, fee=+(total*0.005).toFixed(2);
+        if (req.path==="agreed") return { path:"agreed", settled:true, tx:randHash(),
+          checks:[["The buyer’s agent authorized the release (weight 2 — the buyer delegated signing to it)",true],["Seller confirmed the booking (matches the mandate)",true],["Co-signer policy passed (agreed seller, agreed amount, delivery attested)",true],["Agent + seller + co-signer = quorum 5",true]],
+          payouts:[["Seller (Atlas Stays)",(total-fee).toFixed(2)],["Service fee",fee.toFixed(2)]] };
+        if (req.path==="ruling") return { path:"ruling", settled:true, tx:randHash(),
+          checks:[["A dispute was opened (ENG/DISPUTE + bond)",true],["Arbiter is accredited",true],["Ruling is single-use and signed by the arbiter",true],["Split sums to the escrow balance",true]],
+          payouts:[["Seller (70%)",(total*0.70).toFixed(2)],["Buyer refund (30%)",(total*0.30).toFixed(2)]] };
+        if (req.path==="bond_release") return { path:"bond_release", settled:true, tx:randHash(),
+          checks:[["The seller’s agent authorized the return (weight 2 — the seller delegated signing to it)",true],["Buyer confirmed the deal was delivered",true],["No open complaint",true],["Agent + buyer + co-signer = quorum 5",true]],
+          payouts:[["Seller (bond returned)","1000.00"]] };
+        if (req.path==="bond_slash") return { path:"bond_slash", settled:true, tx:randHash(),
+          checks:[["Buyer filed a complaint (harm)",true],["Arbiter reviewed the evidence",true],["Slash is within the bond",true],["Arbiter + buyer reach quorum 5",true]],
+          payouts:[["Buyer (compensation, 70%)","700.00"],["Seller (returned, 30%)","300.00"]] };
+        return { path:"solo", settled:false, tx:null,
+          checks:[["One party signature attached (weight 2)",true],["Reaches quorum of 5",false]], payouts:null };
+      });
+    },
+    x402: function(req){
+      if (LIVE) return fetch("/api/x402",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(req)}).then(okJson);
+      return delay(350).then(function(){
+        var inv="inv_"+Math.random().toString(36).slice(2,10);
+        if (req.path==="x402_ok") return { settled:true, tx:randHash(), invoiceId:inv, resource:"premium.csv",
+          checks:[["Payee is the merchant named in the challenge",true],["Amount matches the challenge",true],["Payment is bound to the challenge invoice",true],["Challenge hasn’t been spent before",true]] };
+        if (req.path==="x402_redirect") return { settled:false, invoiceId:inv, reason:"the payment pays a different merchant than the challenge names — the co-signer refuses any payout the challenge doesn’t authorize",
+          checks:[["Payee is the merchant named in the challenge",false],["Amount matches the challenge",true],["Payment is bound to the challenge invoice",false],["Challenge hasn’t been spent before",true]] };
+        return { settled:false, invoiceId:inv, reason:"this challenge was already spent — the invoice is single-use (CONSUMED)",
+          checks:[["Payee is the merchant named in the challenge",true],["Amount matches the challenge",true],["Payment is bound to the challenge invoice",true],["Challenge hasn’t been spent before",false]] };
+      });
+    }
+  };
+  function okJson(r){ if(!r.ok) return r.json().then(function(j){ throw new Error(j.error||("HTTP "+r.status)); }); return r.json(); }
+
+  // ---- state --------------------------------------------------------------
+  var S = { scn:SCENARIOS.procurement, data:null, busy:false, settled:false, acted:0, x402Bought:false, closed:false };
+
+  function keySvg(color){ color=color||"var(--good)"; return '<svg class="keyi" viewBox="0 0 24 24" fill="none"><circle cx="8" cy="10" r="4.2" stroke="'+color+'" stroke-width="1.7"/><path d="M11.3 12.2L19 19.9M16.4 17l1.8-1.8M14 14.6l1.8-1.8" stroke="'+color+'" stroke-width="1.7" stroke-linecap="round"/></svg>'; }
+  function roleLabel(s){ return s.as ? (cap(s.role)+" · "+s.as) : cap(s.role); }
+  function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
+  // ---- render context -----------------------------------------------------
+  function renderScenario(){
+    var scn = S.scn;
+    $("#hero").innerHTML = "<h1>"+scn.heroTitle+"</h1><p>"+esc(scn.heroText)+' <button class="moreinfo" id="moreInfo">More info →</button></p>';
+    $("#moreInfo").addEventListener("click", function(){ openModal(scn); });
+    $("#mandateTitle").textContent = scn.mandateTitle;
+    var mc = $("#mandate"); mc.innerHTML = "";
+    scn.mandate.forEach(function(row){
+      var v = Array.isArray(row.v) ? '<span class="vendors">'+row.v.map(function(t){return '<span class="tag">'+esc(t)+'</span>';}).join("")+'</span>' : '<span class="v">'+esc(row.v)+'</span>';
+      mc.insertAdjacentHTML("beforeend", '<div class="chip"><span class="k">'+esc(row.k)+'</span>'+v+'</div>');
+    });
+    $("#quorumText").textContent = scn.quorumText;
+    $("#soloNote").innerHTML = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="var(--warn)" stroke-width="1.4"/><path d="M8 4.6v4.2M8 11.1h.01" stroke="var(--warn)" stroke-width="1.5" stroke-linecap="round"/></svg><span>'+esc(scn.solo)+'</span>';
+    renderSigners(null);
+    $("#st2").textContent = scn.kind==="escrow" ? "The deal reaches an ending" : "The agent proposes payments";
+    $("#st3").textContent = scn.kind==="escrow" ? "Released, split, or blocked" : "Co-signer settles or blocks";
+  }
+
+  function renderSigners(data){
+    var scn = S.scn, el = $("#signers"); el.innerHTML = "";
+    var list = data ? data.signers : scn.signers.map(function(s){ return {role:s.role,weight:s.weight,as:s.as}; });
+    list.forEach(function(s){
+      var row = document.createElement("div");
+      var isAgent = s.role==="agent";
+      row.className = "srow" + (data ? " on" : "");
+      var roleHtml = '<span'+(s.note?' title="'+esc(s.note)+'"':'')+'>'+esc(roleLabel(s))+'</span>';
+      row.innerHTML = (isAgent ? keySvg("var(--violet)") : keySvg()) + '<div class="mid"><div class="role">'+roleHtml+'</div><div class="addr">'+esc(s.address?short(s.address):"key not yet provisioned")+'</div></div>' +
+        '<span class="pop">PoP ✓</span><span class="wt">weight '+s.weight+'</span>';
+      el.appendChild(row);
+    });
+    if (scn.attester){
+      var a = scn.attester, addr = data && data.accounts ? data.accounts.attester : null;
+      var row = document.createElement("div"); row.className="srow attester";
+      row.innerHTML = keySvg("var(--violet)") + '<div class="mid"><div class="role">'+esc(cap(a.role)+" · "+a.as)+'</div><div class="addr">'+esc(addr?short(addr):(a.note||"not a signer"))+'</div></div>' +
+        '<span class="wt">statements</span>';
+      el.appendChild(row);
+    }
+  }
+
+  function setStep(name){
+    var order=["provision","act","done"], idx=order.indexOf(name);
+    document.querySelectorAll("#stepper li").forEach(function(li){
+      var i=order.indexOf(li.dataset.step);
+      li.classList.toggle("active", i===idx); li.classList.toggle("done", i<idx);
+    });
+  }
+
+  // ---- stage --------------------------------------------------------------
+  var stage = $("#stage");
+  function renderCTA(){
+    var escrow = S.scn.kind==="escrow";
+    stage.innerHTML = '<div class="panel cta-card">' +
+      '<h3 style="font-size:19px">'+(escrow?"Open the escrow":"Provision the account")+'</h3>' +
+      '<p>'+(escrow
+        ? "The buyer, seller, arbiter and co-signer each generate their own key and prove they hold it, the co-signer assembles the signer list, and the buyer funds a fresh escrow account on-ledger."
+        : "Three parties each generate their own key and prove they hold it, the co-signer assembles the signer list, and the owner opens a fresh single-use account on-ledger.")+'</p>' +
+      '<div class="provsteps"><span>1 · generate keys</span><span>2 · prove possession</span><span>3 · assemble signer list</span><span>4 · open on-ledger</span></div>' +
+      '<button class="btn primary" id="provBtn">'+(escrow?"Provision &amp; open the escrow":"Provision &amp; open the account")+'</button></div>';
+    $("#provBtn").addEventListener("click", runProvision);
+  }
+
+  function renderAccount(){
+    var scn=S.scn, d=S.data, escrow=scn.kind==="escrow";
+    stage.innerHTML = '<div class="panel"><div class="ptitle"><span class="n">✓</span> '+(escrow?"Escrow account — funded &amp; locked":"Engagement account — open &amp; funded")+'</div>' +
+      '<div class="acct"><div><div class="bal num" id="engBal">'+fmt(S.engBal)+'<span class="u">RLUSD</span></div>' +
+      '<div class="meta">account <span class="mono">'+short(d.account)+'</span></div></div>' +
+      '<div class="meta" style="text-align:right">opened in one atomic batch<br>'+txLink(d.openTx,"open transaction")+'</div></div></div>' +
+      '<div class="panel"><div class="actions-head"><div class="ptitle" style="margin:0"><span class="n">→</span> '+(escrow?"Resolve the deal":"Send the agent on an errand")+'</div>' +
+      '<div style="display:flex;gap:8px"><button class="btn ghost" id="closeBtn"'+(escrow?' hidden':'')+'>Close &amp; reclaim</button><button class="btn ghost" id="resetBtn" hidden>New '+(escrow?"escrow":"run")+'</button></div></div>' +
+      '<div class="actions'+(escrow?"":"")+'" id="actions"></div></div>';
+    var wrap=$("#actions");
+    var run = scn.kind==="escrow"?runEscrow:scn.kind==="x402"?runX402:runSpend;
+    scn.actions.forEach(function(a){
+      var b=document.createElement("button"); b.className="btn"; b.dataset.id=a.id;
+      var right = (escrow || !a.amount) ? "" : '<span class="amt">$'+a.amount+'</span>';
+      b.innerHTML = '<span class="actcol"><b>'+a.title+'</b><span class="sub">'+a.sub+'</span></span>'+right;
+      if (scn.kind==="x402" && a.id==="replay" && !S.x402Bought) b.disabled=true;
+      b.addEventListener("click", function(){ run(a); });
+      wrap.appendChild(b);
+    });
+    $("#resetBtn").addEventListener("click", function(){ S.settled=false; S.acted=0; $("#decision").hidden=true; runProvision(); });
+    var _cb=$("#closeBtn"); if(_cb) _cb.addEventListener("click", runClose);
+  }
+
+  function txLink(hash, label){
+    if (!hash) return "";
+    if (LIVE) return '<a class="mono" href="'+EXPLORER+esc(hash)+'" target="_blank" rel="noopener">'+esc(label||short(hash))+' ↗</a>';
+    return '<span class="mono" title="simulated">'+esc(short(hash))+' · simulated</span>';
+  }
+  function setButtons(dis){ document.querySelectorAll("#actions .btn").forEach(function(b){ if(b.id!=="resetBtn") b.disabled=dis; });
+    if(!dis && S.scn.kind==="x402" && !S.x402Bought){ var rp=document.querySelector('#actions .btn[data-id="replay"]'); if(rp) rp.disabled=true; }
+  }
+
+  // ---- provisioning -------------------------------------------------------
+  function runProvision(){
+    if (S.busy) return; S.busy=true;
+    var btn=$("#provBtn"); if(btn){ btn.disabled=true; btn.textContent="Provisioning…"; }
+    var p = api.provision(S.scn);
+    var seq = Promise.resolve();
+    document.querySelectorAll("#signers .srow:not(.attester)").forEach(function(row){
+      seq = seq.then(function(){ return delay(300); }).then(function(){ row.classList.add("on"); var a=row.querySelector(".addr"); if(a) a.textContent="proving possession…"; });
+    });
+    Promise.all([p,seq]).then(function(res){
+      var d=res[0]; S.data=d; S.engBal=parseFloat(d.balance||"0"); S.settled=false; S.acted=0; S.x402Bought=false; S.closed=false;
+      logEvent("prov", "provisioning · "+esc(S.scn.label));
+      d.signers.forEach(function(s){ logEvent("prov", "enrolled "+esc(roleLabel(s))+" · weight "+s.weight+" · PoP verified · "+short(s.address)); });
+      if (d.accounts && d.accounts.attester) logEvent("att", "attester (delivery oracle) registered · "+short(d.accounts.attester)+" — signs delivery, not a quorum member");
+      logEvent("prov", "SignerList assembled — quorum "+d.quorum);
+      logEvent("open", "account opened "+short(d.account)+" · "+txLink(d.openTx,"tx "+short(d.openTx)));
+      logEvent("info", (S.scn.kind==="escrow"?"escrow funded ":"account funded ")+fmt(parseFloat(d.balance||"0"))+" RLUSD");
+      renderSigners(d); setStep("act"); renderAccount(); setFooter();
+    }).catch(function(err){
+      stage.innerHTML='<div class="panel cta-card"><h3 style="color:var(--bad)">Couldn’t provision</h3><p>'+esc(err.message)+'</p><button class="btn" id="retry">Try again</button></div>';
+      $("#retry").addEventListener("click", renderCTA);
+    }).finally(function(){ S.busy=false; });
+  }
+
+  // ---- shared resolution animation ---------------------------------------
+  function qtileHTML(role, weight, state){ return '<span class="qtile '+(state||"")+'" data-role="'+esc(role)+'">'+esc(cap(role))+' <span class="w">+'+weight+'</span></span>'; }
+  function pipRow(signers){ return signers.map(function(s){ return qtileHTML(s.role, s.weight, ""); }).join(""); }
+
+  // res: { requestLine, leftTitle, leftRows:[[k,v]], checkTitle, checks:[[label,pass]],
+  //        quorum, signNodes:[{role,weight,state}], settled, verdictText, verdictClass,
+  //        receiptOk, receiptHTML, logRequest, logOutcome, logDetail, blocked }
+  function animate(res){
+    var dc=$("#decision"); dc.hidden=false;
+    dc.innerHTML = '<div class="dc-head"><div class="req">'+res.requestLine+'</div><span class="verdict pending" id="verdict">evaluating…</span></div>' +
+      '<div class="flow"><div class="node"><h4>'+esc(res.leftTitle)+'</h4><div class="lgd">' +
+        res.leftRows.map(function(r){ return '<div class="lrow"><span>'+esc(r[0])+'</span><span class="mono">'+r[1]+'</span></div>'; }).join("") +
+      '</div></div><div class="arrow">→</div>' +
+      '<div class="node"><h4>'+esc(res.checkTitle)+'</h4><div class="checks" id="checks"></div>' +
+        '<div class="qsec"><div class="qtiles" id="qtiles">'+pipRow(res.signNodes)+'</div><div class="qstate" id="qstate">weight 0 / '+res.quorum+'</div></div>' +
+      '</div></div><div id="outcome"></div>';
+    dc.scrollIntoView({behavior:REDUCE?"auto":"smooth", block:"nearest"});
+
+    var checksEl=$("#checks");
+    res.checks.forEach(function(c){ var row=document.createElement("div"); row.className="check"; row.innerHTML='<span class="mk">•</span><span>'+esc(c[0])+'</span>'; checksEl.appendChild(row); });
+
+    var seq=Promise.resolve();
+    res.checks.forEach(function(c,i){
+      seq=seq.then(function(){ return delay(320); }).then(function(){
+        var row=checksEl.children[i]; row.classList.add("show", c[1]?"pass":"fail"); row.querySelector(".mk").textContent=c[1]?"✓":"✕";
+      });
+    });
+    // fill quorum weight by each contributing signer
+    var acc=0;
+    res.signNodes.forEach(function(sn){
+      seq=seq.then(function(){ return delay(300); }).then(function(){
+        var tile=$('#qtiles .qtile[data-role="'+sn.role+'"]');
+        if (sn.state==="withheld"){ if(tile) tile.classList.add("withheld"); return; }
+        if (tile) tile.classList.add("on"); acc+=sn.weight;
+        var qs=$("#qstate"); if(qs){ qs.textContent="weight "+acc+" / "+res.quorum; }
+      });
+    });
+    return seq.then(function(){ return delay(260); }).then(function(){
+      var v=$("#verdict"); v.className="verdict "+res.verdictClass; v.textContent=res.verdictText;
+      var qs=$("#qstate"); if(qs){ qs.textContent = res.settled ? ("weight "+acc+" / "+res.quorum+" ✓ quorum reached") : ("weight "+acc+" / "+res.quorum+" — short of quorum"); qs.style.color = res.settled?"var(--good)":"var(--bad)"; }
+      $("#outcome").innerHTML = res.receiptHTML;
+      addLog(res.logRequest, res.settled, res.logOutcome, res.logDetail);
+    });
+  }
+
+  // ---- procurement run ----------------------------------------------------
+  var CHECK_DEFS=[["Payee is KYB-verified",["B6"]],["Payee is in the mandate",["W2"]],["Within the daily cap",["W3"]],["Approval present if required",["W5","W6"]]];
+  function runSpend(a){
+    if (S.busy||!S.data) return; S.busy=true; setButtons(true);
+    var dest=S.data.accounts[a.dest];
+    var destLabel = a.dest==="stranger"?"a stranger":(a.dest==="vendorA"?"Vendor A":"Vendor B");
+    var req={destination:dest,amount:a.amount,invoiceRef:a.invoiceRef,withApproval:!!a.withApproval};
+    logEvent("info", "agent → propose_payment · pay "+esc(destLabel)+" $"+a.amount+(a.withApproval?" (with approval)":""));
+    api.pay(req).then(function(r){
+      var failing=r.failing||[], signed=r.decision==="SIGN";
+      var plain=failing.map(function(f){ return RULE_TEXT[f]||f; });
+      logEvent(signed?"sign":"refuse", signed ? ("co-signer SIGNED · settled "+(LIVE?"":"(sim) ")+txLink(r.tx,"tx "+short(r.tx))) : ("co-signer REFUSED · "+esc(failing.join(", "))+(failing.length?" — "+esc(plain.join(" · ")):"")));
+      var checks=CHECK_DEFS.map(function(c){ return [c[0], !c[1].some(function(f){return failing.indexOf(f)>=0;})]; });
+      var signNodes=[{role:"agent",weight:1,state:"on"}, {role:"cosigner",weight:1,state:signed?"on":"withheld"}];
+      var res={
+        requestLine:'Agent requests: pay <span class="mono">'+esc(destLabel)+'</span> — $'+a.amount,
+        leftTitle:"Agent signs (weight 1)",
+        leftRows:[["payment",'$'+a.amount+' → '+short(dest)],["invoice ref",esc(a.invoiceRef)],["agent signature",'<span style="color:var(--good)">attached ✓</span>']],
+        checkTitle:"Policy co-signer", checks:checks, quorum:2, signNodes:signNodes, settled:signed,
+        verdictText:signed?"Signed & settled":"Refused", verdictClass:signed?"sign":"refuse",
+        logRequest:'pay '+esc(destLabel)+' <span class="mono">$'+esc(a.amount)+'</span>',
+        logOutcome:signed?"SIGN":"REFUSE"
+      };
+      if (signed){ S.engBal-=parseFloat(a.amount);
+        res.receiptHTML='<div class="receipt ok"><span class="ri">✓</span><div><b>Co-signer added the second signature.</b> $'+a.amount+' settled to '+esc(destLabel)+'. '+txLink(r.tx,"view on explorer")+'</div></div>';
+        res.logDetail='settled '+(LIVE?'':'(simulated) ')+txLink(r.tx,"tx");
+      } else {
+        res.receiptHTML='<div class="receipt no"><span class="ri">✕</span><div><b>Co-signer withheld its signature.</b> The payment never reached the ledger.<br>'+esc(plain.join(" · "))+'</div></div>';
+        res.logDetail='<span class="mono">'+esc(failing.join(", "))+'</span> — '+esc(plain.join(" · ")||"blocked");
+      }
+      return animate(res).then(function(){ var be=$("#engBal"); if(be&&signed) be.innerHTML=fmt(S.engBal)+'<span class="u">RLUSD</span>'; S.acted++; setStep("done"); });
+    }).catch(function(err){ $("#decision").innerHTML='<div class="panel"><div class="receipt no"><span class="ri">!</span><div><b>Request error.</b> '+esc(err.message)+'</div></div></div>'; })
+    .finally(function(){ S.busy=false; setButtons(false); });
+  }
+
+  // ---- x402 run -----------------------------------------------------------
+  function runX402(a){
+    if (S.busy||!S.data) return; S.busy=true; setButtons(true);
+    var mpp = S.scn.id==="mpp", scheme = mpp?"mpp":"x402", redirect = a.path==="x402_redirect";
+    var challengeMerchant="DataCo", payMerchant=redirect?"MapsAPI":"DataCo";
+    var payCell = esc(payMerchant)+(redirect?' <span style="color:var(--bad)">≠ '+(mpp?"charge":"challenge")+'</span>':' <span style="color:var(--good)">✓</span>');
+    var L = mpp ? {
+      initLog:"agent pushes an MPP charge to "+challengeMerchant+" (Stripe/Tempo rail) · $800",
+      requestLine:'Agent pushes MPP charge · <span class="mono">$800 → '+esc(challengeMerchant)+'</span>',
+      leftTitle:"MPP push charge",
+      leftRows:[["rail","MPP · Stripe/Tempo"],["charge to",esc(challengeMerchant)],["payment pays",payCell],["amount",'$800.00']],
+      okHead:"Co-signed and settled — bound to the MPP charge.", okBody:"The MPP merchant confirmed settlement on the pinned XRPL charge.", okLog:"settled",
+      logReq:{x402_ok:'push MPP charge <span class="mono">$800</span>',x402_redirect:"redirect charge"}
+    } : {
+      initLog:"GET premium.csv → merchant replies 402 · x402 challenge (pay "+challengeMerchant+" $800)",
+      requestLine:'Agent pays x402 challenge · <span class="mono">premium.csv — $800</span>',
+      leftTitle:"Merchant 402 challenge",
+      leftRows:[["resource","premium.csv"],["challenge pays",esc(challengeMerchant)],["payment pays",payCell],["amount",'$800.00']],
+      okHead:"Co-signed and settled — bound to the challenge.", okBody:'The merchant verified the on-ledger payment and delivered <span class="mono">premium.csv</span>.', okLog:"delivered",
+      logReq:{x402_ok:'buy premium.csv <span class="mono">$800</span>',x402_redirect:"redirect payment",x402_replay:"replay challenge"}
+    };
+    logEvent("info", L.initLog);
+    api.x402({path:a.path, scheme:scheme}).then(function(r){
+      var signNodes=[{role:"agent",weight:1,state:"on"},{role:"cosigner",weight:1,state:r.settled?"on":"withheld"}];
+      var res={
+        requestLine:L.requestLine, leftTitle:L.leftTitle, leftRows:L.leftRows,
+        checkTitle:"Policy co-signer · challenge binding", checks:r.checks, quorum:2, signNodes:signNodes, settled:r.settled,
+        verdictText:r.settled?"Signed & settled":"Refused", verdictClass:r.settled?"sign":"refuse",
+        logRequest:L.logReq[a.path], logOutcome:r.settled?"SIGN":"REFUSE"
+      };
+      if (r.settled){
+        S.engBal-=800;
+        res.receiptHTML='<div class="receipt ok"><span class="ri">✓</span><div><b>'+L.okHead+'</b> '+L.okBody+' '+txLink(r.tx,"view on explorer")+'</div></div>';
+        res.logDetail=L.okLog+' '+(LIVE?'':'(sim) ')+txLink(r.tx,"tx");
+      } else {
+        res.receiptHTML='<div class="receipt no"><span class="ri">✕</span><div><b>Co-signer refused.</b> '+esc(r.reason||"the payment is not bound to the merchant’s challenge")+'</div></div>';
+        res.logDetail=esc(r.reason||"not bound to the challenge");
+      }
+      logEvent(r.settled?"sign":"refuse", r.settled ? ("co-signer SIGNED · bound to "+(mpp?"MPP charge":"challenge")+" · "+(LIVE?"":"(sim) ")+txLink(r.tx,"tx "+short(r.tx))) : ("co-signer REFUSED · "+esc(r.reason||"challenge mismatch")));
+      if (r.settled && a.path==="x402_ok") S.x402Bought=true;
+      return animate(res).then(function(){
+        var be=$("#engBal"); if(be&&r.settled) be.innerHTML=fmt(S.engBal)+'<span class="u">RLUSD</span>';
+        S.acted++; setStep("done");
+      });
+    }).catch(function(err){ $("#decision").innerHTML='<div class="panel"><div class="receipt no"><span class="ri">!</span><div><b>Request error.</b> '+esc(err.message)+'</div></div></div>'; })
+    .finally(function(){ S.busy=false; setButtons(false); });
+  }
+
+  // ---- escrow run ---------------------------------------------------------
+  function runEscrow(a){
+    if (S.busy||!S.data||S.settled) return; S.busy=true; setButtons(true);
+    var sr = S.scn.id==="bond" ? "agent" : "counterparty";
+    logEvent("info", "resolve → "+({agreed:"release (buyer’s agent + seller + co-signer)",ruling:"arbiter ruling 70/30",bond_release:"return bond (seller’s agent + buyer + co-signer)",bond_slash:"arbiter slash 70%"}[a.path]||"single-party attempt"));
+    if (a.path==="agreed") logEvent("att", "delivery confirmed · party.confirmation/1 signed by the attester");
+    api.escrow({path:a.path}).then(function(r){
+      var res;
+      if (a.path==="agreed"){
+        res={ requestLine:'Resolve: <span class="mono">release to the seller</span> (happy path)',
+          leftTitle:"Release (buyer’s agent + seller + co-signer)",
+          leftRows:[["from escrow",'$'+fmt(S.engBal)],["to","seller + 0.5% fee"],["delivery",'<span style="color:var(--violet)">oracle attested ✓</span>']],
+          checkTitle:"Policy co-signer", quorum:5,
+          signNodes:[{role:"agent",weight:2},{role:"counterparty",weight:2},{role:"cosigner",weight:1}] };
+      } else if (a.path==="ruling"){
+        res={ requestLine:'Resolve: <span class="mono">arbiter rules 70 / 30</span> (dispute)',
+          leftTitle:"Arbiter ruling (arbiter + buyer’s agent)",
+          leftRows:[["dispute",'<span style="color:var(--warn)">opened ✓</span>'],["ruling","70% seller · 30% buyer"],["co-signer",'<span style="color:var(--faint)">not in this quorum</span>']],
+          checkTitle:"Arbiter authority", quorum:5,
+          signNodes:[{role:"arbiter",weight:3},{role:"agent",weight:2}] };
+      } else if (a.path==="bond_release"){
+        res={ requestLine:'Resolve: <span class="mono">return the bond to the seller</span> (delivered)',
+          leftTitle:"Release (seller’s agent + buyer + co-signer)",
+          leftRows:[["from bond",'$'+fmt(S.engBal)],["to","seller (full bond)"],["delivery",'<span style="color:var(--good)">confirmed ✓</span>']],
+          checkTitle:"Policy co-signer", quorum:5,
+          signNodes:[{role:"agent",weight:2},{role:"buyer",weight:2},{role:"cosigner",weight:1}] };
+      } else if (a.path==="bond_slash"){
+        res={ requestLine:'Resolve: <span class="mono">arbiter slashes the bond 70%</span> to the buyer',
+          leftTitle:"Arbiter slash (arbiter + buyer)",
+          leftRows:[["complaint",'<span style="color:var(--warn)">harm ruled ✓</span>'],["slash","70% buyer · 30% seller"],["co-signer",'<span style="color:var(--faint)">not in this quorum</span>']],
+          checkTitle:"Arbiter authority", quorum:5,
+          signNodes:[{role:"arbiter",weight:3},{role:"buyer",weight:2}] };
+      } else {
+        res={ requestLine:'Resolve: <span class="mono">'+(S.scn.id==="bond"?"seller grabs the bond back":"seller takes the funds alone")+'</span>',
+          leftTitle:"Seller signs (weight 2)",
+          leftRows:[["attempt",'$'+fmt(S.engBal)+' → seller'],["signatures","seller only"],["needs","quorum 5"]],
+          checkTitle:"Ledger", quorum:5,
+          signNodes:[{role:sr,weight:2,state:"withheld"}] };
+      }
+      res.checks=r.checks; res.settled=r.settled;
+      res.verdictText=r.settled?((a.path==="ruling"||a.path==="bond_slash")?"Ruled & settled":"Released"):"Blocked";
+      res.verdictClass=r.settled?"sign":"refuse";
+      res.logRequest = ({agreed:"release escrow (happy)",ruling:"arbiter ruling 70/30",bond_release:"release bond (delivered)",bond_slash:"arbiter slash 70%"}[a.path])||"seller-alone attempt";
+      res.logOutcome = r.settled?"SETTLE":"BLOCKED";
+      if (r.settled){
+        var po='<div class="payouts">'+r.payouts.map(function(p){ return '<div class="prow"><span>'+esc(p[0])+'</span><span class="mono">$'+esc(p[1])+'</span></div>'; }).join("")+'</div>';
+        var header=({agreed:"The escrow released to the seller.",ruling:"The arbiter’s ruling settled the escrow.",bond_release:"The bond was returned to the seller.",bond_slash:"The arbiter slashed the bond — the buyer is compensated."}[a.path])||"Settled.";
+        res.receiptHTML='<div class="receipt ok"><span class="ri">✓</span><div><b>'+header+'</b> '+txLink(r.tx,"view on explorer")+po+'</div></div>';
+        res.logDetail='settled '+(LIVE?'':'(simulated) ')+txLink(r.tx,"tx");
+        S.engBal=0;
+      } else {
+        var blurb = S.scn.id==="bond" ? "The seller cannot reclaim its bond alone; it needs the buyer + co-signer, or the arbiter." : "The seller cannot take the escrow alone; it needs the buyer + co-signer, or the arbiter.";
+        res.receiptHTML='<div class="receipt no"><span class="ri">✕</span><div><b>Rejected — weight 2 is short of the quorum of 5.</b> '+blurb+'</div></div>';
+        res.logDetail='<span class="mono">quorum 2 / 5</span> — a single party can’t move the funds';
+      }
+      var settleLabel=({agreed:"escrow released",ruling:"arbiter ruling settled",bond_release:"bond returned to seller",bond_slash:"arbiter slashed the bond"}[a.path])||"settled";
+      logEvent(r.settled?"settle":"refuse", r.settled ? (settleLabel+" · "+(LIVE?"":"(sim) ")+txLink(r.tx,"tx "+short(r.tx))) : "blocked · weight 2 of 5 — a single party can't move the funds");
+      return animate(res).then(function(){
+        if (r.settled){ S.settled=true; S.engBal=0; var be=$("#engBal"); if(be) be.innerHTML='0.00<span class="u">RLUSD</span>'; var rb=$("#resetBtn"); if(rb) rb.hidden=false; var cb2=$("#closeBtn"); if(cb2) cb2.hidden=false; setButtons(true); }
+        setStep("done");
+      });
+    }).catch(function(err){ $("#decision").innerHTML='<div class="panel"><div class="receipt no"><span class="ri">!</span><div><b>Request error.</b> '+esc(err.message)+'</div></div></div>'; })
+    .finally(function(){ S.busy=false; if(!S.settled) setButtons(false); });
+  }
+
+  // ---- close & reclaim ---------------------------------------------------
+  // Default (simulated) demo: narrates the production teardown as ONE ALLORNOTHING
+  // Batch. Live pooled mode (ENG_USE_POOL): this account was pre-aged in a warm pool,
+  // so the close is a REAL, instant teardown — sweep leftover RLUSD, remove the trust
+  // line, AccountDelete via PoolManager.reclaim, reserves back to the operating
+  // account — with real tx links and no ~256-ledger wait.
+  function runClose(){
+    if (S.busy || !S.data || S.closed) return;
+    S.busy=true; setButtons(true);
+    var cb=$("#closeBtn"); if(cb) cb.disabled=true;
+    var residual=S.engBal;
+    var live = LIVE && POOLED;
+    logEvent("info", live ? "owner closes the account · live reclaim of a pre-aged pool account" : "owner closes the account · one atomic ALLORNOTHING Batch (simulated)");
+    var dc=$("#decision"); dc.hidden=false;
+    dc.innerHTML='<div class="dc-head"><div class="req">Close &amp; reclaim · <span class="mono">'+(live?'live · pre-aged pool account':'one ALLORNOTHING Batch')+'</span></div><span class="verdict pending" id="verdict">closing…</span></div>'+
+      '<div class="flow" style="display:block"><div class="node"><h4>'+(live?'Teardown — real transactions on Testnet':'Teardown — every step commits together or not at all')+'</h4><div class="checks" id="closesteps"></div></div></div>'+
+      '<div id="outcome"></div>';
+    dc.scrollIntoView({behavior:REDUCE?"auto":"smooth",block:"nearest"});
+    var steps = live ? [
+      residual>0.005 ? "Return the owner’s unspent budget ($"+fmt(residual)+" RLUSD) to the owner" : "No RLUSD left — the budget was fully spent",
+      "Remove the RLUSD trust line",
+      "AccountDelete — instant (the account aged in the pool before the deal)",
+      "XRP reserve returns to the operating account — the service fronted it, so the owner never holds XRP"
+    ] : [
+      residual>0.005 ? "Sweep residual ($"+fmt(residual)+" RLUSD) back to the owner" : "No RLUSD residual — already distributed at settlement",
+      "Remove the RLUSD trust line",
+      "AccountDelete — the last inner transaction",
+      "Base reserve (XRP) returned to the funder"
+    ];
+    var el=$("#closesteps");
+    steps.forEach(function(s){ var r=document.createElement("div"); r.className="check"; r.innerHTML='<span class="mk">•</span><span>'+esc(s)+'</span>'; el.appendChild(r); });
+    // In live pooled mode, fire the real reclaim alongside the step animation.
+    var call = live ? fetch("/api/reclaim",{method:"POST",headers:{"content-type":"application/json"},body:"{}"}).then(okJson) : null;
+    var seq=Promise.resolve();
+    steps.forEach(function(s,i){ seq=seq.then(function(){ return delay(330); }).then(function(){ var r=el.children[i]; r.classList.add("show","pass"); r.querySelector(".mk").textContent="✓"; }); });
+    seq.then(function(){ return delay(260); }).then(function(){
+      return live ? call.then(renderLiveClose) : Promise.resolve().then(renderSimClose);
+    }).catch(function(e){
+      var v=$("#verdict"); if(v){ v.className="verdict refuse"; v.textContent="close failed"; }
+      var o=$("#outcome"); if(o) o.innerHTML='<div class="receipt no"><span class="ri">✕</span><div><b>Reclaim failed.</b> <span class="mono">'+esc(String(e&&e.message||e))+'</span></div></div>';
+      logEvent("refuse","reclaim failed · "+String(e&&e.message||e));
+    }).finally(function(){ S.busy=false; });
+
+    function finishClosed(){
+      S.engBal=0; var be=$("#engBal"); if(be) be.innerHTML='<span style="color:var(--faint)">account deleted</span>';
+      S.closed=true; S.settled=true;
+      document.querySelectorAll("#actions .btn").forEach(function(b){ b.disabled=true; });
+      if(cb){ cb.hidden=true; }
+      var rb=$("#resetBtn"); if(rb) rb.hidden=false;
+      setStep("done");
+    }
+    function renderLiveClose(rc){
+      var v=$("#verdict"); v.className="verdict sign"; v.textContent="Account deleted";
+      var parts=[];
+      if(rc.sweepTx) parts.push("sweep "+txLink(rc.sweepTx, short(rc.sweepTx)));
+      parts.push("remove trust line "+txLink(rc.removeTrustlineTx, short(rc.removeTrustlineTx)));
+      parts.push("AccountDelete "+txLink(rc.accountDeleteTx, short(rc.accountDeleteTx)));
+      $("#outcome").innerHTML='<div class="receipt ok"><span class="ri">✓</span><div><b>Closed live — instantly.</b> No ~256-ledger wait: the owner’s unspent RLUSD budget went back to the owner, the trust line was removed, and the account was deleted. The <b>XRP reserve</b> returns to the <b>operating account</b> — the service fronted it, so the owner (the principal) only ever holds RLUSD, never XRP.<br><span class="mono" style="color:var(--faint)">'+parts.join(" · ")+'</span></div></div>';
+      addLog("close &amp; reclaim", true, "DELETED", "live · "+txLink(rc.accountDeleteTx, short(rc.accountDeleteTx)));
+      logEvent("settle","account deleted live · reserves returned to the operating account · "+short(rc.accountDeleteTx));
+      finishClosed();
+    }
+    function renderSimClose(){
+      var tx=randHash();
+      var simTx='<span class="mono" title="simulated teardown">'+short(tx)+' · simulated</span>';
+      var v=$("#verdict"); v.className="verdict sign"; v.textContent="Account deleted";
+      $("#outcome").innerHTML='<div class="receipt ok"><span class="ri">✓</span><div><b>Closed in one atomic Batch.</b> The sweep, the trust-line removal and the <span class="mono">AccountDelete</span> are one ALLORNOTHING Batch (XLS-56) — they commit together or not at all — and the account’s XRP reserve is returned to the funder. '+simTx+(LIVE?'<br><span style="color:var(--faint)">On Testnet the real teardown needs the account aged ~256 ledgers (XRPL’s AccountDelete rule), so this final step is simulated. Run with ENG_USE_POOL for a real, instant close.</span>':'')+'</div></div>';
+      addLog("close &amp; reclaim", true, "DELETED", "atomic batch · "+simTx);
+      logEvent("settle","account deleted · atomic batch: sweep + trust line removed + AccountDelete · reserve returned (simulated)");
+      finishClosed();
+    }
+  }
+
+  // ---- log ----------------------------------------------------------------
+  var logN=0;
+  function addLog(request, settled, outcome, detail){
+    if (logN===0) $("#logbody").innerHTML="";
+    var tr=document.createElement("tr");
+    tr.innerHTML='<td>'+request+'</td><td><span class="pill '+(settled?"sign":"refuse")+'">'+esc(outcome)+'</span></td><td>'+detail+'</td>';
+    $("#logbody").appendChild(tr); logN++;
+  }
+
+  var evN=0;
+  function logEvent(tag, msg){
+    if (evN===0) $("#events").innerHTML="";
+    var ts=new Date().toLocaleTimeString("en-GB",{hour12:false});
+    var row=document.createElement("div"); row.className="ev";
+    row.innerHTML='<span class="ts">'+ts+'</span><span class="tag '+tag+'">'+tag+'</span><span class="msg">'+msg+'</span>';
+    var box=$("#events"); box.appendChild(row); box.scrollTop=box.scrollHeight; evN++;
+  }
+  document.querySelectorAll(".tabs .tab").forEach(function(t){
+    t.addEventListener("click", function(){
+      document.querySelectorAll(".tabs .tab").forEach(function(x){ x.classList.toggle("active", x===t); });
+      $("#tab-decisions").hidden = t.dataset.tab!=="decisions";
+      $("#tab-events").hidden = t.dataset.tab!=="events";
+    });
+  });
+
+  function setFooter(){
+    $("#footer").innerHTML = LIVE
+      ? 'Live on XRPL Testnet. Provisioning, the signer list and every settlement are real multisigned transactions; links open the public explorer. Escrow settles without the final account-delete step (which needs a ~15-minute ledger wait) — the release and the arbiter split are the real, on-ledger moments.'
+      : 'Simulated for a quick walkthrough — addresses and hashes are illustrative. The same page runs live against XRPL Testnet when served by <code>npm run web</code>, with real provisioning, real multisigned settlements and explorer links.';
+  }
+
+  // ---- info modal ---------------------------------------------------------
+  var COSIGNER_HTML =
+    '<p><b>It’s not an AI.</b> The co-signer is a separate, deterministic policy service — not another agent. It holds one key (below quorum on its own), and for each request it pins a validated ledger, evaluates the engagement’s policy (declarative <code>cel-eng/1</code> rules, fixed and hashed when the account opens — data evaluated by a general engine, not bespoke code per deal), and only on a pass adds its signature to exactly the transaction it checked. Every verdict is a signed, replayable decision record. The agent is the untrusted intelligence; the co-signer is the simple, auditable gate.</p>' +
+    '<p><b>Vs. an embedded wallet policy (Privy).</b> Privy enforces policy <em>inside the wallet, before it signs</em> — a pre-sign gate in the provider’s trust domain. Here the rule is enforced <em>by the XRPL ledger itself</em>: the account’s signer list can’t reach quorum without the co-signer, and for recourse an arbiter or the owner can act without it. So a fully compromised agent — even a captured wallet — still can’t move funds the policy forbids, no single provider is a chokepoint, and every decision is publicly verifiable. The two are complementary: the agent can even use a Privy wallet as its key, with the engagement account’s co-signer as a second, ledger-level line of defense.</p>';
+  var modal=$("#modal");
+  function openModal(scn){
+    $("#modalTitle").textContent = scn.label;
+    var parties = (scn.parties||[]).map(function(p){ return '<div class="modal-party"><div class="pr">'+esc(p.role)+'</div><div class="pd">'+esc(p.desc)+'</div></div>'; }).join("");
+    $("#modalBody").innerHTML =
+      '<section><h3>What it proves</h3><p>'+esc(scn.proves)+'</p></section>' +
+      '<section><h3>The parties</h3><div class="modal-parties">'+parties+'</div></section>' +
+      '<section><h3>How it differs from an embedded wallet policy (e.g. Privy)</h3>'+COSIGNER_HTML+'</section>';
+    $("#modalBody").scrollTop=0; modal.hidden=false;
+  }
+  function closeModal(){ modal.hidden=true; }
+  $("#modalClose").addEventListener("click", closeModal);
+  $("#modalBackdrop").addEventListener("click", closeModal);
+  document.addEventListener("keydown", function(e){ if(e.key==="Escape" && !modal.hidden) closeModal(); });
+
+  // ---- scenario switch + boot --------------------------------------------
+  $("#scenario").addEventListener("change", function(e){
+    S.scn = SCENARIOS[e.target.value] || SCENARIOS.procurement;
+    S.data=null; S.settled=false; S.acted=0; S.x402Bought=false; S.closed=false; logN=0;
+    $("#decision").hidden=true;
+    $("#logbody").innerHTML='<tr><td colspan="3" class="empty">No activity yet — provision the account, then drive it.</td></tr>';
+    $("#events").innerHTML='<div class="ev"><span class="msg" style="color:var(--faint)">Events appear here as you provision and drive the account.</span></div>'; evN=0;
+    renderScenario(); setStep("provision"); renderCTA(); setFooter();
+  });
+
+  renderScenario(); setStep("provision"); renderCTA(); setFooter();
+})();
+</script>

@@ -1,0 +1,63 @@
+{
+  "policyId": "pol_baseline",
+  "version": "1.0.0",
+  "layer": "baseline",
+  "appliesTo": ["*"],
+  "language": "cel-eng/1",
+  "params": {
+    "feeCapDrops": 20000,
+    "maxLedgerWindow": 30,
+    "presignedStages": ["default.refund", "default.release", "ladder", "release.documents"],
+    "concurrentStages": ["spend"],
+    "allowedTypes": {
+      "open":            ["Batch", "Payment", "SignerListSet", "TicketCreate", "SetRegularKey"],
+      "spend":           ["Batch", "Payment"],
+      "settle":          ["Batch", "Payment", "TrustSet", "AccountDelete"],
+      "default.refund":  ["Batch", "Payment", "TrustSet", "AccountDelete"],
+      "default.release": ["Batch", "Payment", "TrustSet", "AccountDelete"],
+      "ladder":          ["Batch", "Payment", "TrustSet", "AccountDelete"],
+      "amend":           ["Batch", "Payment", "TicketCreate", "AccountSet"],
+      "close.owner":     ["Batch", "Payment", "TrustSet", "AccountDelete"]
+    }
+  },
+  "stages": {
+    "*": {
+      "enforcement": "ledger",
+      "rules": [
+        { "id": "B1", "when": "hasTx", "reason": "WRONG_ACCOUNT",
+          "check": "tx.account == eng.account && tx.innerAccounts().all(a, a == eng.account || (stage == 'open' && eng.parties.exists(k, eng.parties[k] == a)))",
+          "message": "Only transactions from the engagement account (plus the funder at open) may be co-signed." },
+        { "id": "B2", "when": "hasTx", "reason": "TX_TYPE_NOT_ALLOWED",
+          "check": "tx.innerTypes().all(t, t in params.allowedTypes[stage]) && !tx.setsRegularKey()",
+          "message": "Transaction types allowed in this stage are limited; installing a RegularKey is never allowed." },
+        { "id": "B3", "when": "hasTx", "reason": "FEE_TOO_HIGH",
+          "check": "tx.fee <= params.feeCapDrops + (tx.closes() ? ledger.reserveIncrement() : 0)",
+          "message": "Fee above the cap would drain the account's XRP." },
+        { "id": "B4", "when": "hasTx", "reason": "NO_EXPIRY",
+          "check": "stage in params.presignedStages || (tx.hasLastLedgerSequence && tx.lastLedgerSequence <= ledgerIndex + params.maxLedgerWindow)",
+          "message": "Live transactions need a short LastLedgerSequence." },
+        { "id": "B5", "when": "hasTx", "reason": "NOT_ALL_OR_NOTHING",
+          "check": "!tx.isBatch || tx.isAllOrNothing()",
+          "message": "Batches must be ALLORNOTHING." },
+        { "id": "B6", "when": "hasTx", "reason": "UNAUTHORIZED_DESTINATION",
+          "check": "tx.payouts.destinations().all(d, d in eng.allowedDestinations)",
+          "message": "Payouts may only go to engagement parties, the fee account, child engagements, or mandate vendors." },
+        { "id": "B7", "when": "hasTx", "reason": "UNCLEAN_CLOSE",
+          "check": "!tx.closes() || (tx.drainsExactly() && tx.deleteDestinationValid())",
+          "message": "A closing Batch must drain the asset exactly, remove the trust line, and delete to the service/sponsor." },
+        { "id": "B8", "when": "hasTx", "reason": "NO_BASIS_MEMO",
+          "check": "tx.memo('eng/basis') != null",
+          "message": "Every co-signed transaction records its basis (eng/basis memo)." },
+        { "id": "B9", "when": "hasTx", "reason": "OUTCOME_IN_FLIGHT",
+          "check": "inflight.count() == 0 || stage in params.concurrentStages",
+          "message": "Another co-signed outcome for this engagement is still in flight." },
+        { "id": "B10", "when": "hasTx", "reason": "WRONG_ISSUER",
+          "check": "tx.issuersValid()",
+          "message": "Every amount must use the policy's declared issuer." },
+        { "id": "B11", "when": "hasTx && stage in params.presignedStages", "reason": "WOULD_FAIL",
+          "check": "tx.wouldSucceed()",
+          "message": "Pre-signed outcomes are single-shot: complete only when the ledger state makes them succeed exactly." }
+      ]
+    }
+  }
+}

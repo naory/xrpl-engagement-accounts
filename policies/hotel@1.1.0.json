@@ -1,0 +1,56 @@
+{
+  "policyId": "pol_hotel",
+  "version": "1.1.0",
+  "layer": "template",
+  "appliesTo": ["settlement-vault/hotel@1"],
+  "language": "cel-eng/1",
+  "registry": "att-registry@2026.10",
+  "assets": {
+    "RLUSD": { "code": "RLUSD", "kind": "IOU", "currency": "524C555344000000000000000000000000000000", "issuer": "rRLUSDissuerPlaceholderXXXXXXXXXX", "decimals": 6 }
+  },
+  "constraints": { "allowedRails": ["xrpl"], "allowedAssets": ["RLUSD"] },
+  "params": { "serviceFeeBps": 50, "minDisputeBond": "10.00" },
+  "definitions": {
+    "balance": "ledger.balance(eng.account, 'RLUSD')",
+    "booked": "amt(eng.amount.value, 'RLUSD')",
+    "disputeOpen": "ledger.credentialExists(eng.parties.principal, eng.account, 'ENG/DISPUTE') || ledger.credentialExists(eng.parties.counterparty, eng.account, 'ENG/DISPUTE')",
+    "toMerchant": "tx.payouts.to(eng.parties.counterparty, 'RLUSD')",
+    "toFee": "tx.payouts.to(eng.fee.to, 'RLUSD')"
+  },
+  "stages": {
+    "confirm": {
+      "enforcement": "service",
+      "rules": [
+        { "id": "C1", "reason": "BAD_CONFIRMATION", "check": "att.latest('party.confirmation/1', 'counterparty') != null && att.latest('party.confirmation/1', 'counterparty').claim.mandateHash == eng.mandateId" },
+        { "id": "C2", "reason": "MANDATE_MISMATCH", "check": "att.latest('party.confirmation/1', 'counterparty').claim.city == mandate.constraints.city && att.latest('party.confirmation/1', 'counterparty').claim.checkIn == mandate.constraints.checkIn && att.latest('party.confirmation/1', 'counterparty').claim.checkOut == mandate.constraints.checkOut" },
+        { "id": "C4", "reason": "AMOUNT_MISMATCH", "check": "amt(att.latest('party.confirmation/1', 'counterparty').claim.total.value, 'RLUSD') == def.booked" }
+      ]
+    },
+    "settle": {
+      "enforcement": "ledger",
+      "rules": [
+        { "id": "S1", "reason": "WRONG_STATE", "check": "eng.state in ['CONFIRMED', 'AWAITING_SETTLEMENT'] && !def.disputeOpen" },
+        { "id": "S2", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.split')" },
+        { "id": "S4", "reason": "FEE_MISMATCH", "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)" },
+        { "id": "S5", "reason": "REVIEW_REQUIRED", "check": "tx.memo('eng/review') != null && att.list('party.review/1', 'principal').exists(r, r.id == tx.memo('eng/review'))" }
+      ]
+    },
+    "default.refund": {
+      "enforcement": "final-signature",
+      "rules": [
+        { "id": "R1", "reason": "NOT_DUE", "check": "now >= timestamp(eng.timers.confirmBy) && eng.state == 'OPEN'" },
+        { "id": "R2", "reason": "BALANCE_CHANGED", "check": "def.balance == def.booked" },
+        { "id": "R3", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.refundAll')" }
+      ]
+    },
+    "default.release": {
+      "enforcement": "final-signature",
+      "rules": [
+        { "id": "L1", "reason": "NOT_DUE", "check": "now >= timestamp(eng.timers.disputeWindowEnds) && eng.state == 'AWAITING_SETTLEMENT'" },
+        { "id": "L2", "reason": "DISPUTE_OPEN", "check": "!def.disputeOpen" },
+        { "id": "L3", "reason": "BALANCE_CHANGED", "check": "def.balance == def.booked" },
+        { "id": "L4", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.releaseAll')" }
+      ]
+    }
+  }
+}

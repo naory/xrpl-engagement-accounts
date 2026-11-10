@@ -1,0 +1,36 @@
+{
+  "policyId": "pol_shopping",
+  "version": "1.0.0",
+  "layer": "template",
+  "appliesTo": ["owner-wallet/shopping@1"],
+  "language": "cel-eng/1",
+  "registry": "att-registry@2026.10",
+  "assets": {
+    "RLUSD": { "code": "RLUSD", "kind": "IOU", "currency": "524C555344000000000000000000000000000000", "issuer": "rRLUSDissuerPlaceholderXXXXXXXXXX", "decimals": 6 }
+  },
+  "constraints": { "allowedRails": ["xrpl"], "allowedAssets": ["RLUSD"] },
+  "params": {},
+  "definitions": {
+    "spendNow": "tx.payouts.sum('RLUSD')",
+    "paymentChallenge": "att.latest('payment.challenge/1', 'agent')"
+  },
+  "stages": {
+    "spend": {
+      "enforcement": "ledger",
+      "rules": [
+        { "id": "SH0", "reason": "MANDATE_INVALID", "check": "has(mandate.expires) && now < timestamp(mandate.expires)", "message": "A valid, unexpired mandate signed by the owner is required." },
+        { "id": "SH1", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('spend.payments') && tx.payouts.count() >= 1", "message": "Spends are 1–4 payments to merchants." },
+        { "id": "SH2", "reason": "MERCHANT_CATEGORY_NOT_ALLOWED", "check": "tx.payouts.destinations().all(d, att.list('merchant.category/1', 'classifier').exists(c, c.subject.account == d && c.claim.category in mandate.categories))", "message": "Every payee must be classified by an accepted classifier into a category the mandate allows." },
+        { "id": "SH3", "reason": "WEEKLY_CAP", "check": "history.outflow('RLUSD', duration('168h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.weeklyCap, 'RLUSD')", "message": "Rolling 7-day outflow cap." },
+        { "id": "SH4", "reason": "BUDGET_EXHAUSTED", "check": "history.outflow('RLUSD', duration('2160h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.budget, 'RLUSD')", "message": "Mandate budget (90 days)." },
+        { "id": "SH5", "reason": "PAYMENT_CHALLENGE_MISMATCH", "when": "hasTx && att.list('payment.challenge/1', 'agent').size() > 0", "check": "tx.payouts.count() == 1 && def.paymentChallenge.claim.payTo in tx.payouts.destinations() && tx.payouts.to(def.paymentChallenge.claim.payTo, 'RLUSD') == amt(def.paymentChallenge.claim.amount, 'RLUSD') && tx.boundToInvoice(def.paymentChallenge.claim.invoiceId)", "message": "The payment must match the agent's x402/MPP challenge: destination, amount and invoice binding." }
+      ]
+    },
+    "close.owner": {
+      "enforcement": "advisory",
+      "rules": [
+        { "id": "O1", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.sweep')", "message": "Owner close: sweep to the owner, remove the trust line, delete." }
+      ]
+    }
+  }
+}

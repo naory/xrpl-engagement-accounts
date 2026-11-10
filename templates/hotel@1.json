@@ -1,0 +1,32 @@
+{
+  "templateId": "settlement-vault/hotel@1",
+  "class": "escrow",
+  "description": "Prepaid booking with confirmation deadline, dispute window and arbiter (docs/use-cases/hotel-booking.md)",
+  "asset": { "code": "RLUSD" },
+  "roles": {
+    "principal":    { "weight": 2, "kind": "principal",    "operatedBy": "external" },
+    "counterparty": { "weight": 2, "kind": "counterparty", "operatedBy": "external" },
+    "arbiter":      { "weight": 3, "kind": "arbiter",      "operatedBy": "external" },
+    "cosigner":     { "weight": 1, "kind": "cosigner",     "operatedBy": "service" }
+  },
+  "quorum": 5,
+  "outcomes": {
+    "settle.agreed":   { "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.split", "policyStage": "settle", "enforcement": "ledger" },
+    "settle.ruling":   { "signers": [["arbiter", "principal"], ["arbiter", "counterparty"]], "blueprint": "close.split", "policyStage": null, "enforcement": "none", "requires": "ruling" },
+    "default.refund":  { "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.refundAll", "policyStage": "default.refund", "enforcement": "final-signature" },
+    "default.release": { "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseAll", "policyStage": "default.release", "enforcement": "final-signature" }
+  },
+  "timers": {
+    "confirmBy":         { "from": "open",          "durationSecs": 7200,   "onExpire": "default.refund" },
+    "disputeWindowEnds": { "from": "deliveryBy",    "durationSecs": 259200, "onExpire": "default.release" },
+    "rulingDueBy":       { "from": "disputeOpened", "durationSecs": 432000, "onExpire": "escalate" }
+  },
+  "blueprints": {
+    "close.split":      { "steps": ["pay.counterparty?", "pay.serviceFee?", "pay.principal?", "trustline.remove", "account.delete"], "closes": true },
+    "close.releaseAll": { "steps": ["pay.counterparty", "pay.serviceFee", "trustline.remove", "account.delete"], "closes": true },
+    "close.refundAll":  { "steps": ["pay.principal", "trustline.remove", "account.delete"], "closes": true }
+  },
+  "reserveObjects": { "trustlines": 1, "signerList": 1 },
+  "fees": { "serviceFeeBps": 50, "paidBy": "counterparty" },
+  "policyRef": "pol_hotel@1.1.0"
+}

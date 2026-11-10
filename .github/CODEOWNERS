@@ -1,0 +1,9 @@
+# Default owner for everything in this repo.
+* @naory
+
+# Trust primitives — review with extra care.
+/packages/core/       @naory
+/packages/policy/     @naory
+/packages/cosigner/   @naory
+/policies/            @naory
+/vectors/             @naory

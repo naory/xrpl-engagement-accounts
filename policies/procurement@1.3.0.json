@@ -1,0 +1,104 @@
+{
+  "policyId": "pol_procurement",
+  "version": "1.3.0",
+  "layer": "template",
+  "appliesTo": [
+    "owner-wallet/procurement@1"
+  ],
+  "language": "cel-eng/1",
+  "registry": "att-registry@2026.10",
+  "assets": {
+    "RLUSD": {
+      "code": "RLUSD",
+      "kind": "IOU",
+      "currency": "524C555344000000000000000000000000000000",
+      "issuer": "rRLUSDissuerPlaceholderXXXXXXXXXX",
+      "decimals": 6
+    }
+  },
+  "constraints": {
+    "allowedRails": [
+      "xrpl"
+    ],
+    "allowedAssets": [
+      "RLUSD"
+    ]
+  },
+  "params": {
+    "approvalThreshold": "1000.00",
+    "kybType": "KYB_VERIFIED",
+    "kybIssuers": []
+  },
+  "definitions": {
+    "spendNow": "tx.payouts.sum('RLUSD')",
+    "paymentChallenge": "att.latest('payment.challenge/1', 'agent')"
+  },
+  "stages": {
+    "spend": {
+      "enforcement": "ledger",
+      "rules": [
+        {
+          "id": "W0",
+          "reason": "MANDATE_INVALID",
+          "check": "has(mandate.expires) && now < timestamp(mandate.expires)",
+          "message": "A valid, unexpired mandate signed by the owner is required."
+        },
+        {
+          "id": "W1",
+          "reason": "TX_SHAPE",
+          "check": "tx.matchesBlueprint('spend.payments') && tx.payouts.count() >= 1",
+          "message": "Spends are 1\u20134 payments to vendors."
+        },
+        {
+          "id": "W2",
+          "reason": "VENDOR_NOT_ALLOWED",
+          "check": "tx.payouts.destinations().all(d, d in mandate.vendors && ledger.hasCredential(d, params.kybType, params.kybIssuers))",
+          "message": "Every payee must be a mandate vendor holding a KYB credential from an accepted issuer."
+        },
+        {
+          "id": "W3",
+          "reason": "DAILY_CAP",
+          "check": "history.outflow('RLUSD', duration('24h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.dailyCap, 'RLUSD')",
+          "message": "Daily outflow cap."
+        },
+        {
+          "id": "W4",
+          "reason": "BUDGET_EXHAUSTED",
+          "check": "history.outflow('RLUSD', duration('2160h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.budget, 'RLUSD')",
+          "message": "Mandate budget (90 days)."
+        },
+        {
+          "id": "W5",
+          "reason": "APPROVAL_REQUIRED",
+          "when": "def.spendNow > amt(params.approvalThreshold, 'RLUSD')",
+          "check": "tx.payouts.count() == 1 && att.list('approval.payment/1', 'approver').exists(a, a.subject.intentHash == tx.intentHash() && now < timestamp(a.claim.notAfter))",
+          "message": "Payments above the threshold need a single-use approval bound to this payment intent."
+        },
+        {
+          "id": "W6",
+          "reason": "NO_MATCHING_INVOICE",
+          "check": "tx.payouts.items.all(p, att.list('party.invoice/1', 'vendor').exists(i, i.attester.account == p.to && amt(i.claim.amount, 'RLUSD') == p.amount && i.claim.invoiceRef == tx.memo('eng/invoice')))",
+          "message": "Each payment must match a vendor-signed invoice (amount and invoice reference)."
+        },
+        {
+          "id": "W7",
+          "reason": "X402_CHALLENGE_MISMATCH",
+          "when": "hasTx && att.list('payment.challenge/1', 'agent').size() > 0",
+          "check": "tx.payouts.count() == 1 && def.paymentChallenge.claim.payTo in tx.payouts.destinations() && tx.payouts.to(def.paymentChallenge.claim.payTo, 'RLUSD') == amt(def.paymentChallenge.claim.amount, 'RLUSD') && tx.boundToInvoice(def.paymentChallenge.claim.invoiceId)",
+          "message": "The payment must match the x402 challenge: destination, amount and invoice binding."
+        }
+      ]
+    },
+    "close.owner": {
+      "enforcement": "advisory",
+      "rules": [
+        {
+          "id": "O1",
+          "reason": "TX_SHAPE",
+          "check": "tx.matchesBlueprint('close.sweep')",
+          "message": "Owner close: sweep to the owner, remove the trust line, delete."
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+XRPL Engagement Accounts
+Copyright 2026 Naor Yuval
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Scope: this repository is the open "trust primitives" layer of the project —
+the template validator, the cel-eng/1 policy engine, the policy co-signer, the
+shipped templates/policies, and the conformance vectors. An operated service
+built on top of these primitives (hosted co-signer, facilitator, arbiter,
+indexer) may be offered separately under different terms.
+
+This software interacts with the XRP Ledger and depends on third-party
+packages (including xrpl.js, ripple-binary-codec, ripple-keypairs and
+@marcbachmann/cel-js), each under its own license.

@@ -1,0 +1,14 @@
+node_modules/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+.cosigner/
+/spike/
+packages/*/demo/results/
+packages/web/.web-decisions/
+
+# pre-created account pool: local seed + state store (never commit)
+.pool/
+**/.pool/

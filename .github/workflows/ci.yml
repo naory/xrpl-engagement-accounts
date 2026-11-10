@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test (core, policy, co-signer, vectors)
+        run: npm test
+
+      - name: Validate templates (V1–V12)
+        run: npm run validate-templates
+
+      - name: Lint policies (L1–L7)
+        run: npm run lint-policies
+
+      - name: x402 + MPP adapter integration
+        run: |
+          npm run typecheck:x402
+          npm run test:x402
+          npm run test:mpp
+
+      - name: Conformance vectors are deterministic
+        run: |
+          npm run vectors:build
+          git diff --exit-code -- vectors \
+            || (echo "::error::vectors/ changed after rebuild — commit the regenerated vectors" && exit 1)
+
+      - name: Dependency audit (advisory)
+        run: npm audit --audit-level=high || true
