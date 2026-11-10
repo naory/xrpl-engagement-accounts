@@ -1,0 +1,53 @@
+name: Deploy demo to GitHub Pages
+
+# Publishes the self-contained web demo (packages/web/public) as a static site.
+# The landing page is the entry point; the interactive demo runs in its SIMULATED
+# mode (no backend) — the live-Testnet mode needs `npm run web` and is not on Pages.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/web/public/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: Assemble static site (landing → root, demo → /demo.html)
+        run: |
+          set -e
+          src=packages/web/public
+          mkdir -p _site
+          # Entry point = landing page. Inject the demo-URL hook the page already honours
+          # (the local server injects "/demo"; here we point it at the static demo file).
+          sed 's#</head>#<script>window.__DEMO_URL__="demo.html";</script></head>#' "$src/landing.html" > _site/index.html
+          cp "$src/index.html"        _site/demo.html          # the interactive demo (simulated mode)
+          cp "$src/architecture.html" _site/architecture.html  # bonus architecture page
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
