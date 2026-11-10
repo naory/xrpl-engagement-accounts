@@ -32,11 +32,16 @@ jobs:
           set -e
           src=packages/web/public
           mkdir -p _site
-          # Entry point = landing page. Inject the demo-URL hook the page already honours
-          # (the local server injects "/demo"; here we point it at the static demo file).
-          sed 's#</head>#<script>window.__DEMO_URL__="demo.html";</script></head>#' "$src/landing.html" > _site/index.html
-          cp "$src/index.html"        _site/demo.html          # the interactive demo (simulated mode)
-          cp "$src/architecture.html" _site/architecture.html  # bonus architecture page
+          # The public/*.html files are body fragments; the local server wraps them in a
+          # document shell and injects a config script. Replicate that exact shell here so
+          # the static pages render identically (charset + viewport for mobile).
+          head='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Engagement Accounts</title>'
+          wrap() { { printf '%s%s</head><body>' "$head" "$2"; cat "$1"; printf '</body></html>'; } > "$3"; }
+          # Landing = entry point; inject the demo-URL hook the page honours (→ the static demo file).
+          wrap "$src/landing.html"      '<script>window.__DEMO_URL__="demo.html"</script>' _site/index.html
+          # Demo: no config injection → window.__ENG_API__ undefined → runs in simulated (no-backend) mode.
+          wrap "$src/index.html"        '' _site/demo.html
+          wrap "$src/architecture.html" '' _site/architecture.html
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
