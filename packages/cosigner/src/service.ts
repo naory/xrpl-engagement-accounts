@@ -13,7 +13,6 @@ import type { LedgerSource } from './snapshot.ts'
 import { unsigned } from './xrpl-io.ts'
 
 type Json = Record<string, unknown>
-type Wallet = InstanceType<typeof xrpl.Wallet>
 
 export interface InflightRecord extends InflightEntry {
   engagementId: string

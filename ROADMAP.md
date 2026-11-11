@@ -69,7 +69,7 @@ Product build-out already queued:
   Ready to publish; pushing and publishing are the maintainer's step.
 - **Co-signer hardening → pilotable.** Bearer-token auth + per-IP rate limiting on `/v1` (required
   when bound off loopback, open on loopback for dev), readiness (`/readyz`) vs liveness
-  (`/healthz`) probes, structured per-request logs, and a `KeyProvider` custody seam (env seed /
+  (`/healthz`) probes, structured per-request logs, and a `SignerProvider` custody seam (env seed /
   seed file now; HSM/KMS + `ENG/COSIGNER` accreditation behind the same interface). 10 new HTTP
   tests; suite 152/152 green.
 - Read MPP + the Open Wallet Standard and pinned the MPP XRPL wire format; decided to settle MPP via

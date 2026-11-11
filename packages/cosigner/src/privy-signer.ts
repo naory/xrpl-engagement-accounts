@@ -1,7 +1,7 @@
 // A Signer whose key lives in Privy (sign-not-export): we compute the XRPL multisigning/attestation
 // digest locally, send just that hash to Privy's raw_sign, and DER-encode + low-S normalize the
 // compact r||s it returns. Privy XRPL wallets are secp256k1 and return a 33-byte compressed pubkey.
-// Proven end to end on Testnet by demo/privy-multisign-probe.ts.
+// Proven end to end on Testnet by demo/privy-engagement-testnet.ts.
 import { type Signer, signerHashOf, derFromCompact } from '@eng/core'
 
 const PRIVY = 'https://api.privy.io/v1'
@@ -46,6 +46,7 @@ export function privySigner(o: PrivySignerConfig): Signer {
       const hash = signerHashOf(messageHex).toString('hex')
       const j = await post(f, `${PRIVY}/wallets/${o.walletId}/raw_sign`, headers, { params: { hash: '0x' + hash } })
       const rs = String(((j.data as Json) ?? j).signature ?? '')
+      if (!rs) throw new Error(`Privy raw_sign: no signature in response ${JSON.stringify(j)}`)
       return derFromCompact(rs).der
     },
   }

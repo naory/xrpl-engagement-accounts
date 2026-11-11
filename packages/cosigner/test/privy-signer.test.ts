@@ -60,6 +60,11 @@ describe('privySigner', () => {
     await expect(signer.signHex(msg)).rejects.toThrow(/403.*authorization_required/)
   })
 
+  it('signHex: rejects a 2xx response missing the signature', async () => {
+    const signer = cfg(mockFetch({ status: 200, body: { data: { encoding: 'hex' } } }))
+    await expect(signer.signHex(msg)).rejects.toThrow(/no signature/)
+  })
+
   it('createPrivyXrplWallet maps address + public_key from the response', async () => {
     const w = await createPrivyXrplWallet({ appId: 'a', appSecret: 's', fetchImpl: mockFetch({ status: 200, body: { id: 'wX', address: 'rXYZ', public_key: 'ABCD' } }) })
     expect(w).toEqual({ id: 'wX', address: 'rXYZ', publicKey: 'ABCD' })

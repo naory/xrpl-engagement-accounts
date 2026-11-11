@@ -13,7 +13,6 @@ import {
 } from '@eng/cosigner'
 
 type Json = Record<string, unknown>
-type Wallet = InstanceType<typeof xrpl.Wallet>
 type XrplClient = InstanceType<typeof xrpl.Client>
 
 /** The co-signer, as the agent sees it: the one call that evaluates and (on SIGN) signs. */
