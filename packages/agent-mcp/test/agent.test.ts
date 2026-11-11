@@ -12,7 +12,7 @@ const ASSET = { code: 'RLUSD', currency: currencyHex('RLUSD'), issuer: W.issuer.
 
 /** A fresh in-process co-signer registered on the B1 fixture engagement. */
 function service(ledger = b1Ledger()): CosignerService {
-  const svc = new CosignerService({ wallet: W.cosigner, source: new FixtureLedgerSource(ledger), templates: [templates.procurement, templates.hotel], policies: [policies.baseline, policies.procurement, policies.hotel] })
+  const svc = new CosignerService({ signer: localSigner(W.cosigner), source: new FixtureLedgerSource(ledger), templates: [templates.procurement, templates.hotel], policies: [policies.baseline, policies.procurement, policies.hotel] })
   svc.register(b1Engagement(), b1Mandate())
   return svc
 }

@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import xrpl from 'xrpl'
-import { documentHash, newNonce, signStatement, verifyStatement, type AssetDef, type Statement, type Template } from '@eng/core'
+import { documentHash, newNonce, signStatementAsync, signerBlob, verifyStatement, type AssetDef, type Signer, type Statement, type Template } from '@eng/core'
 import {
   Assets, REGISTRY, TxFacts, decide, decisionStatementBody, layerHash,
   type Decision, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc,
@@ -60,8 +60,8 @@ interface EngagementState {
 }
 
 export interface CosignerOptions {
-  /** The co-signer's signing key (a SignerList entry; never funded). */
-  wallet: Wallet
+  /** The co-signer's signer (a SignerList entry; never funded). Local or Privy-custodied. */
+  signer: Signer
   source: LedgerSource
   templates: Template[]
   /** Policy library: the baseline plus template / engagement layers. */
@@ -83,7 +83,7 @@ export class CosignerService {
 
   constructor(private readonly o: CosignerOptions) {}
 
-  get address(): string { return this.o.wallet.address }
+  get address(): string { return this.o.signer.address }
 
   /** Register an engagement (normally done by the service at open, from the signed engagement record). */
   register(record: EngagementRecord, mandate: Statement | null = null): { ok: true; layers: string[] } {
@@ -149,13 +149,13 @@ export class CosignerService {
     })
 
     const intentHash = tx ? new TxFacts(tx, { eng: engagement, template: st.template, assets: new Assets(assets), ledger }).intentHash() : ''
-    const record = signStatement(decisionStatementBody(d, { account: this.address, accreditation: this.o.accreditation }, newNonce(), intentHash || undefined), this.o.wallet)
+    const record = await signStatementAsync(decisionStatementBody(d, { account: this.address, accreditation: this.o.accreditation }, newNonce(), intentHash || undefined), this.o.signer)
     this.append(record)
 
     const signs = this.signsStage(st.template, req.stage)
     const out: DecideResponse = { decision: d.decision, failing: d.failing, results: d.results, statementsRejected: d.statementsRejected, record, tx, ...(signs ? {} : { advisory: true }) }
     if (d.decision === 'SIGN' && tx && signs) {
-      out.signerBlob = this.o.wallet.sign(structuredClone(tx) as never, true).tx_blob
+      out.signerBlob = await signerBlob(this.o.signer, tx)
       const facts = new TxFacts(tx, { eng: engagement, template: st.template, assets: new Assets(assets), ledger })
       const used = new Set(d.statementsUsed)
       const dup = this.inflight.findIndex((i) => i.engagementId === st.record.engagementId && i.proposedTxHash === txHash)

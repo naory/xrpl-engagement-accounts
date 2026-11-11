@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
-import { parseAmount, signStatement, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
+import { localSigner, parseAmount, signStatement, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
 import { intentHashOf, layerHash, type EngagementRecord, type PolicyDoc } from '@eng/policy'
 import { CosignerService, XrplLedgerSource, type DecideResponse } from '../src/index.ts'
 import {
@@ -144,7 +144,7 @@ async function main() {
   policy.params!.kybIssuers = [kyb.address]
   const templates = fs.readdirSync(path.join(root, 'templates')).map((f) => read<Template>(`templates/${f}`))
   const dataDir = path.join(resultsDir, `decisions-${String(results.startedAt).replace(/[:.]/g, '-')}`)
-  const svc = new CosignerService({ wallet: cosigner, source: new XrplLedgerSource(client), templates, policies: [baseline, policy], dataDir })
+  const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(client), templates, policies: [baseline, policy], dataDir })
 
   const expires = new Date(Date.now() + 7 * 86400_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
   const mandate = stmt(treasury, 'PRINCIPAL', 'party.mandate/1', { mandateId: 'mnd_demo' }, { purpose: 'Q4 cloud & data spend (demo)', budget: '5000.00', dailyCap: '3000.00', vendors: [vendorA.address, vendorB.address], expires })

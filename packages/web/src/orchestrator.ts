@@ -234,7 +234,7 @@ export class DemoOrchestrator {
 
     // Register with an in-process co-signer and build the agent.
     const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
-    this.svc = new CosignerService({ wallet: cosigner, source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir })
+    this.svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir })
     this.svc.register(plan.engagement, mandate)
     this.agent = new EngagementAgent({ engagementId: this.engagementId, account: eng.address, signer: localSigner(agent), asset: { code: 'RLUSD', currency: CUR, issuer: issuer.address }, decider: this.svc, chain: new XrplChain(this.client), stage: 'spend' })
     this.provisioned = true
@@ -324,7 +324,7 @@ export class DemoOrchestrator {
 
     // Register with an in-process co-signer and build the agent.
     const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
-    this.svc = new CosignerService({ wallet: cosigner, source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir })
+    this.svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir })
     this.svc.register(plan.engagement, mandate)
     this.agent = new EngagementAgent({ engagementId: this.engagementId, account: eng.address, signer: localSigner(agent), asset: { code: 'RLUSD', currency: CUR, issuer: issuer.address }, decider: this.svc, chain: new XrplChain(this.client), stage: 'spend' })
     this.provisioned = true
