@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import xrpl from 'xrpl'
 import * as keypairs from 'ripple-keypairs'
-import { localSigner, derFromCompact, signerHashOf, signStatement, signStatementAsync, verifyStatement, newNonce, type StatementBody } from '../src/index.ts'
+import { decode, encodeForMultisigning } from 'ripple-binary-codec'
+import { localSigner, signerBlob, derFromCompact, signerHashOf, signStatement, signStatementAsync, verifyStatement, newNonce, type StatementBody } from '../src/index.ts'
 
 const SECP_N = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141')
 
@@ -59,6 +60,25 @@ describe('signer', () => {
 
   it('signerHashOf is the 32-byte sha512half of the message bytes', () => {
     expect(signerHashOf(msg).length).toBe(32)
+  })
+
+  it('signerBlob: a 2-signer combine verifies each Signer, and matches wallet.sign(multisign)', async () => {
+    const sampleTx = {
+      TransactionType: 'Payment', Account: xrpl.Wallet.generate().classicAddress,
+      Destination: xrpl.Wallet.generate().classicAddress, Amount: '1000', Fee: '30', Sequence: 1,
+      Flags: 0, SigningPubKey: '',
+    }
+    const wA = xrpl.Wallet.generate('ecdsa-secp256k1' as never)
+    const wB = xrpl.Wallet.generate('ecdsa-secp256k1' as never)
+    // parity with the xrpl.js multisign path for a single local signer
+    expect(await signerBlob(localSigner(wA), sampleTx)).toBe(wA.sign(structuredClone(sampleTx) as never, true).tx_blob)
+    // combine two signers and verify each on-blob signature offline
+    const combined = xrpl.multisign([await signerBlob(localSigner(wA), sampleTx), await signerBlob(localSigner(wB), sampleTx)])
+    const signers = (decode(combined) as { Signers: { Signer: { Account: string; SigningPubKey: string; TxnSignature: string } }[] }).Signers
+    expect(signers.length).toBe(2)
+    for (const { Signer } of signers) {
+      expect(keypairs.verify(encodeForMultisigning(sampleTx as never, Signer.Account), Signer.TxnSignature, Signer.SigningPubKey)).toBe(true)
+    }
   })
 
   it('signStatementAsync via localSigner equals sync signStatement and verifies', async () => {

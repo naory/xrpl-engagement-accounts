@@ -3,6 +3,7 @@
 // exposing a private key — so a local keypair, an HSM/KMS, or a Privy-custodied key all satisfy it.
 import { createHash } from 'node:crypto'
 import * as keypairs from 'ripple-keypairs'
+import { encode, encodeForMultisigning } from 'ripple-binary-codec'
 
 export interface Signer {
   readonly address: string
@@ -25,6 +26,17 @@ export function localSigner(
 /** The 32-byte digest a secp256k1 signer signs for an XRPL message (what ripple-keypairs hashes). */
 export function signerHashOf(messageHex: string): Buffer {
   return createHash('sha512').update(Buffer.from(messageHex, 'hex')).digest().subarray(0, 32)
+}
+
+/** Multisign `tx` with one {@link Signer}: returns a serialized tx_blob carrying that single Signer
+ *  entry. Combine several via `xrpl.multisign([...])` (which sorts + merges) before submitting. */
+export async function signerBlob(signer: Signer, tx: Record<string, unknown>): Promise<string> {
+  const { Signers: _s, TxnSignature: _t, ...rest } = tx
+  void _s; void _t
+  const base = { ...rest, SigningPubKey: '' }
+  const signature = await signer.signHex(encodeForMultisigning(base as never, signer.address))
+  const signed = { ...base, Signers: [{ Signer: { Account: signer.address, SigningPubKey: signer.publicKey, TxnSignature: signature } }] }
+  return encode(signed as never)
 }
 
 const SECP_N = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141')
