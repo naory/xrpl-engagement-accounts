@@ -43,8 +43,9 @@ export interface Statement extends StatementBody {
   id: string
 }
 
-/** Minimal signing interface (an xrpl.js Wallet satisfies it). */
-export interface Signer {
+/** Local keypair signing shape used by the (still sync) signStatement until Task 2 migrates it to
+ *  the async sign-not-export `Signer` (see ./signer.ts). Internal; not exported to avoid collision. */
+interface KeyPairSigner {
   address?: string
   classicAddress?: string
   publicKey: string
@@ -76,7 +77,7 @@ function algOf(publicKey: string): Proof['alg'] {
   return publicKey.toUpperCase().startsWith('ED') ? 'xrpl-ed25519' : 'xrpl-secp256k1'
 }
 
-export function signStatement(body: StatementBody, signer: Signer): Statement {
+export function signStatement(body: StatementBody, signer: KeyPairSigner): Statement {
   const digest = statementDigest(body)
   const signature = keypairs.sign(digest.toString('hex').toUpperCase(), signer.privateKey)
   return {
