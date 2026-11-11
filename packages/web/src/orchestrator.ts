@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
-import { parseAmount, signStatement, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
+import { parseAmount, signStatement, newNonce, localSigner, type Statement, type StatementBody, type Template } from '@eng/core'
 import { intentHashOf, layerHash, type EngagementRecord, type PolicyDoc } from '@eng/policy'
 import {
   CosignerService, XrplLedgerSource,
@@ -236,7 +236,7 @@ export class DemoOrchestrator {
     const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
     this.svc = new CosignerService({ wallet: cosigner, source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir })
     this.svc.register(plan.engagement, mandate)
-    this.agent = new EngagementAgent({ engagementId: this.engagementId, account: eng.address, wallet: agent, asset: { code: 'RLUSD', currency: CUR, issuer: issuer.address }, decider: this.svc, chain: new XrplChain(this.client), stage: 'spend' })
+    this.agent = new EngagementAgent({ engagementId: this.engagementId, account: eng.address, signer: localSigner(agent), asset: { code: 'RLUSD', currency: CUR, issuer: issuer.address }, decider: this.svc, chain: new XrplChain(this.client), stage: 'spend' })
     this.provisioned = true
 
     const roleOf: Record<string, string> = { [treasury.address]: 'owner', [agent.address]: 'agent', [cosigner.address]: 'cosigner' }
@@ -326,7 +326,7 @@ export class DemoOrchestrator {
     const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
     this.svc = new CosignerService({ wallet: cosigner, source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir })
     this.svc.register(plan.engagement, mandate)
-    this.agent = new EngagementAgent({ engagementId: this.engagementId, account: eng.address, wallet: agent, asset: { code: 'RLUSD', currency: CUR, issuer: issuer.address }, decider: this.svc, chain: new XrplChain(this.client), stage: 'spend' })
+    this.agent = new EngagementAgent({ engagementId: this.engagementId, account: eng.address, signer: localSigner(agent), asset: { code: 'RLUSD', currency: CUR, issuer: issuer.address }, decider: this.svc, chain: new XrplChain(this.client), stage: 'spend' })
     this.provisioned = true
 
     const roleOf: Record<string, string> = { [treasury.address]: 'owner', [agent.address]: 'agent', [cosigner.address]: 'cosigner' }

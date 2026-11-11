@@ -6,9 +6,9 @@
 // agent as MCP tools. The agent key is a SignerList entry below quorum: it can never move
 // funds alone, so a compromised agent cannot pay anyone the policy would not have signed for.
 import xrpl from 'xrpl'
-import type { Statement } from '@eng/core'
+import { signerBlob, type Signer, type Statement } from '@eng/core'
 import {
-  combine, accountInfo, currentLedger, serverFees, multisigFee, multisignBlob, iou, memo, submit,
+  combine, accountInfo, currentLedger, serverFees, multisigFee, iou, memo, submit,
   type DecideRequest, type DecideResponse, type Fees, type SubmitResult,
 } from '@eng/cosigner'
 
@@ -60,8 +60,8 @@ export interface AgentConfig {
   engagementId: string
   /** The engagement account — the sender of every payment. */
   account: string
-  /** The agent's signing key: a SignerList entry, weight below quorum, never funded. */
-  wallet: Wallet
+  /** The agent's signer: a SignerList entry, weight below quorum, never funded. Local or Privy-custodied. */
+  signer: Signer
   asset: AssetSpec
   /** The co-signer (local CosignerService or a remote CosignerClient). */
   decider: Decider
@@ -136,7 +136,7 @@ export class EngagementAgent {
    */
   async proposePayment(input: PaymentInput & { tx?: Json }): Promise<Proposal> {
     const tx = input.tx ?? await this.buildPayment(input)
-    const agentBlob = multisignBlob(this.cfg.wallet, tx)
+    const agentBlob = await signerBlob(this.cfg.signer, tx)
     const decision = await this.cfg.decider.decide({
       engagementId: this.cfg.engagementId, stage: this.stage, txBlob: agentBlob, statements: input.statements ?? [],
     })

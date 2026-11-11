@@ -12,3 +12,4 @@ packages/web/.web-decisions/
 # pre-created account pool: local seed + state store (never commit)
 .pool/
 **/.pool/
+.superpowers/
