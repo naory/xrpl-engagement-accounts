@@ -2,7 +2,7 @@
 
 **Single-use, multi-party joint accounts on the XRP Ledger, with quorum enforced by the ledger, for agent payments, escrow-with-recourse, and stake-backed trust.**
 
-**▶ [Try the live demo](https://naory.github.io/xrpl-engagement-accounts/)** — an interactive, no-backend walkthrough: an agent spends, gets blocked, settles a dispute, and pays across rails. (The same page also runs against live XRPL Testnet via `npm run web`.)
+**▶ [Try the live demo](https://naory.github.io/xrpl-engagement-accounts/)** — an interactive, simulated walkthrough: an agent spends, gets blocked, settles a dispute, and pays across rails. (The same page also runs against live XRPL Testnet via `npm run web`.)
 
 > Status: **core mechanics proven on Testnet; policy co-signer and x402 shipped** (October 2026). This README is the design document.
 > - **Ledger mechanics** — atomic open, pre-signed ticket-based defaults, settle-and-close with `AccountDelete`, and the ruling path without the service — are proven on XRPL Testnet (21/21).
@@ -264,7 +264,7 @@ Stack: TypeScript (Node ≥ 22.12, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-ke
 
 ```bash
 npm install
-npm test                    # 174 tests: core, policy, co-signer, agent-mcp, provisioning, conformance vectors (Node ≥ 22.12)
+npm test                    # 196 tests: core, policy, co-signer, agent-mcp, provisioning, conformance vectors (Node ≥ 22.12)
 npm run typecheck
 npm run validate-templates  # V1–V12 report for templates/*.json
 npm run lint-policies       # L1–L7 for policies/*.json against their templates
@@ -277,7 +277,10 @@ COSIGNER_SEED=s… npm run cosigner   # HTTP co-signer on 127.0.0.1:8787 (test s
 AGENT_SEED=s… ENGAGEMENT_ID=… ENGAGEMENT_ACCOUNT=r… ASSET_ISSUER=r… npm run mcp   # agent-side MCP server for an AI agent (see packages/agent-mcp/README.md)
 npm run web                 # end-to-end demo UI on http://127.0.0.1:8080 (simulated + live Testnet; see packages/web/README.md)
 npm run demo:mcp            # agent drives the MCP tools end-to-end on Testnet (see packages/agent-mcp/README.md)
+npm run demo:privy          # same agent + co-signer flow with the co-signer key held in Privy (needs a Privy app; skips otherwise)
 ```
+
+**Key custody.** The Testnet demos above (`demo:mcp`, `demo:b1`, `demo:x402`, `demo:mpp`) run with **local keys** — throwaway wallets funded from the Testnet faucet, no setup and no `.env` needed. For **production**, the agent and policy co-signer sign through **Privy** (sign-not-export: the key is created and held in Privy and never leaves it), selected with `AGENT_KEY_SOURCE=privy` / `COSIGNER_KEY_SOURCE=privy` (see [`.env.example`](.env.example)); `demo:privy` proves that path live on Testnet. Local `AGENT_SEED` / `COSIGNER_SEED` are for development and tests only.
 
 ## 12. Roadmap
 
