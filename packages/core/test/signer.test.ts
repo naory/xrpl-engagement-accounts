@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import xrpl from 'xrpl'
 import * as keypairs from 'ripple-keypairs'
-import { localSigner, derFromCompact, signerHashOf } from '../src/index.ts'
+import { localSigner, derFromCompact, signerHashOf, signStatement, signStatementAsync, verifyStatement, newNonce, type StatementBody } from '../src/index.ts'
 
 const SECP_N = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141')
 
@@ -58,5 +59,17 @@ describe('signer', () => {
 
   it('signerHashOf is the 32-byte sha512half of the message bytes', () => {
     expect(signerHashOf(msg).length).toBe(32)
+  })
+
+  it('signStatementAsync via localSigner equals sync signStatement and verifies', async () => {
+    const w = xrpl.Wallet.generate('ecdsa-secp256k1' as never)
+    const body: StatementBody = {
+      v: 'eng.att/1', type: 'test/1', engagementId: 'e1', subject: {}, claim: {},
+      observedAt: '2026-01-01T00:00:00Z', issuedAt: '2026-01-01T00:00:00Z', nonce: newNonce(),
+      attester: { account: w.address, kind: 'TEST' },
+    }
+    const a = await signStatementAsync(body, localSigner(w))
+    expect(a).toEqual(signStatement(body, w))
+    expect(verifyStatement(a).ok).toBe(true)
   })
 })

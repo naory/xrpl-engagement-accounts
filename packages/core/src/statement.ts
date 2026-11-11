@@ -8,6 +8,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import * as keypairs from 'ripple-keypairs'
 import { canonicalize } from './jcs.ts'
+import type { Signer } from './signer.ts'
 
 export const STATEMENT_PREFIX = Buffer.from('ENGA\0', 'latin1')
 
@@ -80,6 +81,18 @@ function algOf(publicKey: string): Proof['alg'] {
 export function signStatement(body: StatementBody, signer: KeyPairSigner): Statement {
   const digest = statementDigest(body)
   const signature = keypairs.sign(digest.toString('hex').toUpperCase(), signer.privateKey)
+  return {
+    ...body,
+    proof: { alg: algOf(signer.publicKey), publicKey: signer.publicKey, signature },
+    id: 'att:' + digest.toString('hex').toUpperCase(),
+  }
+}
+
+/** Like {@link signStatement} but signs through a sign-not-export {@link Signer} (local keypair,
+ *  HSM/KMS, or Privy). Parity: `signStatementAsync(b, localSigner(w))` equals `signStatement(b, w)`. */
+export async function signStatementAsync(body: StatementBody, signer: Signer): Promise<Statement> {
+  const digest = statementDigest(body)
+  const signature = await signer.signHex(digest.toString('hex').toUpperCase())
   return {
     ...body,
     proof: { alg: algOf(signer.publicKey), publicKey: signer.publicKey, signature },
