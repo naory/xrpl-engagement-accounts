@@ -24,6 +24,7 @@
     "test:mpp": "vitest run -c vitest.mpp.config.ts",
     "typecheck:x402": "tsc -p tsconfig.x402.json --noEmit",
     "demo:x402": "tsx packages/cosigner/demo/x402/b1-x402-testnet.ts",
+    "demo:privy": "tsx packages/cosigner/demo/privy-engagement-testnet.ts",
     "demo:mpp": "tsx packages/cosigner/demo/mpp/b1-mpp-testnet.ts",
     "mcp": "tsx packages/agent-mcp/src/server.ts",
     "demo:mcp": "tsx packages/agent-mcp/demo/b1-mcp-testnet.ts",
