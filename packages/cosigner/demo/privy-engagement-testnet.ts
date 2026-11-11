@@ -44,7 +44,7 @@ async function main() {
 
   // 3. The payment to co-sign.
   const prepared = await client.autofill({ TransactionType: 'Payment', Account: eng.address, Destination: dest.address, Amount: '100000' } as never) as Record<string, unknown>
-  const tx = { ...prepared, Fee: multisigFee(fees.base, 2), SigningPubKey: '' }
+  const tx: Record<string, unknown> = { ...prepared, Fee: multisigFee(fees.base, 2), SigningPubKey: '' }
   delete tx.TxnSignature
 
   // 4. The Privy co-signer: decision-record attestation (signStatementAsync) + multisig (signerBlob).
