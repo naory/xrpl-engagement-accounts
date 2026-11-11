@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { XrplPaymentTransaction } from "x402-xrpl-settlement-adapter";
 import { invoiceIdToField } from "x402-xrpl-settlement-adapter/exact";
 import { CosignerService, FixtureLedgerSource } from "@eng/cosigner";
+import { localSigner } from "@eng/core";
 import { createMppMerchant } from "./merchant.ts";
 import {
   RLUSD_HEX, W, b1Challenge, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, policies, templates,
@@ -20,7 +21,7 @@ const PRICE = { amount: "800.00", asset: { kind: "IOU" as const, currency: RLUSD
 
 function cosigner(ledger = b1Ledger()) {
   const svc = new CosignerService({
-    wallet: W.cosigner,
+    signer: localSigner(W.cosigner),
     source: new FixtureLedgerSource(ledger),
     templates: [templates.procurement, templates.hotel],
     policies: [policies.baseline, policies.procurement],

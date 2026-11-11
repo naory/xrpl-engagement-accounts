@@ -6,14 +6,14 @@ import { describe, expect, it } from 'vitest'
 import xrpl from 'xrpl'
 import * as keypairs from 'ripple-keypairs'
 import { encodeForMultisigning } from 'ripple-binary-codec'
-import { verifyStatement, type Statement } from '@eng/core'
+import { verifyStatement, localSigner, type Statement } from '@eng/core'
 import { CosignerService, FixtureLedgerSource, createServer } from '@eng/cosigner'
 import { W, LEDGER_INDEX, b1Approval, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, historyEntry, policies, templates } from '../../policy/test/fixtures.ts'
 import { Assets, TxFacts } from '@eng/policy'
 
 function setup(ledger = b1Ledger(), dataDir?: string) {
   const source = new FixtureLedgerSource(ledger)
-  const svc = new CosignerService({ wallet: W.cosigner, source, templates: [templates.procurement, templates.hotel], policies: [policies.baseline, policies.procurement, policies.hotel], dataDir })
+  const svc = new CosignerService({ signer: localSigner(W.cosigner), source, templates: [templates.procurement, templates.hotel], policies: [policies.baseline, policies.procurement, policies.hotel], dataDir })
   svc.register(b1Engagement(), b1Mandate())
   return { svc, source }
 }
@@ -131,7 +131,7 @@ describe('co-signer service', () => {
       ],
       Memos: [{ Memo: { MemoType: Buffer.from('eng/basis').toString('hex').toUpperCase(), MemoData: Buffer.from('owner.close').toString('hex').toUpperCase() } }],
     }
-    const svc2 = new CosignerService({ wallet: W.cosigner, source: new FixtureLedgerSource(b1Ledger()), templates: [templates.procurement], policies: [policies.baseline, policies.procurement] })
+    const svc2 = new CosignerService({ signer: localSigner(W.cosigner), source: new FixtureLedgerSource(b1Ledger()), templates: [templates.procurement], policies: [policies.baseline, policies.procurement] })
     svc2.register(b1Engagement({ deleteTo: W.service.address }), b1Mandate())
     const r = await svc2.decide({ engagementId: 'eng_b1_fixture', stage: 'close.owner', tx: close })
     expect(r.failing).toEqual([])

@@ -58,5 +58,5 @@ Which use cases from the [catalog](use-cases/catalog.md) the project supports, a
 - **Reusing accounts across deals.** Every engagement is a fresh account deleted at close (README §3).
 - **Amendments** (E3) and **tranches** (E1). v1 deals have fixed terms and a single close.
 - **Non-RLUSD assets in policies.** The engine is asset-generic (`Amount` with declared decimals), but shipped policies and vectors cover RLUSD only.
-- **Production key custody for the co-signer.** Keys load through a `KeyProvider` seam (env seed or seed file today); HSM/KMS signing and accreditation (`ENG/COSIGNER` credential) implement the same interface later.
+- **Production key custody for the co-signer.** Keys load through a `SignerProvider` seam (env seed, seed file, or a Privy-custodied key today); HSM/KMS signing and accreditation (`ENG/COSIGNER` credential) implement the same interface later.
 - **Multi-tenant auth / RBAC on the co-signer API.** The server now takes a shared bearer token with per-IP rate limiting (required when bound off loopback) and exposes readiness/liveness probes; per-user accounts, scopes and audit beyond the signed decision log are out of scope for v1.

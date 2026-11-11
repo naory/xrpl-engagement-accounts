@@ -22,7 +22,7 @@ import xrpl from 'xrpl'
 import type { Template } from '@eng/core'
 import type { PolicyDoc } from '@eng/policy'
 import { CosignerService } from './service.ts'
-import { keyProviderFromEnv, type KeyProvider } from './keys.ts'
+import { signerProviderFromEnv, type SignerProvider } from './keys.ts'
 import { XrplLedgerSource } from './snapshot.ts'
 
 export function loadLibrary(root: string, extraPolicies: PolicyDoc[] = []): { templates: Template[]; policies: PolicyDoc[] } {
@@ -164,19 +164,19 @@ export function serverOptionsFromEnv(host: string, env: NodeJS.ProcessEnv = proc
 if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href) {
   const host = process.env.COSIGNER_BIND ?? '127.0.0.1'
   let options: ServerOptions
-  let keys: KeyProvider
+  let keys: SignerProvider
   try {
     options = serverOptionsFromEnv(host)
-    keys = keyProviderFromEnv()
+    keys = signerProviderFromEnv()
   } catch (e) {
     console.error(String((e as Error).message ?? e))
     process.exit(1)
   }
-  const wallet = await keys.getWallet()
+  const signer = await keys.getSigner()
   const client = new xrpl.Client(process.env.XRPL_URL ?? 'wss://s.altnet.rippletest.net:51233')
   await client.connect()
   const lib = loadLibrary(process.cwd())
-  const svc = new CosignerService({ wallet, source: new XrplLedgerSource(client), ...lib, dataDir: process.env.DATA_DIR ?? '.cosigner' })
+  const svc = new CosignerService({ signer, source: new XrplLedgerSource(client), ...lib, dataDir: process.env.DATA_DIR ?? '.cosigner' })
   const port = Number(process.env.PORT ?? 8787)
   const server = createServer(svc, {
     ...options,
@@ -184,6 +184,6 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
     log: (e) => console.log(JSON.stringify({ t: new Date().toISOString(), ...e })),
   })
   server.listen(port, host, () =>
-    console.log(JSON.stringify({ t: new Date().toISOString(), level: 'info', msg: 'listening', cosigner: wallet.address, host, port, key: keys.source, auth: options.token ? 'required' : 'open', rate: options.rateLimit?.max ?? null })),
+    console.log(JSON.stringify({ t: new Date().toISOString(), level: 'info', msg: 'listening', cosigner: signer.address, host, port, key: keys.source, auth: options.token ? 'required' : 'open', rate: options.rateLimit?.max ?? null })),
   )
 }

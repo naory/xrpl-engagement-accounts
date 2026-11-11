@@ -2,6 +2,7 @@ import type { AddressInfo } from 'node:net'
 import { describe, expect, it } from 'vitest'
 import xrpl from 'xrpl'
 import { CosignerService, FixtureLedgerSource, createServer, currencyHex, type Fees, type SubmitResult } from '@eng/cosigner'
+import { localSigner } from '@eng/core'
 import { W, LEDGER_INDEX, b1Engagement, b1Invoice, b1Mandate, b1Ledger, policies, templates } from '../../policy/test/fixtures.ts'
 import { EngagementAgent, type Chain } from '../src/agent.ts'
 import { CosignerClient } from '../src/client.ts'
@@ -11,7 +12,7 @@ const ASSET = { code: 'RLUSD', currency: currencyHex('RLUSD'), issuer: W.issuer.
 
 /** A fresh in-process co-signer registered on the B1 fixture engagement. */
 function service(ledger = b1Ledger()): CosignerService {
-  const svc = new CosignerService({ wallet: W.cosigner, source: new FixtureLedgerSource(ledger), templates: [templates.procurement, templates.hotel], policies: [policies.baseline, policies.procurement, policies.hotel] })
+  const svc = new CosignerService({ signer: localSigner(W.cosigner), source: new FixtureLedgerSource(ledger), templates: [templates.procurement, templates.hotel], policies: [policies.baseline, policies.procurement, policies.hotel] })
   svc.register(b1Engagement(), b1Mandate())
   return svc
 }
@@ -30,7 +31,7 @@ class FakeChain implements Chain {
 }
 
 const agentFor = (svc: CosignerService, chain?: Chain) =>
-  new EngagementAgent({ engagementId: ENG, account: W.engB1.address, wallet: W.agent, asset: ASSET, decider: svc, chain })
+  new EngagementAgent({ engagementId: ENG, account: W.engB1.address, signer: localSigner(W.agent), asset: ASSET, decider: svc, chain })
 
 describe('engagement agent', () => {
   it('proposes an in-policy payment: the co-signer SIGNs and the two signatures combine into a quorum blob', async () => {
@@ -80,7 +81,7 @@ describe('engagement agent', () => {
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
     try {
       const client = new CosignerClient({ baseUrl: base })
-      const agent = new EngagementAgent({ engagementId: ENG, account: W.engB1.address, wallet: W.agent, asset: ASSET, decider: client })
+      const agent = new EngagementAgent({ engagementId: ENG, account: W.engB1.address, signer: localSigner(W.agent), asset: ASSET, decider: client })
       const p = await agent.proposePayment({ destination: W.vendorA.address, amount: '800.00', invoiceRef: 'inv:2026-Q4-0042', sequence: 21, lastLedgerSequence: LEDGER_INDEX + 20, statements: [b1Invoice()] })
       expect(p.decision.decision).toBe('SIGN')
       expect(p.combined).toBeDefined()
