@@ -8,8 +8,8 @@ implementation disagrees with that expectation, so a vector can't silently recor
 | File | Spec | Cases | What to compare |
 |---|---|---|---|
 | `statements.json` | [attestations](../docs/spec/attestations.md) §3–§4 | 6 | JCS bytes, digest, `id`, signature verification (including tampered and wrong-key) |
-| `templates.json` | [policy](../docs/spec/policy.md), [hotel](../docs/use-cases/hotel-booking.md) §2 (V1–V12) | 10 | `ok`, error / warning / disclosure ids, minimal winning sets, tickets needed, reserve |
-| `policy.json` | [policy](../docs/spec/policy.md) §3–§8 | 41 | `decision`, `failing`, per-rule `results` (layer, id, result, reason), statements used / rejected, `inputsHash`, `effectiveHash` |
+| `templates.json` | [policy](../docs/spec/policy.md), [hotel](../docs/use-cases/hotel-booking.md) §2 (V1–V12) | 12 | `ok`, error / warning / disclosure ids, minimal winning sets, tickets needed, reserve |
+| `policy.json` | [policy](../docs/spec/policy.md) §3–§8 | 90 | `decision`, `failing`, per-rule `results` (layer, id, result, reason), statements used / rejected, `inputsHash`, `effectiveHash` |
 
 ## Normative and non-normative fields
 
@@ -43,6 +43,15 @@ The cases cover the following.
 - Agreed settle: review required, dispute open, fee mismatch, funds left behind, residual sweep (E9), wrong delete destination, non-atomic Batch.
 - Merchant confirmation versus the mandate.
 - Pre-signed refund and release defaults: timing, dispute, exact-balance lock, and an extra object that blocks `AccountDelete` (B11, single-shot).
+
+**Hotel@2** (escrow with deposit, `hotel2.*`; template `settlement-vault/hotel@2`, layer `pol_hotel@2.0.0`):
+- Confirmation deposit versus the mandate cap (C5) and check-in once the deposit is on-ledger (K2).
+- Agreed settle with a claim: fee and review, payees limited to guest, hotel and fee account (S6).
+- Conceded entry dispute refund (F1): concession required, entry phase only, dispute Credential issued by the guest.
+- Default refund (never confirmed, over-cap confirmation does not count) and no-show release (N1 to N5): bonded disputes only, strict deadlines.
+- Default release after the dispute window (L1 to L5): open claim, stray funds, open dispute, strict boundary at `disputeWindowEnds`.
+- Backup arbiter ruling (U1 to U6): phase-floored ruling window, primary arbiter precedence, payee and fee checks, claim-only branch.
+- Advisory `ruling.default`: claim capped at the deposit (D4) and payouts matching the claim (D5).
 
 ## Rebuilding and checking
 

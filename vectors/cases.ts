@@ -3,10 +3,11 @@
 // from fixed strings (packages/policy/test/fixtures.ts): TEST ONLY, never fund them anywhere.
 import fs from 'node:fs'
 import xrpl from 'xrpl'
-import type { StatementBody, Template } from '@eng/core'
+import type { Statement, StatementBody, Template } from '@eng/core'
 import { Assets, TxFacts, type DecideInput } from '@eng/policy'
 import {
   LEDGER_INDEX, W, b1Approval, b1Challenge, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, closeBatch, confirmation,
+  checkin, claim, concession, dispute, hotel2Close, hotel2Confirmation, hotel2Input, hotel2Ledger, ruling,
   historyEntry, hotelEngagement, hotelLedger, hotelMandate, inflight, memo, policies, review, templates,
   r2Category, r2Challenge, r2Engagement, r2Ledger, r2Mandate, r2Payment,
 } from '../packages/policy/test/fixtures.ts'
@@ -38,6 +39,11 @@ const hotel = (over: Partial<DecideInput> & { payouts?: Array<{ to: string; valu
 }
 const refundTx = () => closeBatch([{ to: W.dana.address, value: '412' }], { tickets: true, memos: [memo('eng/basis', 'default.refund')] })
 const releaseTx = () => closeBatch([{ to: W.atlas.address, value: '409.94' }, { to: W.service.address, value: '2.06' }], { tickets: true, memos: [memo('eng/basis', 'default.release')] })
+
+// hotel@2 (deposit, entry disputes, claims, backup ruling): mirrors packages/policy/test/hotel2.test.ts
+const h2 = (over: Partial<DecideInput> & { stage: string }): DecideInput => hotel2Input(over)
+const h2basis = (b: string) => [memo('eng/basis', b)]
+const H2 = { hotel: W.atlas.address, guest: W.dana.address, fee: W.service.address }
 const r2 = (over: Partial<DecideInput> = {}): DecideInput => ({
   stage: 'spend', proposedTx: r2Payment(W.vendorA.address, '800'), engagement: r2Engagement(),
   template: templates.shopping, layers: [policies.baseline, policies.shopping], mandate: r2Mandate(),
@@ -47,6 +53,49 @@ const r2 = (over: Partial<DecideInput> = {}): DecideInput => ({
 export function policyCases(): PolicyCase[] {
   const hm = hotelMandate()
   const confirm = (city: string): DecideInput => hotel({ stage: 'confirm', proposedTx: null, mandate: hm, engagement: hotelEngagement({ state: 'OPEN', mandateId: hm.id }), statements: [confirmation(city, hm.id)], ledger: hotelLedger({ closeTime: '2026-10-20T09:40:00Z' }) })
+  const h2CheckIn = (balance: string): DecideInput => h2({ stage: 'checkin', statements: [hotel2Confirmation(), checkin('checked_in')], ledger: hotel2Ledger({ balance, closeTime: '2026-11-11T16:00:00Z' }) })
+  const h2Settle = (payouts: Array<{ to: string; value: string }>): DecideInput => {
+    const rv = review(W.dana, 'eng_hotel2_fixture')
+    return h2({
+      stage: 'settle', proposedTx: hotel2Close(payouts, { memos: [memo('eng/basis', 'settle.agreed'), memo('eng/review', rv.id)] }),
+      statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'minibar', amount: '58.00' }]), rv], ledger: hotel2Ledger({ balance: '562' }),
+    })
+  }
+  const h2Conceded = (o: { conceded?: boolean; phase?: 'entry' | 'settlement'; closeTime?: string; hotelCredential?: boolean } = {}): DecideInput => {
+    const d = dispute(o.phase ?? 'entry')
+    const ledger = hotel2Ledger({ balance: '422', dispute: !o.hotelCredential, closeTime: o.closeTime ?? '2026-11-12T10:00:00Z' })
+    if (o.hotelCredential) ledger.credentials.push({ issuer: H2.hotel, subject: W.engHotel2.address, type: 'ENG/DISPUTE', accepted: false, expiration: null })
+    return h2({ stage: 'refund.conceded', proposedTx: hotel2Close([{ to: H2.guest, value: '422' }], { memos: h2basis('refund.conceded') }), ledger, statements: [hotel2Confirmation(), d, ...(o.conceded === false ? [] : [concession(d.id)])] })
+  }
+  const h2RefundTx = hotel2Close([{ to: H2.guest, value: '412' }], { tickets: true, memos: h2basis('default.refund') })
+  const h2RefundLedger = hotel2Ledger({ closeTime: '2026-11-01T11:00:01Z' })
+  const H2_AFTER = '2026-11-12T11:00:01Z'
+  const h2NoShow = (statements: Statement[] = [hotel2Confirmation()], ledger = hotel2Ledger({ closeTime: H2_AFTER })): DecideInput => h2({
+    stage: 'default.noshow', statements, ledger,
+    proposedTx: hotel2Close([{ to: H2.hotel, value: '409.94' }, { to: H2.fee, value: '2.06' }], { tickets: true, memos: h2basis('default.noshow') }),
+  })
+  const h2Release = (extra: Statement[] = [], balance = '562'): DecideInput => h2({
+    stage: 'default.release', statements: [hotel2Confirmation(), checkin('checked_in'), ...extra], ledger: hotel2Ledger({ balance }),
+    proposedTx: hotel2Close([{ to: H2.hotel, value: '409.94' }, { to: H2.fee, value: '2.06' }, { to: H2.guest, value: '150' }], { tickets: true, memos: h2basis('default.release') }),
+  })
+  const H2_RULED = [{ to: H2.hotel, value: '467.65' }, { to: H2.fee, value: '2.35' }, { to: H2.guest, value: '102.00' }]
+  const H2_NOFEE = [{ to: H2.hotel, value: '470.00' }, { to: H2.guest, value: '102.00' }]
+  const h2Backup = (closeTime: string, o: { extra?: Statement[]; disputes?: Statement[]; tx?: Record<string, unknown>; ruled?: Array<{ to: string; value: string }>; rulingAt?: string } = {}): DecideInput => h2({
+    stage: 'ruling.backup', proposedTx: o.tx ?? hotel2Close(H2_RULED, { memos: h2basis('ruling.backup') }),
+    statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'minibar', amount: '58.00' }]), ...(o.disputes ?? [dispute('settlement')]), ruling(W.backupArbiter, o.ruled ?? H2_RULED, o.rulingAt), ...(o.extra ?? [])],
+    ledger: hotel2Ledger({ balance: '572', dispute: true, closeTime }),
+  })
+  const h2ClaimOnly = (closeTime: string): DecideInput => {
+    const cp = [{ to: H2.hotel, value: '467.65' }, { to: H2.fee, value: '2.35' }, { to: H2.guest, value: '92.00' }]
+    return h2({
+      stage: 'ruling.backup', proposedTx: hotel2Close(cp, { memos: h2basis('ruling.backup') }),
+      statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'minibar', amount: '58.00' }]), ruling(W.backupArbiter, cp)], ledger: hotel2Ledger({ balance: '562', closeTime }),
+    })
+  }
+  const h2RulingDefault = (amount: string): DecideInput => h2({
+    stage: 'ruling.default', proposedTx: hotel2Close([{ to: H2.hotel, value: '467.65' }, { to: H2.fee, value: '2.35' }, { to: H2.guest, value: '92.00' }], { memos: h2basis('ruling.default') }),
+    statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'damage', amount }])], ledger: hotel2Ledger({ balance: '562' }),
+  })
   const extraObj = hotelLedger()
   extraObj.accounts[W.engHotel.address].ownerObjects!.other = 1
   const smuggle = (() => {
@@ -121,6 +170,54 @@ export function policyCases(): PolicyCase[] {
     { name: 'r2.spend.mpp-challenge-ok', description: 'Payment matches the agent’s MPP challenge (rail-neutral SH5)', input: r2({ proposedTx: r2Payment(W.vendorA.address, '800', { invoice: 'inv:shop-2026-11-0007' }), statements: [r2Category(W.vendorA.address, 'retail.grocery'), r2Challenge()] }), expectFailing: [] },
     { name: 'r2.spend.challenge-mismatch', description: 'MPP challenge names a different merchant than the payee', input: r2({ proposedTx: r2Payment(W.vendorA.address, '800', { invoice: 'inv:shop-2026-11-0007' }), statements: [r2Category(W.vendorA.address, 'retail.grocery'), r2Challenge({ payTo: W.vendorB.address })] }), expectFailing: ['SH5'] },
     { name: 'r2.spend.mandate-expired', description: 'Shopping mandate expired before the ledger close', input: r2({ mandate: r2Mandate({ expires: '2026-11-18T09:00:00Z' }) }), expectFailing: ['SH0'] },
+
+    // hotel@2 deposit hotel (escrow): confirm / checkin / settle
+    { name: 'hotel2.confirm.deposit-within-cap', description: 'Confirmed deposit 150 is within the mandate cap 200', input: h2({ stage: 'confirm', ledger: hotel2Ledger({ closeTime: '2026-11-01T09:40:00Z' }), statements: [hotel2Confirmation()] }), expectFailing: [] },
+    { name: 'hotel2.confirm.deposit-over-cap', description: 'Confirmed deposit 250 exceeds the mandate cap 200', input: h2({ stage: 'confirm', ledger: hotel2Ledger({ closeTime: '2026-11-01T09:40:00Z' }), statements: [hotel2Confirmation({ deposit: '250.00' })] }), expectFailing: ['C5'] },
+    { name: 'hotel2.checkin.ok', description: 'Check-in once the deposit is on-ledger (balance 562)', input: h2CheckIn('562'), expectFailing: [] },
+    { name: 'hotel2.checkin.deposit-missing', description: 'Check-in while the deposit has not arrived (balance 412)', input: h2CheckIn('412'), expectFailing: ['K2'] },
+    { name: 'hotel2.settle.ok', description: 'Agreed split paying the 58.00 claim, with fee and review', input: h2Settle([{ to: H2.hotel, value: '467.65' }, { to: H2.fee, value: '2.35' }, { to: H2.guest, value: '92.00' }]), expectFailing: [] },
+    { name: 'hotel2.settle.unknown-payee', description: 'Payout to an account that is neither guest, hotel nor fee account', input: h2Settle([{ to: H2.hotel, value: '467.65' }, { to: H2.fee, value: '2.35' }, { to: H2.guest, value: '91.00' }, { to: W.arbiter.address, value: '1.00' }]), expectFailing: ['S2', 'S6'] },
+    // refund.conceded
+    { name: 'hotel2.refund.conceded.ok', description: 'Hotel concedes an entry dispute: full refund', input: h2Conceded(), expectFailing: [] },
+    { name: 'hotel2.refund.conceded.no-concession', description: 'Entry dispute without a hotel concession', input: h2Conceded({ conceded: false }), expectFailing: ['F1'] },
+    { name: 'hotel2.refund.conceded.settlement-phase', description: 'Concession of a settlement-phase dispute does not authorise a refund', input: h2Conceded({ phase: 'settlement', closeTime: '2026-11-16T11:00:00Z' }), expectFailing: ['F1'] },
+    { name: 'hotel2.refund.conceded.hotel-issued-credential', description: 'Dispute Credential issued by the hotel, not the guest', input: h2Conceded({ hotelCredential: true }), expectFailing: ['F1'] },
+    // default.refund
+    { name: 'hotel2.default.refund.ok', description: 'Never confirmed: refund after confirmBy', input: h2({ stage: 'default.refund', proposedTx: h2RefundTx, ledger: h2RefundLedger }), expectFailing: [] },
+    { name: 'hotel2.default.refund.confirmed', description: 'Refund default refused once the booking is confirmed', input: h2({ stage: 'default.refund', proposedTx: h2RefundTx, ledger: h2RefundLedger, statements: [hotel2Confirmation()] }), expectFailing: ['R1'] },
+    { name: 'hotel2.default.refund.over-cap-confirmation', description: 'The only confirmation states a deposit over the cap, so it does not count', input: h2({ stage: 'default.refund', proposedTx: h2RefundTx, ledger: h2RefundLedger, statements: [hotel2Confirmation({ deposit: '250.00' })] }), expectFailing: [] },
+    // default.noshow
+    { name: 'hotel2.default.noshow.ok', description: 'Confirmed, not checked in, after entryDisputeBy: room released to the hotel', input: h2NoShow(), expectFailing: [] },
+    { name: 'hotel2.default.noshow.checked-in', description: 'Guest checked in', input: h2NoShow([hotel2Confirmation(), checkin('checked_in')]), expectFailing: ['N3'] },
+    { name: 'hotel2.default.noshow.dispute-bonded', description: 'Guest dispute open and the bond changed the balance', input: h2NoShow([hotel2Confirmation(), dispute('entry')], hotel2Ledger({ closeTime: H2_AFTER, dispute: true, balance: '422' })), expectFailing: ['B7', 'B11', 'N4', 'N5'] },
+    { name: 'hotel2.default.noshow.credential-without-attestation', description: 'Dispute Credential with no dispute attestation is ignored', input: h2NoShow([hotel2Confirmation()], hotel2Ledger({ closeTime: H2_AFTER, dispute: true, balance: '412' })), expectFailing: [] },
+    { name: 'hotel2.default.noshow.no-bond', description: 'Dispute Credential and attestation but no bond posted: ignored', input: h2NoShow([hotel2Confirmation(), dispute('entry')], hotel2Ledger({ closeTime: H2_AFTER, dispute: true, balance: '412' })), expectFailing: [] },
+    { name: 'hotel2.default.noshow.too-early', description: 'checkInBy passed but entryDisputeBy has not', input: h2NoShow([hotel2Confirmation()], hotel2Ledger({ closeTime: '2026-11-12T11:00:00Z' })), expectFailing: ['N1'] },
+    { name: 'hotel2.default.noshow.deposit-over-cap', description: 'Confirmed deposit exceeds the mandate cap', input: h2NoShow([hotel2Confirmation({ deposit: '250.00' })]), expectFailing: ['N2'] },
+    // default.release
+    { name: 'hotel2.default.release.ok', description: 'Room to the hotel, deposit to the guest after the window', input: h2Release(), expectFailing: [] },
+    { name: 'hotel2.default.release.claim-posted', description: 'A hotel claim is posted', input: h2Release([claim([{ kind: 'minibar', amount: '58.00' }])]), expectFailing: ['L5'] },
+    { name: 'hotel2.default.release.stray-funds', description: 'Stray RLUSD changed the balance (exact-balance lock)', input: h2Release([], '563'), expectFailing: ['B7', 'B11', 'L3'] },
+    { name: 'hotel2.default.release.dispute-open', description: 'Settlement dispute with bond: balance 572', input: { ...h2Release([dispute('settlement')]), ledger: hotel2Ledger({ balance: '572', dispute: true }) }, expectFailing: ['B7', 'B11', 'L2', 'L3'] },
+    { name: 'hotel2.default.release.at-window-end', description: 'Exactly at disputeWindowEnds: refused (strict deadline)', input: { ...h2Release(), ledger: hotel2Ledger({ balance: '562', closeTime: '2026-11-17T11:00:00Z' }) }, expectFailing: ['L1'] },
+    { name: 'hotel2.default.release.after-window-end', description: 'One second after disputeWindowEnds: signs', input: { ...h2Release(), ledger: hotel2Ledger({ balance: '562', closeTime: '2026-11-17T11:00:01Z' }) }, expectFailing: [] },
+    // ruling.backup
+    { name: 'hotel2.ruling.backup.before-window', description: '1 s before the ruling window elapses', input: h2Backup('2026-11-21T09:59:59Z'), expectFailing: ['U1'] },
+    { name: 'hotel2.ruling.backup.at-window-end', description: 'Exactly at the end of the ruling window: refused', input: h2Backup('2026-11-21T10:00:00Z'), expectFailing: ['U1'] },
+    { name: 'hotel2.ruling.backup.ok', description: 'After the window, tx matches the backup arbiter ruling', input: h2Backup('2026-11-21T10:00:01Z'), expectFailing: [] },
+    { name: 'hotel2.ruling.backup.primary-ruled', description: 'The primary arbiter has ruled', input: h2Backup('2026-11-21T10:00:01Z', { extra: [ruling(W.arbiter, H2_RULED)] }), expectFailing: ['U2'] },
+    { name: 'hotel2.ruling.backup.backdated-dispute', description: 'Dispute backdated to 11-02 is floored at deliveryBy: backup cannot rule right after filing', input: h2Backup('2026-11-16T10:05:00Z', { disputes: [dispute('settlement', '2026-11-02T00:00:00Z')], rulingAt: '2026-11-16T10:01:00Z' }), expectFailing: ['U1'] },
+    { name: 'hotel2.ruling.backup.settlement-dispute-own-filing', description: 'Window runs from the settlement dispute, not an older entry-phase attestation', input: h2Backup('2026-11-17T00:00:00Z', { disputes: [dispute('entry'), dispute('settlement')], rulingAt: '2026-11-16T10:01:00Z' }), expectFailing: ['U1'] },
+    { name: 'hotel2.ruling.backup.extra-payee', description: 'Tx pays an account the ruling does not name', input: h2Backup('2026-11-21T10:00:01Z', { tx: hotel2Close([{ to: H2.hotel, value: '467.65' }, { to: H2.fee, value: '2.35' }, { to: H2.guest, value: '101.00' }, { to: W.arbiter.address, value: '1.00' }], { memos: h2basis('ruling.backup') }) }), expectFailing: ['U4', 'U5'] },
+    { name: 'hotel2.ruling.backup.duplicate-payee', description: 'Ruling names the hotel twice', input: h2Backup('2026-11-21T10:00:01Z', { ruled: [{ to: H2.hotel, value: '467.65' }, { to: H2.hotel, value: '0' }, { to: H2.guest, value: '102.00' }] }), expectFailing: ['U4'] },
+    { name: 'hotel2.ruling.backup.no-fee', description: 'Ruling with no service fee on what the hotel receives', input: h2Backup('2026-11-21T10:00:01Z', { ruled: H2_NOFEE, tx: hotel2Close(H2_NOFEE, { memos: h2basis('ruling.backup') }) }), expectFailing: ['U6'] },
+    { name: 'hotel2.ruling.backup.claim-only-at-end', description: 'Claim-only branch: exactly at disputeWindowEnds + rulingWindow is refused', input: h2ClaimOnly('2026-11-22T11:00:00Z'), expectFailing: ['U1'] },
+    { name: 'hotel2.ruling.backup.claim-only-after', description: 'Claim-only branch: one second later signs', input: h2ClaimOnly('2026-11-22T11:00:01Z'), expectFailing: [] },
+    // ruling.default (advisory)
+    { name: 'hotel2.ruling.default.ok', description: 'Unanswered 58.00 claim paid exactly after the window', input: h2RulingDefault('58.00'), expectFailing: [] },
+    { name: 'hotel2.ruling.default.claim-over-deposit', description: 'Claim above the deposit', input: h2RulingDefault('160.00'), expectFailing: ['D4', 'D5'] },
+    { name: 'hotel2.ruling.default.claim-mismatch', description: 'Payouts do not match the claim', input: h2RulingDefault('50.00'), expectFailing: ['D5'] },
   ]
 }
 
@@ -132,6 +229,7 @@ export function templateCases(): TemplateCase[] {
   const mut = (f: (t: Template) => void) => { const t = h(); f(t); return t }
   return [
     { name: 'hotel.ok', description: 'Shipped hotel template', template: h(), options: { preCreateFundingDrops: '6000000' }, expectErrors: [] },
+    { name: 'hotel2.ok', description: 'Shipped hotel@2 template (deposit, backup arbiter)', template: structuredClone(templates.hotel2), options: { preCreateFundingDrops: '6000000' }, expectErrors: [] },
     { name: 'procurement.ok', description: 'Shipped owner-wallet procurement template', template: structuredClone(templates.procurement), expectErrors: [] },
     { name: 'shopping.ok', description: 'Shipped owner-wallet consumer-shopping template', template: structuredClone(templates.shopping), expectErrors: [] },
     { name: 'V1.service-at-quorum', description: 'Co-signer weight reaches quorum alone', template: mut((t) => { t.roles.cosigner.weight = 5 }), expectErrors: ['V1', 'V2'] },
