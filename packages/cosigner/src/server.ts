@@ -11,6 +11,8 @@
 //   GET  /v1/engagements/:id      → engagement record + in-flight decisions
 //   GET  /v1/engagements/:id/decisions → signed cosigner.decision/1 records
 //   POST /v1/engagements/:id/attestations { statement }                     → Receipt (signed cosigner.receipt/1)
+//   POST /v1/engagements/:id/presigned    { outcome, blob }                 → { ok: true }
+//   POST /v1/engagements/:id/tick                                           → TickResult[] (completed defaults carry `blob`)
 //   GET  /healthz                 → liveness  (open, never rate-limited)
 //   GET  /readyz                  → readiness (open, reflects ledger connectivity)
 //
@@ -137,6 +139,14 @@ export function createServer(svc: CosignerService, opts: ServerOptions = {}): ht
       if (method === 'POST' && isV1 && parts[1] === 'engagements' && parts[2] && parts[3] === 'attestations' && parts.length === 4) {
         const b = await body(req)
         return send(200, await svc.ingest(decodeURIComponent(parts[2]), b.statement as never))
+      }
+      if (method === 'POST' && isV1 && parts[1] === 'engagements' && parts[2] && parts[3] === 'presigned' && parts.length === 4) {
+        const b = await body(req)
+        svc.storePresigned(decodeURIComponent(parts[2]), b.outcome as never, b.blob as never)
+        return send(200, { ok: true })
+      }
+      if (method === 'POST' && isV1 && parts[1] === 'engagements' && parts[2] && parts[3] === 'tick' && parts.length === 4) {
+        return send(200, await svc.tick(decodeURIComponent(parts[2])))
       }
       if (method === 'GET' && isV1 && parts[1] === 'engagements' && parts[2]) {
         const id = decodeURIComponent(parts[2])

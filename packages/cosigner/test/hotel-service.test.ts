@@ -2,9 +2,14 @@
 // statement, judges its window on the snapshot's closeTime, stores it, and returns a signed receipt.
 import type { AddressInfo } from 'node:net'
 import { describe, expect, it } from 'vitest'
+import xrpl from 'xrpl'
+import * as keypairs from 'ripple-keypairs'
+import { encodeForMultisigning } from 'ripple-binary-codec'
 import { localSigner, verifyStatement, type Statement } from '@eng/core'
-import { CosignerService, FixtureLedgerSource, createServer, type Receipt } from '@eng/cosigner'
-import { LEDGER_INDEX, NOW, W, checkin, claim, dispute, hotel2Engagement, hotel2Ledger, hotel2Mandate, policies, review, statement, templates } from '../../policy/test/fixtures.ts'
+import { CosignerService, FixtureLedgerSource, combine, createServer, type Receipt, type TickResult } from '@eng/cosigner'
+import {
+  LEDGER_INDEX, NOW, W, checkin, claim, dispute, hotel2Confirmation, hotel2Close, hotel2Engagement, hotel2Ledger, hotel2Mandate, memo, policies, review, statement, templates,
+} from '../../policy/test/fixtures.ts'
 
 const ENG = 'eng_hotel2_fixture'
 
@@ -212,5 +217,154 @@ describe('co-signer attestation store', () => {
     source.snap.accounts[W.atlas.address] = { exists: true, masterDisabled: true, regularKey: W.stranger.address }
     await expect(svc.ingest(ENG, checkin('checked_in'))).rejects.toThrow(/REJECTED: KEY_NOT_AUTHORIZED/)
     expect(svc.statements(ENG)).toEqual([])
+  })
+})
+
+// ── Pre-signed defaults and tick() (spec §5.4) ────────────────────────────────
+type Json = Record<string, unknown>
+type SignerEntry = { Signer: { Account: string; SigningPubKey: string; TxnSignature: string } }
+const releaseTx = (opts: { lls?: number } = {}): Json => {
+  const tx = hotel2Close([{ to: W.atlas.address, value: '409.94' }, { to: W.service.address, value: '2.06' }, { to: W.dana.address, value: '150' }], { tickets: true, memos: [memo('eng/basis', 'default.release')] })
+  return opts.lls ? { ...tx, LastLedgerSequence: opts.lls } : tx
+}
+const presign = (tx: Json, wallets = [W.dana, W.atlas]) => combine(wallets.map((w) => w.sign(structuredClone(tx) as never, true).tx_blob))
+const signersOf = (blob: string) => (xrpl.decode(blob) as { Signers: SignerEntry[] }).Signers
+
+/** Ingest the confirmation and the check-in at their posting times, then move the clock to `closeTime` with the deposit in. */
+async function checkedIn(closeTime: string) {
+  const { svc, source } = setup('2026-11-01T09:31:00Z')
+  await svc.ingest(ENG, hotel2Confirmation())
+  source.snap.closeTime = '2026-11-11T15:01:00Z'
+  await svc.ingest(ENG, checkin('checked_in'))
+  source.snap = hotel2Ledger({ balance: '562', closeTime })
+  return { svc, source }
+}
+
+describe('co-signer pre-signed defaults and tick()', () => {
+  it('stores a guest+hotel release blob and completes it once due', async () => {
+    const { svc, source } = await checkedIn('2026-11-17T11:00:00Z')
+    const stored = presign(releaseTx())
+    svc.storePresigned(ENG, 'default.release', stored)
+
+    const before = await svc.tick(ENG)
+    expect(before).toHaveLength(1)
+    expect(before[0]).toMatchObject({ outcome: 'default.release', stage: 'default.release', decision: 'REFUSE', failing: ['L1'] })
+    expect(before[0].blob).toBeUndefined()
+    expect(verifyStatement(before[0].record).ok).toBe(true)
+    expect(svc.inflightFor(ENG)).toHaveLength(0)
+
+    source.snap.closeTime = '2026-11-17T11:00:01Z'
+    const [after] = await svc.tick(ENG)
+    expect(after).toMatchObject({ outcome: 'default.release', decision: 'SIGN', failing: [] })
+    expect(after.record.claim.decision).toBe('SIGN')
+    const signers = signersOf(after.blob!)
+    expect(new Set(signers.map((s) => s.Signer.Account))).toEqual(new Set([W.dana.address, W.atlas.address, W.cosigner.address]))
+    const { Signers: _s, ...body } = xrpl.decode(after.blob!) as Json
+    const { Signers: _t, ...storedBody } = xrpl.decode(stored) as Json
+    void _s; void _t
+    expect(body).toEqual(storedBody) // exactly the stored transaction, nothing re-built
+    for (const { Signer: s } of signers) expect(keypairs.verify(encodeForMultisigning(body as never, s.Account), s.TxnSignature, s.SigningPubKey)).toBe(true)
+    expect(svc.inflightFor(ENG)).toHaveLength(1)
+  })
+
+  it('tick twice returns the same blob, no second in-flight entry', async () => {
+    const { svc } = await checkedIn('2026-11-17T12:00:00Z')
+    svc.storePresigned(ENG, 'default.release', presign(releaseTx()))
+    const [a] = await svc.tick(ENG)
+    const decisions = svc.decisions(ENG).length
+    const [b] = await svc.tick(ENG)
+    expect(a.decision).toBe('SIGN')
+    expect(b).toEqual(a)
+    expect(svc.inflightFor(ENG)).toHaveLength(1)
+    expect(svc.decisions(ENG)).toHaveLength(decisions) // not re-decided, not re-signed
+  })
+
+  it('tick re-decides once the in-flight default left the set (ticket consumed)', async () => {
+    const { svc, source } = await checkedIn('2026-11-17T12:00:00Z')
+    svc.storePresigned(ENG, 'default.release', presign(releaseTx()))
+    const [a] = await svc.tick(ENG)
+    expect(a.decision).toBe('SIGN')
+    source.snap.accounts[W.engHotel2.address].ownerObjects!.tickets = source.snap.accounts[W.engHotel2.address].ownerObjects!.tickets.filter((t) => t !== 101)
+    const [b] = await svc.tick(ENG)
+    expect(b.record.id).not.toBe(a.record.id)
+    expect(svc.inflightFor(ENG).filter((i) => i.decisionId === a.record.id)).toEqual([])
+  })
+
+  it('tick on a deleted account returns []', async () => {
+    const { svc, source } = await checkedIn('2026-11-17T12:00:00Z')
+    svc.storePresigned(ENG, 'default.release', presign(releaseTx()))
+    source.snap.accounts[W.engHotel2.address].exists = false
+    expect(await svc.tick(ENG)).toEqual([])
+  })
+
+  it('tick with nothing stored returns []', async () => {
+    const { svc } = await checkedIn('2026-11-17T12:00:00Z')
+    expect(await svc.tick(ENG)).toEqual([])
+  })
+
+  describe('storePresigned rejects', () => {
+    const rejects = (fn: (svc: CosignerService) => void, re: RegExp) => {
+      const { svc } = setup(NOW)
+      expect(() => fn(svc)).toThrow(re)
+      return svc
+    }
+    const nothingStored = async (svc: CosignerService) => expect(await svc.tick(ENG)).toEqual([])
+
+    it('a blob signed by guest only', async () => {
+      await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.release', presign(releaseTx(), [W.dana])), /SIGNERS/))
+    })
+    it('a blob also carrying a stranger or the co-signer', async () => {
+      await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.release', presign(releaseTx(), [W.dana, W.atlas, W.stranger])), /SIGNERS/))
+      await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.release', presign(releaseTx(), [W.dana, W.atlas, W.cosigner])), /SIGNERS/))
+    })
+    it('a tampered signature', async () => {
+      const tx = xrpl.decode(presign(releaseTx())) as Json & { Signers: SignerEntry[] }
+      const sig = tx.Signers[0].Signer.TxnSignature
+      tx.Signers[0].Signer.TxnSignature = (sig[0] === 'A' ? 'B' : 'A') + sig.slice(1)
+      await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.release', xrpl.encode(tx as never)), /BAD_SIGNATURE/))
+    })
+    it('a signature over a different transaction (amounts changed after signing)', async () => {
+      const tx = xrpl.decode(presign(releaseTx())) as Json & { RawTransactions: Array<{ RawTransaction: Json }> }
+      tx.Memos = [memo('eng/basis', 'other')]
+      await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.release', xrpl.encode(tx as never)), /BAD_SIGNATURE/))
+    })
+    it('a close.split blob stored as default.release', async () => {
+      const split = hotel2Close([{ to: W.atlas.address, value: '557.19' }, { to: W.service.address, value: '2.81' }], { tickets: true, memos: [memo('eng/basis', 'default.release')] })
+      await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.release', presign(split)), /BLUEPRINT/))
+    })
+    it('a blob with LastLedgerSequence, or without Tickets', async () => {
+      await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.release', presign(releaseTx({ lls: LEDGER_INDEX + 20 }))), /TICKETS/))
+      const seq = hotel2Close([{ to: W.atlas.address, value: '409.94' }, { to: W.service.address, value: '2.06' }, { to: W.dana.address, value: '150' }], { memos: [memo('eng/basis', 'default.release')] })
+      await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.release', presign(seq)), /TICKETS/))
+    })
+    it('an outcome that is not pre-signed, or unknown', async () => {
+      await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'settle.agreed', presign(releaseTx())), /NOT_PRESIGNED/))
+      await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.nope', presign(releaseTx())), /NOT_PRESIGNED/))
+    })
+    it('a blob for another account', async () => {
+      const other = { ...releaseTx(), Account: W.engHotel.address }
+      await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.release', presign(other)), /WRONG_ACCOUNT/))
+    })
+  })
+
+  it('HTTP routes store a blob and tick it', async () => {
+    const { svc } = await checkedIn('2026-11-17T12:00:00Z')
+    const server = createServer(svc).listen(0, '127.0.0.1')
+    await new Promise((r) => server.once('listening', r))
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    try {
+      const bad = await fetch(`${base}/v1/engagements/${ENG}/presigned`, { method: 'POST', body: JSON.stringify({ outcome: 'default.release', blob: presign(releaseTx(), [W.dana]) }) })
+      expect(bad.status).toBe(400)
+      const ok = await fetch(`${base}/v1/engagements/${ENG}/presigned`, { method: 'POST', body: JSON.stringify({ outcome: 'default.release', blob: presign(releaseTx()) }) })
+      expect(ok.status).toBe(200)
+      expect(await ok.json()).toEqual({ ok: true })
+      const t = await fetch(`${base}/v1/engagements/${ENG}/tick`, { method: 'POST' })
+      expect(t.status).toBe(200)
+      const [r] = (await t.json()) as TickResult[]
+      expect(r).toMatchObject({ outcome: 'default.release', decision: 'SIGN' })
+      expect(signersOf(r.blob!)).toHaveLength(3)
+    } finally {
+      server.close()
+    }
   })
 })

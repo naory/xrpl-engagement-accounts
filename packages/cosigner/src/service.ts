@@ -4,13 +4,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import xrpl from 'xrpl'
+import * as keypairs from 'ripple-keypairs'
+import { encodeForMultisigning } from 'ripple-binary-codec'
 import { documentHash, newNonce, parseAmount, signStatementAsync, signerBlob, verifyStatement, zero, type AssetDef, type Signer, type Statement, type Template } from '@eng/core'
 import {
   Assets, REGISTRY, TxFacts, decide, decisionStatementBody, layerHash,
   type Decision, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc, verifyStatements,
 } from '@eng/policy'
 import type { LedgerSource } from './snapshot.ts'
-import { unsigned } from './xrpl-io.ts'
+import { combine, unsigned } from './xrpl-io.ts'
 
 type Json = Record<string, unknown>
 
@@ -51,6 +53,18 @@ export interface DecideResponse {
   advisory?: true
 }
 
+/** One stored pre-signed default, evaluated by tick(). */
+export interface TickResult {
+  outcome: string
+  stage: string
+  decision: 'SIGN' | 'REFUSE'
+  failing: string[]
+  /** Signed cosigner.decision/1 record. */
+  record: Statement
+  /** SIGN only: the fully signed, submittable blob (stored signatures + the co-signer's). */
+  blob?: string
+}
+
 /** Proof that the co-signer received a statement in time: a co-signer-signed cosigner.receipt/1. */
 export interface Receipt {
   statement: Statement
@@ -63,6 +77,10 @@ interface EngagementState {
   template: Template
   /** Receipted ("posted") attestations, keyed by statement id. Kept out of `record` (hashed into inputsHash). */
   attestations: Map<string, { statement: Statement; receipt: Receipt }>
+  /** Pre-signed default blobs (all signatures but the finalSigner's), keyed by outcome name. */
+  presigned: Map<string, string>
+  /** tick() SIGN results keyed by proposedTxHash; returned again while that decision is in flight. */
+  completed: Map<string, TickResult>
 }
 
 export interface CosignerOptions {
@@ -113,7 +131,7 @@ export class CosignerService {
       if (!p) throw new Error(`no template policy for ${record.template}`)
       layers = [p]
     }
-    this.engagements.set(record.engagementId, { record: structuredClone({ consumed: [], ...record }), mandate, layers: [baseline, ...layers], template, attestations: new Map() })
+    this.engagements.set(record.engagementId, { record: structuredClone({ consumed: [], ...record }), mandate, layers: [baseline, ...layers], template, attestations: new Map(), presigned: new Map(), completed: new Map() })
     return { ok: true, layers: [baseline, ...layers].map((l) => `${l.policyId}@${l.version} ${layerHash(l)}`) }
   }
 
@@ -185,6 +203,81 @@ export class CosignerService {
     }
     st.attestations.set(s.id, { statement: s, receipt })
     return receipt
+  }
+
+  /**
+   * Store a pre-signed default (spec §5.4): the blob must carry exactly the outcome's signer set minus its
+   * finalSigner, each signature valid over this exact transaction, and be a Ticket-based transaction (no
+   * LastLedgerSequence) of the engagement account matching the outcome's blueprint. Otherwise nothing is stored.
+   */
+  storePresigned(engagementId: string, outcome: string, blob: string): void {
+    const st = this.engagements.get(engagementId)
+    if (!st) throw new Error(`unknown engagement ${engagementId}`)
+    const o = st.template.outcomes[outcome]
+    if (!o?.presigned || !o.finalSigner) throw new Error(`NOT_PRESIGNED: ${outcome} is not a pre-signed outcome of ${st.template.templateId}`)
+    let decoded: Json
+    try { decoded = xrpl.decode(blob) as Json } catch (e) { throw new Error(`BAD_BLOB: ${(e as Error).message}`) }
+    const signers = ((decoded.Signers ?? []) as Array<{ Signer?: { Account?: string; SigningPubKey?: string; TxnSignature?: string } }>).map((s) => s.Signer ?? {})
+    const tx = unsigned(decoded)
+
+    if (tx.Account !== st.record.account) throw new Error(`WRONG_ACCOUNT: blob is for ${String(tx.Account)}`)
+    const ticketed = (t: Json) => Number(t.TicketSequence ?? 0) > 0 && Number(t.Sequence ?? 0) === 0 && t.LastLedgerSequence == null
+    const inner = ((tx.RawTransactions ?? []) as Array<{ RawTransaction: Json }>).map((r) => r.RawTransaction)
+    if (!ticketed(tx) || !inner.every(ticketed)) throw new Error('TICKETS: a pre-signed default must use Tickets and no LastLedgerSequence')
+
+    // Signers: exactly one allowed set minus the finalSigner, each account once.
+    const accounts = signers.map((s) => s.Account)
+    const want = o.signers.filter((set) => set.includes(o.finalSigner!)).map((set) => set.filter((r) => r !== o.finalSigner).map((r) => st.record.parties[r]))
+    const exact = (set: Array<string | undefined>) => set.every(Boolean) && set.length === accounts.length && new Set(accounts).size === accounts.length && set.every((a) => accounts.includes(a))
+    if (!want.some(exact)) throw new Error(`SIGNERS: blob is signed by {${accounts.join(', ')}}, ${outcome} needs ${want.map((w) => `{${w.join(', ')}}`).join(' or ')}`)
+    for (const s of signers) {
+      let ok = false
+      try {
+        ok = keypairs.deriveAddress(s.SigningPubKey!) === s.Account && keypairs.verify(encodeForMultisigning(tx as never, s.Account!), s.TxnSignature!, s.SigningPubKey!)
+      } catch { ok = false }
+      if (!ok) throw new Error(`BAD_SIGNATURE: ${s.Account} signature does not verify`)
+    }
+
+    const facts = new TxFacts(tx, { eng: st.record, template: st.template, assets: new Assets(this.assetsOf(st.layers)), ledger: emptyLedger(st.record.account) })
+    if (!facts.matchesBlueprint(o.blueprint)) throw new Error(`BLUEPRINT: blob does not match ${o.blueprint}`)
+    st.presigned.set(outcome, blob)
+  }
+
+  /**
+   * Evaluate every stored pre-signed default at a pinned validated ledger (spec §5.4). On SIGN the result
+   * carries the completed, submittable blob; submission is the caller's job. A default whose SIGN is still in
+   * flight returns the same result rather than being re-signed. A deleted account has nothing left to complete.
+   */
+  async tick(engagementId: string): Promise<TickResult[]> {
+    return this.serialized(engagementId, () => this.tickLocked(engagementId))
+  }
+
+  private async tickLocked(engagementId: string): Promise<TickResult[]> {
+    const st = this.engagements.get(engagementId)
+    if (!st) throw new Error(`unknown engagement ${engagementId}`)
+    if (!st.presigned.size) return []
+    const ledger = await this.o.source.snapshot({
+      account: st.record.account, assets: this.assetsOf(st.layers), accounts: [], credentialSubjects: [], historySecs: this.o.historySecs ?? 90 * DAY,
+    })
+    if (!ledger.accounts[st.record.account]?.exists) return []
+    this.resolveInflight(st, ledger)
+
+    const out: TickResult[] = []
+    for (const [outcome, stored] of [...st.presigned]) {
+      const txHash = documentHash(unsigned(xrpl.decode(stored) as Json))
+      const prior = st.completed.get(txHash)
+      if (prior && this.inflightFor(engagementId).some((i) => i.proposedTxHash === txHash)) { out.push(prior); continue }
+      st.completed.delete(txHash)
+      const stage = st.template.outcomes[outcome].policyStage ?? outcome
+      const r = await this.decideLocked({ engagementId, stage, txBlob: stored })
+      const res: TickResult = { outcome, stage, decision: r.decision, failing: r.failing, record: r.record }
+      if (r.decision === 'SIGN' && r.signerBlob) {
+        res.blob = combine([stored, r.signerBlob])
+        st.completed.set(txHash, res)
+      }
+      out.push(res)
+    }
+    return out
   }
 
   /** Serialize work per engagement so in-flight accounting and the attestation store are race-free. */
