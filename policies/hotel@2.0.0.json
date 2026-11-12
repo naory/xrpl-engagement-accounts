@@ -1,0 +1,119 @@
+{
+  "policyId": "pol_hotel",
+  "version": "2.0.0",
+  "layer": "template",
+  "appliesTo": ["settlement-vault/hotel@2"],
+  "language": "cel-eng/1",
+  "registry": "att-registry@2026.11",
+  "assets": {
+    "RLUSD": { "code": "RLUSD", "kind": "IOU", "currency": "524C555344000000000000000000000000000000", "issuer": "rRLUSDissuerPlaceholderXXXXXXXXXX", "decimals": 6 }
+  },
+  "constraints": { "allowedRails": ["xrpl"], "allowedAssets": ["RLUSD"] },
+  "params": { "serviceFeeBps": 50, "minDisputeBond": "10.00", "rulingWindow": "432000s" },
+  "definitions": {
+    "conf": "att.latest('party.confirmation/1', 'counterparty')",
+    "booked": "amt(eng.amount.value, 'RLUSD')",
+    "deposit": "amt(def.conf.claim.deposit.value, 'RLUSD')",
+    "balance": "ledger.balance(eng.account, 'RLUSD')",
+    "confirmed": "def.conf != null && def.conf.claim.mandateHash == eng.mandateId && def.conf.claim.city == mandate.constraints.city && def.conf.claim.checkIn == mandate.constraints.checkIn && def.conf.claim.checkOut == mandate.constraints.checkOut && amt(def.conf.claim.total.value, 'RLUSD') == def.booked",
+    "checkedIn": "att.list('party.checkin/1', 'counterparty').exists(c, c.claim.status == 'checked_in')",
+    "disputes": "att.list('party.dispute/1', 'principal')",
+    "disputeOpen": "ledger.credentialExists(eng.parties.principal, eng.account, 'ENG/DISPUTE') && size(def.disputes) > 0",
+    "entryDispute": "def.disputeOpen && def.disputes.exists(d, d.claim.phase == 'entry')",
+    "conceded": "def.entryDispute && att.list('party.concession/1', 'counterparty').exists(c, def.disputes.exists(d, d.id == c.claim.disputeRef))",
+    "claim": "att.latest('party.claim/1', 'counterparty')",
+    "claimTotal": "amt(def.claim.claim.total, 'RLUSD')",
+    "primaryRuling": "att.latest('party.ruling/1', 'arbiter')",
+    "backupRuling": "att.latest('party.ruling/1', 'backupArbiter')",
+    "disputeOpenedAt": "timestamp(def.disputes[0].issuedAt)",
+    "toMerchant": "tx.payouts.to(eng.parties.counterparty, 'RLUSD')",
+    "toFee": "tx.payouts.to(eng.fee.to, 'RLUSD')",
+    "toGuest": "tx.payouts.to(eng.parties.principal, 'RLUSD')"
+  },
+  "stages": {
+    "confirm": {
+      "enforcement": "advisory",
+      "rules": [
+        { "id": "C1", "reason": "BAD_CONFIRMATION", "check": "def.conf != null && def.conf.claim.mandateHash == eng.mandateId", "message": "The hotel's confirmation must reference the guest's mandate." },
+        { "id": "C2", "reason": "MANDATE_MISMATCH", "check": "def.conf.claim.city == mandate.constraints.city && def.conf.claim.checkIn == mandate.constraints.checkIn && def.conf.claim.checkOut == mandate.constraints.checkOut", "message": "City and dates must match the mandate." },
+        { "id": "C4", "reason": "AMOUNT_MISMATCH", "check": "amt(def.conf.claim.total.value, 'RLUSD') == def.booked", "message": "The confirmed total must equal the booked amount." },
+        { "id": "C5", "reason": "DEPOSIT_OVER_CAP", "check": "def.deposit <= amt(mandate.constraints.maxDeposit, 'RLUSD')", "message": "The deposit may not exceed the mandate's maxDeposit." }
+      ]
+    },
+    "checkin": {
+      "enforcement": "advisory",
+      "rules": [
+        { "id": "K1", "reason": "NOT_CHECKED_IN", "check": "def.checkedIn", "message": "The hotel must record the guest as checked in." },
+        { "id": "K2", "reason": "DEPOSIT_MISMATCH", "check": "def.balance == def.booked + def.deposit", "message": "The account must hold the room plus exactly the confirmed deposit." }
+      ]
+    },
+    "settle": {
+      "enforcement": "ledger",
+      "rules": [
+        { "id": "S2", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.split')", "message": "An agreed settlement is a close.split Batch." },
+        { "id": "S4", "reason": "FEE_MISMATCH", "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)", "message": "The service fee is 50 bps of everything the hotel receives." },
+        { "id": "S5", "reason": "REVIEW_REQUIRED", "when": "def.checkedIn", "check": "tx.memo('eng/review') != null && att.list('party.review/1', 'principal').exists(r, r.id == tx.memo('eng/review'))", "message": "A stay that happened settles with the guest's review." },
+        { "id": "S6", "reason": "BAD_PAYEE", "check": "tx.payouts.destinations().all(d, d in [eng.parties.principal, eng.parties.counterparty, eng.fee.to])", "message": "Settlement pays only the guest, the hotel and the fee account." }
+      ]
+    },
+    "refund.conceded": {
+      "enforcement": "ledger",
+      "rules": [
+        { "id": "F1", "reason": "NOT_CONCEDED", "check": "def.conceded", "message": "Needs an open entry dispute and the hotel's concession referencing it." },
+        { "id": "F2", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.refundAll')", "message": "A conceded refund is a close.refundAll Batch." },
+        { "id": "F3", "reason": "NOT_FULL_REFUND", "check": "def.toGuest == def.balance", "message": "Everything in the account goes to the guest, with no fee." }
+      ]
+    },
+    "default.refund": {
+      "enforcement": "final-signature",
+      "rules": [
+        { "id": "R1", "reason": "NOT_DUE", "check": "now >= timestamp(eng.timers.confirmBy) && !def.confirmed", "message": "Refund only after confirmBy when the booking was never confirmed." },
+        { "id": "R2", "reason": "BALANCE_CHANGED", "check": "def.balance == def.booked", "message": "The account must hold exactly the room amount." },
+        { "id": "R3", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.refundAll')", "message": "The refund default is a close.refundAll Batch." }
+      ]
+    },
+    "default.noshow": {
+      "enforcement": "final-signature",
+      "rules": [
+        { "id": "N1", "reason": "NOT_DUE", "check": "now >= timestamp(eng.timers.checkInBy) && now >= timestamp(eng.timers.entryDisputeBy)", "message": "No-show only after both checkInBy and entryDisputeBy." },
+        { "id": "N2", "reason": "NOT_CONFIRMED", "check": "def.confirmed", "message": "Only a confirmed booking can be a no-show." },
+        { "id": "N3", "reason": "CHECKED_IN", "check": "!def.checkedIn", "message": "The guest was recorded as checked in." },
+        { "id": "N4", "reason": "DISPUTE_OPEN", "check": "!def.disputeOpen", "message": "A guest dispute is open." },
+        { "id": "N5", "reason": "BALANCE_CHANGED", "check": "def.balance == def.booked", "message": "The account must hold exactly the room amount." },
+        { "id": "N6", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.releaseAll')", "message": "The no-show default is a close.releaseAll Batch." },
+        { "id": "N7", "reason": "FEE_MISMATCH", "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)", "message": "The service fee is 50 bps of everything the hotel receives." }
+      ]
+    },
+    "default.release": {
+      "enforcement": "final-signature",
+      "rules": [
+        { "id": "L1", "reason": "NOT_DUE", "check": "now >= timestamp(eng.timers.disputeWindowEnds) && def.checkedIn", "message": "Release only after the dispute window, for a stay that happened." },
+        { "id": "L2", "reason": "DISPUTE_OPEN", "check": "!def.disputeOpen", "message": "A guest dispute is open." },
+        { "id": "L3", "reason": "BALANCE_CHANGED", "check": "def.balance == def.booked + def.deposit", "message": "The account must hold exactly the room plus the deposit." },
+        { "id": "L4", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.releaseWithDeposit')", "message": "The release default is a close.releaseWithDeposit Batch." },
+        { "id": "L5", "reason": "CLAIM_POSTED", "check": "def.claim == null", "message": "The hotel posted a deposit claim; it goes to settlement or a ruling." },
+        { "id": "L6", "reason": "PAYOUT_MISMATCH", "check": "def.toGuest == def.deposit && def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)", "message": "The deposit returns to the guest; the room goes to the hotel less the fee." }
+      ]
+    },
+    "ruling.backup": {
+      "enforcement": "ledger",
+      "rules": [
+        { "id": "U1", "reason": "NOT_DUE", "check": "(def.disputeOpen && now >= def.disputeOpenedAt + duration(params.rulingWindow)) || (def.claim != null && !def.disputeOpen && now >= timestamp(eng.timers.disputeWindowEnds) + duration(params.rulingWindow))", "message": "The backup arbiter may rule only after the primary's ruling window." },
+        { "id": "U2", "reason": "PRIMARY_RULED", "check": "def.primaryRuling == null", "message": "The primary arbiter has ruled." },
+        { "id": "U3", "reason": "NO_RULING", "check": "def.backupRuling != null", "message": "Needs a ruling from the backup arbiter." },
+        { "id": "U4", "reason": "RULING_MISMATCH", "check": "size(def.backupRuling.claim.payouts) == tx.payouts.count() && def.backupRuling.claim.payouts.all(p, def.backupRuling.claim.payouts.filter(q, q.to == p.to).size() == 1 && tx.payouts.to(p.to, 'RLUSD') == amt(p.value, 'RLUSD')) && tx.payouts.destinations().all(d, def.backupRuling.claim.payouts.exists(p, p.to == d))", "message": "The transaction must pay exactly the backup ruling's payouts." },
+        { "id": "U5", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.split')", "message": "A ruling is a close.split Batch." }
+      ]
+    },
+    "ruling.default": {
+      "enforcement": "advisory",
+      "rules": [
+        { "id": "D1", "reason": "NO_CLAIM", "check": "def.claim != null", "message": "A default ruling needs a posted claim." },
+        { "id": "D2", "reason": "DISPUTE_OPEN", "check": "!def.disputeOpen", "message": "The guest disputed; the arbiter rules on the dispute instead." },
+        { "id": "D3", "reason": "NOT_DUE", "check": "now >= timestamp(eng.timers.disputeWindowEnds)", "message": "The guest may answer the claim until disputeWindowEnds." },
+        { "id": "D4", "reason": "CLAIM_OVER_DEPOSIT", "check": "def.claimTotal <= def.deposit", "message": "Claims are capped at the deposit." },
+        { "id": "D5", "reason": "PAYOUT_MISMATCH", "check": "def.toMerchant + def.toFee == def.booked + def.claimTotal && def.toGuest == def.deposit - def.claimTotal && def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)", "message": "Room plus claim to the hotel (less fee), the deposit remainder to the guest." }
+      ]
+    }
+  }
+}

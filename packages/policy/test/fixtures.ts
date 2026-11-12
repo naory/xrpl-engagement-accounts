@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import xrpl from 'xrpl'
 import { createHash } from 'node:crypto'
 import { signStatement, type Statement, type StatementBody, type Template } from '@eng/core'
-import type { EngagementRecord, InflightEntry, LedgerSnapshot, PolicyDoc } from '@eng/policy'
+import type { DecideInput, EngagementRecord, InflightEntry, LedgerSnapshot, PolicyDoc } from '@eng/policy'
 
 const root = new URL('../../../', import.meta.url)
 const readJson = <T>(p: string): T => JSON.parse(fs.readFileSync(new URL(p, root), 'utf8')) as T
@@ -36,6 +36,9 @@ export const W = {
   atlas: wallet('atlas'),
   arbiter: wallet('arbiter'),
   engHotel: wallet('eng-hotel'),
+  // hotel@2
+  backupArbiter: wallet('backup-arbiter'),
+  engHotel2: wallet('eng-hotel2'),
 }
 
 export const RLUSD_HEX = '524C555344000000000000000000000000000000'
@@ -52,12 +55,14 @@ export function withIssuer(p: PolicyDoc, issuer = W.issuer.address): PolicyDoc {
 export const templates = {
   procurement: readJson<Template>('templates/procurement@1.json'),
   hotel: readJson<Template>('templates/hotel@1.json'),
+  hotel2: readJson<Template>('templates/hotel@2.json'),
   shopping: readJson<Template>('templates/shopping@1.json'),
 }
 export const policies = {
   baseline: readJson<PolicyDoc>('policies/baseline@1.1.0.json'),
   procurement: withIssuer(readJson<PolicyDoc>('policies/procurement@1.3.0.json')),
   hotel: withIssuer(readJson<PolicyDoc>('policies/hotel@1.1.0.json')),
+  hotel2: withIssuer(readJson<PolicyDoc>('policies/hotel@2.0.0.json')),
   shopping: withIssuer(readJson<PolicyDoc>('policies/shopping@1.0.0.json')),
 }
 
@@ -188,8 +193,8 @@ export function hotelLedger(over: { balance?: string; dispute?: boolean; closeTi
   }
 }
 
-export function closeBatch(payouts: Array<{ to: string; value: string; partial?: boolean }>, opts: { deleteTo?: string; tickets?: boolean; memos?: Array<ReturnType<typeof memo>>; fee?: string; flags?: number; lls?: number } = {}): Record<string, unknown> {
-  const eng = W.engHotel.address
+export function closeBatch(payouts: Array<{ to: string; value: string; partial?: boolean }>, opts: { account?: string; deleteTo?: string; tickets?: boolean; memos?: Array<ReturnType<typeof memo>>; fee?: string; flags?: number; lls?: number } = {}): Record<string, unknown> {
+  const eng = opts.account ?? W.engHotel.address
   const steps: Record<string, unknown>[] = [
     ...payouts.map((p) => ({ TransactionType: 'Payment', Account: eng, Destination: p.to, Amount: iou(p.partial ? '1000000000' : p.value), Flags: INNER | (p.partial ? 0x00020000 : 0) })),
     { TransactionType: 'TrustSet', Account: eng, LimitAmount: iou('0'), Flags: INNER | 0x00020000 },
@@ -204,8 +209,8 @@ export function closeBatch(payouts: Array<{ to: string; value: string; partial?:
   }
 }
 
-export function review(signer = W.dana): Statement {
-  return statement(signer, { kind: 'PRINCIPAL', type: 'party.review/1', engagementId: 'eng_hotel_fixture', subject: { bookingId: 'ATL-55821' }, claim: { stayed: true, rating: 5, text: 'Lovely stay' } })
+export function review(signer = W.dana, engagementId = 'eng_hotel_fixture'): Statement {
+  return statement(signer, { kind: 'PRINCIPAL', type: 'party.review/1', engagementId, subject: { bookingId: 'ATL-55821' }, claim: { stayed: true, rating: 5, text: 'Lovely stay' } })
 }
 
 export function hotelMandate(): Statement {
@@ -222,6 +227,137 @@ export function confirmation(city: string, mandateId: string): Statement {
     claim: { mandateHash: mandateId, bookingId: 'ATL-55821', property: 'Casa Alfama', city, country: 'PT', checkIn: '2026-11-11', checkOut: '2026-11-14', total: { currency: 'RLUSD', value: '412.00' } },
     observedAt: '2026-10-20T09:30:00Z', issuedAt: '2026-10-20T09:30:01Z',
   })
+}
+
+// ── Hotel@2: stay escrow (deposit, entry disputes, claims, backup arbiter) ────
+const ENG2 = 'eng_hotel2_fixture'
+type Wallet = InstanceType<typeof xrpl.Wallet>
+const rlusd = (value: string) => ({ currency: 'RLUSD', value })
+const at = (t: string) => ({ observedAt: t, issuedAt: t })
+
+export function hotel2Engagement(over: Partial<EngagementRecord> = {}): EngagementRecord {
+  return {
+    engagementId: ENG2,
+    template: 'settlement-vault/hotel@2',
+    account: W.engHotel2.address,
+    asset: 'RLUSD',
+    parties: { principal: W.dana.address, counterparty: W.atlas.address, arbiter: W.arbiter.address, backupArbiter: W.backupArbiter.address, cosigner: W.cosigner.address },
+    fee: { bps: 50, to: W.service.address },
+    deleteTo: W.service.address,
+    amount: { asset: 'RLUSD', value: '412.00' },
+    timers: {
+      openedAt: '2026-11-01T09:00:00Z', confirmBy: '2026-11-01T11:00:00Z',
+      checkIn: '2026-11-11T14:00:00Z', checkInBy: '2026-11-11T23:00:00Z', entryDisputeBy: '2026-11-12T11:00:00Z',
+      deliveryBy: '2026-11-14T11:00:00Z', claimBy: '2026-11-15T11:00:00Z', disputeWindowEnds: '2026-11-17T11:00:00Z',
+    },
+    state: 'OPEN',
+    consumed: [],
+    mandateId: hotel2Mandate().id,
+    ...over,
+  }
+}
+
+export function hotel2Ledger(over: { balance?: string; dispute?: boolean; closeTime?: string; sequence?: number } = {}): LedgerSnapshot {
+  return {
+    index: LEDGER_INDEX,
+    hash: 'C'.repeat(64),
+    closeTime: over.closeTime ?? NOW,
+    baseFeeDrops: '10',
+    reserveIncDrops: '200000',
+    accounts: {
+      [W.engHotel2.address]: {
+        exists: true, masterDisabled: true, regularKey: null,
+        ...(over.sequence != null ? { sequence: over.sequence } : {}),
+        ownerObjects: { trustlines: 1, signerList: true, tickets: Array.from({ length: 15 }, (_, i) => 101 + i), other: 0 },
+      },
+    },
+    balances: { [W.engHotel2.address]: { RLUSD: over.balance ?? '412' } },
+    credentials: over.dispute ? [{ issuer: W.dana.address, subject: W.engHotel2.address, type: 'ENG/DISPUTE', accepted: false, expiration: null }] : [],
+    history: {},
+  }
+}
+
+let hotel2MandateCache: Statement | undefined
+/** The guest's mandate. Built once so its id (bound into the engagement and the confirmation) is stable. */
+export function hotel2Mandate(): Statement {
+  hotel2MandateCache ??= statement(W.dana, {
+    kind: 'PRINCIPAL', type: 'party.mandate/1', engagementId: ENG2, subject: { mandateId: 'mnd_9H4' },
+    claim: { purpose: 'lodging', constraints: { city: 'Lisbon', country: 'PT', checkIn: '2026-11-11', checkOut: '2026-11-14', maxTotal: rlusd('450.00'), maxDeposit: '200.00' }, expires: '2026-11-02T00:00:00Z' },
+    ...at('2026-11-01T08:55:00Z'),
+  })
+  return hotel2MandateCache
+}
+
+export function hotel2Confirmation(over: { deposit?: string; city?: string } = {}): Statement {
+  return statement(W.atlas, {
+    kind: 'COUNTERPARTY', type: 'party.confirmation/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
+    claim: { mandateHash: hotel2Mandate().id, bookingId: 'ATL-60417', property: 'Casa Alfama', city: over.city ?? 'Lisbon', country: 'PT', checkIn: '2026-11-11', checkOut: '2026-11-14', total: rlusd('412.00'), deposit: rlusd(over.deposit ?? '150.00') },
+    ...at('2026-11-01T09:30:00Z'),
+  })
+}
+
+export function checkin(status: 'checked_in' | 'refused'): Statement {
+  return statement(W.atlas, {
+    kind: 'COUNTERPARTY', type: 'party.checkin/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
+    claim: { status, room: '204', deposit: rlusd('150.00') },
+    ...at('2026-11-11T15:00:00Z'),
+  })
+}
+
+/** The hotel's deposit claim, posted before claimBy. `total` is the sum of the item amounts. */
+export function claim(items: Array<{ kind: string; amount: string }>): Statement {
+  const cents = (v: string) => { const [w, f = ''] = v.split('.'); return BigInt(w) * 100n + BigInt((f + '00').slice(0, 2)) }
+  const minor = items.reduce((s, i) => s + cents(i.amount), 0n)
+  const total = `${minor / 100n}.${(minor % 100n).toString().padStart(2, '0')}`
+  return statement(W.atlas, {
+    kind: 'COUNTERPARTY', type: 'party.claim/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
+    claim: { items: items.map((i) => ({ ...i, evidenceHashes: [] })), total },
+    ...at('2026-11-14T15:00:00Z'),
+  })
+}
+
+/** The guest's dispute attestation (pair with `hotel2Ledger({ dispute: true })` for the Credential). */
+export function dispute(phase: 'entry' | 'settlement'): Statement {
+  return statement(W.dana, {
+    kind: 'PRINCIPAL', type: 'party.dispute/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
+    claim: { phase, reason: phase === 'entry' ? 'room not as booked' : 'claim disputed', bond: rlusd('10.00'), evidenceHashes: [] },
+    ...at(phase === 'entry' ? '2026-11-11T20:00:00Z' : '2026-11-16T10:00:00Z'),
+  })
+}
+
+export function concession(disputeId: string): Statement {
+  return statement(W.atlas, {
+    kind: 'COUNTERPARTY', type: 'party.concession/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
+    claim: { disputeRef: disputeId },
+    ...at('2026-11-12T09:00:00Z'),
+  })
+}
+
+export function ruling(signer: Wallet, payouts: Array<{ to: string; value: string }>): Statement {
+  return statement(signer, {
+    kind: 'ARBITER', type: 'party.ruling/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
+    claim: { payouts, rationale: 'fixture ruling' },
+    ...at('2026-11-20T09:00:00Z'),
+  })
+}
+
+export function hotel2Close(payouts: Array<{ to: string; value: string; partial?: boolean }>, opts: Omit<Parameters<typeof closeBatch>[1], 'account'> = {}): Record<string, unknown> {
+  return closeBatch(payouts, { ...opts, account: W.engHotel2.address })
+}
+
+export function hotel2Input(over: Partial<DecideInput> = {}): DecideInput {
+  return {
+    stage: 'confirm',
+    proposedTx: null,
+    engagement: hotel2Engagement(),
+    template: templates.hotel2,
+    layers: [policies.baseline, policies.hotel2],
+    mandate: hotel2Mandate(),
+    statements: [],
+    ledger: hotel2Ledger(),
+    inflight: [],
+    ...over,
+  }
 }
 
 // ── R2: owner-wallet consumer shopping ─────────────────────────────

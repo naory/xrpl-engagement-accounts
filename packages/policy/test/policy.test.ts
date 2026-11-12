@@ -390,6 +390,7 @@ describe('lint', () => {
     expect(lintPolicy(policies.baseline)).toEqual([])
     expect(lintPolicy(policies.procurement, templates.procurement)).toEqual([])
     expect(lintPolicy(policies.hotel, templates.hotel)).toEqual([])
+    expect(lintPolicy(policies.hotel2, templates.hotel2)).toEqual([])
   })
   it('flags floats, unknown statement types, duplicate ids and missing stages', () => {
     const bad: PolicyDoc = structuredClone(policies.procurement)
