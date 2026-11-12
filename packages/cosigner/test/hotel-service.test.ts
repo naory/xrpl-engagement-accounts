@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net'
 import { describe, expect, it } from 'vitest'
 import { localSigner, verifyStatement, type Statement } from '@eng/core'
 import { CosignerService, FixtureLedgerSource, createServer, type Receipt } from '@eng/cosigner'
-import { LEDGER_INDEX, W, checkin, claim, dispute, hotel2Engagement, hotel2Ledger, hotel2Mandate, policies, statement, templates } from '../../policy/test/fixtures.ts'
+import { LEDGER_INDEX, NOW, W, checkin, claim, dispute, hotel2Engagement, hotel2Ledger, hotel2Mandate, policies, review, statement, templates } from '../../policy/test/fixtures.ts'
 
 const ENG = 'eng_hotel2_fixture'
 
@@ -154,5 +154,63 @@ describe('co-signer attestation store', () => {
     } finally {
       server.close()
     }
+  })
+
+  it('decide() drops a window-governed statement passed only in the request (NOT_RECEIPTED)', async () => {
+    const { svc, source } = setup('2026-11-11T15:01:00Z')
+    await svc.ingest(ENG, checkin('checked_in'))
+    source.snap.closeTime = NOW // after disputeWindowEnds
+    const late = claimAt('2026-11-18T09:30:00Z', [{ amount: '40.00' }], '40.00')
+    await expect(svc.ingest(ENG, late)).rejects.toThrow(/LATE/)
+    const d = await svc.decide({ engagementId: ENG, stage: 'default.release', statements: [late] })
+    expect(d.results.find((r) => r.id === 'L5')?.result).toBe('pass')
+    expect(d.statementsRejected).toContainEqual({ id: late.id, type: 'party.claim/1', code: 'NOT_RECEIPTED' })
+    expect(d.record.claim.statementsRejected).toContainEqual({ id: late.id, type: 'party.claim/1', code: 'NOT_RECEIPTED' })
+    expect(d.record.claim.statementsUsed).not.toContain(late.id)
+  })
+
+  it('decide() still counts a receipted claim passed again in the request, once', async () => {
+    const { svc, source } = setup('2026-11-14T15:01:00Z')
+    const c = claim([{ kind: 'minibar', amount: '40.00' }])
+    await svc.ingest(ENG, c)
+    source.snap.closeTime = NOW
+    const d = await svc.decide({ engagementId: ENG, stage: 'default.release', statements: [c] })
+    expect(d.results.find((r) => r.id === 'L5')?.result).toBe('fail')
+    expect(d.statementsRejected.filter((r) => r.id === c.id)).toEqual([])
+    expect((d.record.claim.statementsUsed as string[]).filter((id) => id === c.id)).toEqual([c.id])
+  })
+
+  it('decide() still accepts non-governed statements passed only in the request (review)', async () => {
+    const { svc } = setup(NOW)
+    const r = review(W.dana, ENG)
+    const d = await svc.decide({ engagementId: ENG, stage: 'default.release', statements: [r] })
+    expect(d.statementsRejected).toEqual([])
+    expect(d.record.claim.statementsUsed).toContain(r.id)
+  })
+
+  it('rejects a dispute whose phase is missing or names no window (BAD_PHASE)', async () => {
+    const { svc } = setup(NOW)
+    const disputeWith = (phase?: string) => statement(W.dana, {
+      kind: 'PRINCIPAL', type: 'party.dispute/1', engagementId: ENG, subject: { bookingId: 'ATL-60417' },
+      claim: { ...(phase ? { phase } : {}), reason: 'x', bond: { currency: 'RLUSD', value: '10.00' }, evidenceHashes: [] },
+      observedAt: '2026-11-18T09:30:00Z', issuedAt: '2026-11-18T09:30:00Z',
+    })
+    await expect(svc.ingest(ENG, disputeWith('late'))).rejects.toThrow(/BAD_PHASE/)
+    await expect(svc.ingest(ENG, disputeWith())).rejects.toThrow(/BAD_PHASE/)
+    expect(svc.statements(ENG)).toEqual([])
+  })
+
+  it('rejects at ingest what the policy pipeline rejects at the receipt ledger (REJECTED: <code>)', async () => {
+    const { svc, source } = setup('2026-11-11T15:01:00Z')
+    const futureObserved = statement(W.atlas, {
+      kind: 'COUNTERPARTY', type: 'party.checkin/1', engagementId: ENG, subject: { bookingId: 'ATL-60417' },
+      claim: { status: 'checked_in', room: '204', deposit: { currency: 'RLUSD', value: '150.00' } },
+      observedAt: '2026-11-11T15:10:00Z', issuedAt: '2026-11-11T15:00:00Z',
+    })
+    await expect(svc.ingest(ENG, futureObserved)).rejects.toThrow(/REJECTED: FUTURE_DATED/)
+    // The hotel's master key is disabled on the ledger; only its RegularKey may sign.
+    source.snap.accounts[W.atlas.address] = { exists: true, masterDisabled: true, regularKey: W.stranger.address }
+    await expect(svc.ingest(ENG, checkin('checked_in'))).rejects.toThrow(/REJECTED: KEY_NOT_AUTHORIZED/)
+    expect(svc.statements(ENG)).toEqual([])
   })
 })

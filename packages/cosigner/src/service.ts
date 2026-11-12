@@ -156,7 +156,12 @@ export class CosignerService {
 
     const windows = st.template.attestationWindows ?? {}
     const phase = (s.claim as { phase?: unknown }).phase
-    const window = (typeof phase === 'string' ? windows[`${s.type}#${phase}`] : undefined) ?? windows[s.type]
+    let window: string | undefined
+    if (Object.keys(windows).some((k) => k.startsWith(`${s.type}#`))) {
+      // Phased type: the phase must name one of its windows, or the statement would escape every deadline.
+      window = typeof phase === 'string' ? windows[`${s.type}#${phase}`] : undefined
+      if (!window) throw new Error(`BAD_PHASE: ${s.type} phase ${JSON.stringify(phase ?? null)} has no window`)
+    } else window = windows[s.type]
     if (window) {
       const deadline = Date.parse(st.record.timers?.[window] ?? '')
       if (Number.isNaN(deadline)) throw new Error(`NO_DEADLINE: engagement has no timer ${window}`)
@@ -194,8 +199,16 @@ export class CosignerService {
     const st = this.engagements.get(req.engagementId)
     if (!st) throw new Error(`unknown engagement ${req.engagementId}`)
     const tx = req.txBlob ? unsigned(xrpl.decode(req.txBlob) as Json) : req.tx ? unsigned(req.tx) : null
-    // Stored (receipted) statements plus those passed in, deduplicated by id.
-    const statements = [...new Map([...this.statements(req.engagementId), ...(req.statements ?? [])].map((s) => [s.id, s])).values()]
+    // Stored (receipted) statements plus those passed in, deduplicated by id. A window-governed statement
+    // counts only once receipted ("posted" = receipted), so request copies of unreceipted ones are dropped.
+    const stored = this.statements(req.engagementId)
+    const notReceipted: Decision['statementsRejected'] = []
+    const passed = (req.statements ?? []).filter((s) => {
+      if (st.attestations.has(s?.id) || !windowGoverned(st.template, s?.type)) return true
+      notReceipted.push({ id: s?.id ?? '(none)', type: s?.type, code: 'NOT_RECEIPTED' })
+      return false
+    })
+    const statements = [...new Map([...stored, ...passed].map((s) => [s?.id, s])).values()]
     const assets = this.assetsOf(st.layers)
 
     // Snapshot: key state for attesters; credentials for payees, attesters and the account.
@@ -214,10 +227,11 @@ export class CosignerService {
     const reserved = mine.flatMap((i) => i.reserved)
     const engagement: EngagementRecord = { ...st.record, consumed: [...(st.record.consumed ?? []), ...reserved] }
 
-    const d = decide({
+    const decided = decide({
       stage: req.stage, proposedTx: tx, engagement, template: st.template, layers: st.layers,
       mandate: st.mandate, statements, ledger, inflight: mine.map(({ decisionId, txHash, lastLedgerSequence, payouts }) => ({ decisionId, txHash, lastLedgerSequence, payouts })),
     })
+    const d: Decision = notReceipted.length ? { ...decided, statementsRejected: [...notReceipted, ...decided.statementsRejected] } : decided
 
     const intentHash = tx ? new TxFacts(tx, { eng: engagement, template: st.template, assets: new Assets(assets), ledger }).intentHash() : ''
     const record = await signStatementAsync(decisionStatementBody(d, { account: this.address, accreditation: this.o.accreditation }, newNonce(), intentHash || undefined), this.o.signer)
@@ -288,6 +302,12 @@ export class CosignerService {
       fs.appendFileSync(path.join(this.o.dataDir, 'decisions.jsonl'), JSON.stringify(s) + '\n')
     }
   }
+}
+
+/** A statement type whose posting is deadline-bound by the template (a `type` or `type#phase` window key). */
+function windowGoverned(t: Template, type: unknown): boolean {
+  if (typeof type !== 'string') return false
+  return Object.keys(t.attestationWindows ?? {}).some((k) => k === type || k.startsWith(`${type}#`))
 }
 
 /** A claim's total must equal the exact sum of its items, in the asset's minor units. */
