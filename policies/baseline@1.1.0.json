@@ -1,13 +1,13 @@
 {
   "policyId": "pol_baseline",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "layer": "baseline",
   "appliesTo": ["*"],
   "language": "cel-eng/1",
   "params": {
     "feeCapDrops": 20000,
     "maxLedgerWindow": 30,
-    "presignedStages": ["default.refund", "default.release", "ladder", "release.documents"],
+    "presignedStages": ["default.refund", "default.release", "default.noshow", "ladder", "release.documents"],
     "concurrentStages": ["spend"],
     "allowedTypes": {
       "open":            ["Batch", "Payment", "SignerListSet", "TicketCreate", "SetRegularKey"],
@@ -15,6 +15,11 @@
       "settle":          ["Batch", "Payment", "TrustSet", "AccountDelete"],
       "default.refund":  ["Batch", "Payment", "TrustSet", "AccountDelete"],
       "default.release": ["Batch", "Payment", "TrustSet", "AccountDelete"],
+      "default.noshow":  ["Batch", "Payment", "TrustSet", "AccountDelete"],
+      "refund.conceded": ["Batch", "Payment", "TrustSet", "AccountDelete"],
+      "ruling.backup":   ["Batch", "Payment", "TrustSet", "AccountDelete"],
+      "ruling.default":  ["Batch", "Payment", "TrustSet", "AccountDelete"],
+      "checkin":         [],
       "ladder":          ["Batch", "Payment", "TrustSet", "AccountDelete"],
       "amend":           ["Batch", "Payment", "TicketCreate", "AccountSet"],
       "close.owner":     ["Batch", "Payment", "TrustSet", "AccountDelete"]

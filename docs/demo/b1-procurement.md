@@ -95,7 +95,7 @@ stays `OPEN` across any number of in-policy spends until the owner closes it.
 Two layers apply, in order: the **baseline** (non-overridable safety) and the **procurement**
 template policy. A spend is signed only if **every** rule in both layers passes.
 
-### 5.1 Baseline — [`policies/baseline@1.0.0.json`](../../policies/baseline@1.0.0.json) (B1–B11)
+### 5.1 Baseline — [`policies/baseline@1.1.0.json`](../../policies/baseline@1.1.0.json) (B1–B11)
 
 Non-overridable. They protect the account regardless of template.
 

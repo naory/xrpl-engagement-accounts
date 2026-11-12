@@ -137,7 +137,7 @@ async function main() {
 
   // ── Co-signer with a demo policy layer (RLUSD issuer + KYB issuer of this run) ──
   const read = <T>(f: string) => JSON.parse(fs.readFileSync(path.join(root, f), 'utf8')) as T
-  const baseline = read<PolicyDoc>('policies/baseline@1.0.0.json')
+  const baseline = read<PolicyDoc>('policies/baseline@1.1.0.json')
   const policy = read<PolicyDoc>('policies/procurement@1.3.0.json')
   policy.version = '1.3.0+demo'
   policy.assets!.RLUSD.issuer = issuer.address

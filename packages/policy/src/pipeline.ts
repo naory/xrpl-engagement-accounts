@@ -12,8 +12,8 @@ export interface TypeMeta {
   maxLagSecs: number | null
 }
 
-/** Claim-type registry (attestations spec §8), pinned as "att-registry@2026.10". */
-export const REGISTRY_VERSION = 'att-registry@2026.10'
+/** Claim-type registry (attestations spec §8), pinned as "att-registry@2026.11". */
+export const REGISTRY_VERSION = 'att-registry@2026.11'
 export const REGISTRY: Record<string, TypeMeta> = {
   'shipping.shipped/1': { scope: 'engagement', selfAttest: 'never', singleUse: false, maxLagSecs: 86400 },
   'shipping.delivered/1': { scope: 'engagement', selfAttest: 'never', singleUse: false, maxLagSecs: 86400 },
@@ -26,6 +26,10 @@ export const REGISTRY: Record<string, TypeMeta> = {
   'merchant.category/1': { scope: 'global', selfAttest: 'never', singleUse: false, maxLagSecs: null },
   'production.started/1': { scope: 'engagement', selfAttest: 'corroborate', singleUse: false, maxLagSecs: 86400 },
   'approval.payment/1': { scope: 'engagement', selfAttest: 'never', singleUse: true, maxLagSecs: 3600 },
+  'party.checkin/1': { scope: 'engagement', selfAttest: 'always', singleUse: false, maxLagSecs: null },
+  'party.concession/1': { scope: 'engagement', selfAttest: 'always', singleUse: false, maxLagSecs: null },
+  'party.issue/1': { scope: 'engagement', selfAttest: 'always', singleUse: false, maxLagSecs: null },
+  'party.claim/1': { scope: 'engagement', selfAttest: 'always', singleUse: false, maxLagSecs: null },
   'party.mandate/1': { scope: 'engagement', selfAttest: 'always', singleUse: false, maxLagSecs: null },
   'party.confirmation/1': { scope: 'engagement', selfAttest: 'always', singleUse: false, maxLagSecs: null },
   'party.invoice/1': { scope: 'engagement', selfAttest: 'always', singleUse: true, maxLagSecs: null },

@@ -8,6 +8,8 @@ import { toCel } from './convert.ts'
 export const TF_ALL_OR_NOTHING = 0x00010000
 export const TF_BATCH_MODES = 0x00010000 | 0x00020000 | 0x00040000 | 0x00080000
 export const TF_PARTIAL_PAYMENT = 0x00020000
+/** XRPL: AccountDelete requires the account's Sequence + 256 <= current ledger index. */
+export const ACCOUNT_DELETE_MIN_AGE = 256
 
 export function hexToUtf8(h: unknown): string {
   return typeof h === 'string' ? Buffer.from(h, 'hex').toString('utf8') : ''
@@ -149,7 +151,11 @@ export class TxFacts {
   /** B11: a pre-signed outcome must certainly succeed at the pinned ledger (single-shot, F2). */
   wouldSucceed(): boolean {
     const code = this.ctx.eng.asset
-    if (this.closes()) return this.drainsExactly() && extraObjects(this.ctx.ledger, this.ctx.eng.account) === 0
+    if (this.closes()) {
+      const seq = this.ctx.ledger.accounts[this.ctx.eng.account]?.sequence
+      const oldEnough = seq == null || seq + ACCOUNT_DELETE_MIN_AGE <= this.ctx.ledger.index
+      return oldEnough && this.drainsExactly() && extraObjects(this.ctx.ledger, this.ctx.eng.account) === 0
+    }
     const bal = ledgerBalance(this.ctx.ledger, this.ctx.assets, this.ctx.eng.account, code)
     return this.payouts.sum(code).cmp(bal) <= 0
   }

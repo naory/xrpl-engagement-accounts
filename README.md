@@ -249,7 +249,7 @@ xrpl-engagement-accounts/
 │   ├── indexer/         # ⏳ settlements → reputation records (reviews, rulings, bonds)
 │   └── sdk/             # ⏳ client SDK for agents & merchants
 ├── templates/           # ✅ hotel@1 (escrow), procurement@1 (owner wallet)
-├── policies/            # ✅ baseline@1.0.0 (B1–B11), hotel@1.1.0, procurement@1.3.0 (W0–W7 incl. x402 W7)
+├── policies/            # ✅ baseline@1.1.0 (B1–B11), hotel@1.1.0, procurement@1.3.0 (W0–W7 incl. x402 W7)
 ├── vectors/             # ✅ conformance vectors: 50 policy, 11 template, 6 statement
 ├── docs/
 │   ├── SCOPE.md         # supported use cases by tier, component status

@@ -196,7 +196,7 @@ export class DemoOrchestrator {
     must(await sendSimple(this.client, eng, { TransactionType: 'AccountSet', Account: eng.address, SetFlag: ASF_DISABLE_MASTER }), 'eng disable master')
 
     // Policy layer for this run
-    const baseline = this.read<PolicyDoc>('policies/baseline@1.0.0.json')
+    const baseline = this.read<PolicyDoc>('policies/baseline@1.1.0.json')
     const policy = this.read<PolicyDoc>('policies/procurement@1.3.0.json')
     policy.version = '1.3.0+web'
     policy.assets!.RLUSD.issuer = issuer.address
@@ -285,7 +285,7 @@ export class DemoOrchestrator {
     this.pooled = true
 
     // Policy layer for this run
-    const baseline = this.read<PolicyDoc>('policies/baseline@1.0.0.json')
+    const baseline = this.read<PolicyDoc>('policies/baseline@1.1.0.json')
     const policy = this.read<PolicyDoc>('policies/procurement@1.3.0.json')
     policy.version = '1.3.0+web'
     policy.assets!.RLUSD.issuer = issuer.address

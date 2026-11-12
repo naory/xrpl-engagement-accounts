@@ -130,16 +130,16 @@
       }
     },
     "layers": {
-      "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33": {
+      "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40": {
         "policyId": "pol_baseline",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "layer": "baseline",
         "appliesTo": ["*"],
         "language": "cel-eng/1",
         "params": {
           "feeCapDrops": 20000,
           "maxLedgerWindow": 30,
-          "presignedStages": ["default.refund","default.release","ladder","release.documents"],
+          "presignedStages": ["default.refund","default.release","default.noshow","ladder","release.documents"],
           "concurrentStages": ["spend"],
           "allowedTypes": {
             "open": ["Batch","Payment","SignerListSet","TicketCreate","SetRegularKey"],
@@ -147,6 +147,11 @@
             "settle": ["Batch","Payment","TrustSet","AccountDelete"],
             "default.refund": ["Batch","Payment","TrustSet","AccountDelete"],
             "default.release": ["Batch","Payment","TrustSet","AccountDelete"],
+            "default.noshow": ["Batch","Payment","TrustSet","AccountDelete"],
+            "refund.conceded": ["Batch","Payment","TrustSet","AccountDelete"],
+            "ruling.backup": ["Batch","Payment","TrustSet","AccountDelete"],
+            "ruling.default": ["Batch","Payment","TrustSet","AccountDelete"],
+            "checkin": [],
             "ladder": ["Batch","Payment","TrustSet","AccountDelete"],
             "amend": ["Batch","Payment","TicketCreate","AccountSet"],
             "close.owner": ["Batch","Payment","TrustSet","AccountDelete"]
@@ -620,7 +625,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -628,17 +633,17 @@
         "decision": "SIGN",
         "failing": [],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -653,8 +658,8 @@
           "att:CDA0B0CDFC79D72B8AA45DAB99C43550D9E45EAF12594AF9F12E02A41B958A3F"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:18ea79102818895a58acde727447b0b3c013ad69036de4ee21702125f55364ca",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:89c74fd78ee13cbdd209e8332079534986a32e97c1ad8a1a32cca5a1d177d77d",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -800,7 +805,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -808,17 +813,17 @@
         "decision": "SIGN",
         "failing": [],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -834,8 +839,8 @@
           "att:BAAF1F479C24ABA5003241B7FAF2493807A52358F89D7A039D6A17F53BE3B985"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:75f69d07f13b7d9c0fca517d4872c4f15e1d3640beca3c0d1016c9840c0b3bc8",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:f595968923464424b73bcbf587fbf644a7a9bfc9cda78e353ba997629180d26b",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -981,7 +986,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -989,17 +994,17 @@
         "decision": "REFUSE",
         "failing": ["W7"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -1015,8 +1020,8 @@
           "att:12AA620A2613A63215D7E76BB2C1354040822AE765631C5F8A8635543FEBE74D"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:08cc34367f93d2ad72630182f7b0296188b3fa3a0cbe5c095857247b0087de9f",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:dd8d3172b557b6e8576f074faa142a4bac6d1b4d3957f06133cce06e04f99f24",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -1162,7 +1167,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1170,17 +1175,17 @@
         "decision": "REFUSE",
         "failing": ["W7"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -1196,8 +1201,8 @@
           "att:13ABCE313ED2EA4405EE725FA320697633E358F91A16EC79458F8865970C53F3"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:fa4a8cc575be02193f1709dcdaa43f842ffa4e2a8a3c693ce9aa0c15f3d3256b",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:7c17191da4fe8c290fdbe47a50348861d7193878bf592f1b6d248b816c540706",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -1328,7 +1333,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1336,17 +1341,17 @@
         "decision": "REFUSE",
         "failing": ["W3"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -1361,8 +1366,8 @@
           "att:76C5EACB321C5C0E213E3A1BF0C137A197B4C7AF9550C790226748EB2B7CA63F"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:474a99ad8634f4f7f85a672d90866a4800b42a0cab946d22b29e593ae0b4a414",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:bb8b732ba87458ca58aa8d1b15048e490888edb74ec8c8b38cf32e710b7bcda5",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -1499,7 +1504,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1507,17 +1512,17 @@
         "decision": "REFUSE",
         "failing": ["W4"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -1532,8 +1537,8 @@
           "att:7EEFAF5BC2525F78035774EF64B6C7EE7357747ED61503E92A81F507A471253C"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:ce77a3afe957e8c8d6497ef5849ead39842db5368e77984d889b00c02ed6c3ff",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:792ae48609f53893de7ecfc8e8dede1b834c83a81695d690ddd13a46c3bd7044",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -1661,7 +1666,7 @@
         ],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1669,17 +1674,17 @@
         "decision": "REFUSE",
         "failing": ["W3"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -1694,8 +1699,8 @@
           "att:2169EC88A5EE5A840A281ACD45005037734463231EFD3142E83BE4CF32034063"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:b4e05756a57cb8e4ab2fdca6dd235aa3d586cd6ed5b486914481bc30cbb1860b",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:023a0d31d30154ae3e6ff1f2396c6fc54902ebae3667930e0157dffb7bce58e9",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -1817,7 +1822,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1825,17 +1830,17 @@
         "decision": "REFUSE",
         "failing": ["W5"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -1850,8 +1855,8 @@
           "att:AEF099EED554D32D9B09E5684CA3B8DA1DA89D8B05052F6AF45950706300462F"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:b5a0a791eafc2535e9a0c2a8ed80d5183f9648d40c38fc5c88351a0dac9d9e48",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:a48455bd5fa9dc5b4a6b89ab14ec0977c4033c2504add2962ce64d9e85fabb6f",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -1990,7 +1995,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1998,17 +2003,17 @@
         "decision": "SIGN",
         "failing": [],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -2024,8 +2029,8 @@
           "att:9A960F044DDEC81F90EBD27F5AC76AE7F3A5BE1CF53DBD27A03FB26B746A0FF0"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:a02e864e376eddcf826519821e06d4fabe6681962b7623289b875f6a5abe9827",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:2cada855ef20dae6c2f3ea28bef8dea99023b152b9e496594f56a3cea6bf98ba",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -2164,7 +2169,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -2172,17 +2177,17 @@
         "decision": "REFUSE",
         "failing": ["W5"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -2198,8 +2203,8 @@
           "att:0C113A5CC4D6C65AE7A770668C5D01B479CF55308AC0D0BEA3DAD8C55594C0F9"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:72b0acc1d78014e49add50fd91dbb75242129ada912b835ae300d21ba1dfef8b",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:ac44878acc429282dd3478fa1a7a083286214c24369792f7cccbe180129535db",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -2338,7 +2343,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -2346,17 +2351,17 @@
         "decision": "REFUSE",
         "failing": ["W5"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -2372,8 +2377,8 @@
           "att:85B5684E4D23676000D4DC933D806741196D9FC4C511D700D1D42B026A497C9A"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:4b062470e6b3c41aab6911bb2db995a895238f8213a85992966eadb56996ae89",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:10cd7606fbb1d3f6b4b6607bce5dce1c2e359e9a4caf867b11bccfaf650f18cc",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -2512,7 +2517,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -2520,17 +2525,17 @@
         "decision": "REFUSE",
         "failing": ["W5"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -2551,8 +2556,8 @@
             "code": "ATTESTER_NOT_IN_TERMS"
           }
         ],
-        "inputsHash": "sha256:b1ebc29ca3ebab18cf9572509d7d269170936e54021b485cef6c81ecc1fb543c",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:b9ffb406695377f7a47ddca15e7885a39dc34e88be6990e65dfaa6cdd23d7103",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -2691,7 +2696,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -2699,17 +2704,17 @@
         "decision": "REFUSE",
         "failing": ["W5"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -2730,8 +2735,8 @@
             "code": "STALE"
           }
         ],
-        "inputsHash": "sha256:65172fb264fff2b792973e22bf808bec10d00035b90b51e23aca24f2ae403c9d",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:74df4ff1b5ba1398f29c2cebf4d945e8664312793cd544f84d837aef35414d95",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -2870,7 +2875,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -2878,17 +2883,17 @@
         "decision": "REFUSE",
         "failing": ["W5"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -2909,8 +2914,8 @@
             "code": "CONSUMED"
           }
         ],
-        "inputsHash": "sha256:3ec1210b398d3e9cbd323b9d58196e1f17b697df35a92bba2303baa09d6c4e01",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:f511e119173b8d5ad951357d22cb781fa3cd04e8d32e8fbbfa331b6a4234435d",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -3032,7 +3037,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3040,17 +3045,17 @@
         "decision": "REFUSE",
         "failing": ["B6","W2","W6"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"fail","reason":"UNAUTHORIZED_DESTINATION"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"fail","reason":"UNAUTHORIZED_DESTINATION"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"fail","reason":"VENDOR_NOT_ALLOWED"},
@@ -3065,8 +3070,8 @@
           "att:CDFF62D72D40E1CA1F48A60C285B305CC8C19F2BEA77AEDCFD89FC5C8445F024"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:10cf3c1924dab0dd75f4b77fb13d4b28965ee55f86bb563a1c6664e31a2919aa",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:a0500961b266e35e99652360c22a96c5c485ef24424c3a3486c660080ff4fd59",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -3181,7 +3186,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3189,17 +3194,17 @@
         "decision": "REFUSE",
         "failing": ["W2"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"fail","reason":"VENDOR_NOT_ALLOWED"},
@@ -3214,8 +3219,8 @@
           "att:F9141F676BD3BF318D6DD74A7A0B754A68F3AC8E6545A1EB5A2DD9AB6FEF5CC1"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:e6f614c068890f4bfd4bbf93d3db2c997b7acc30d4db8d6215c6e3c154e9c0ea",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:83fb9ca7d3f99f273958df40d79dfc95d50a31b78a0842dfe5a06ee786934267",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -3330,7 +3335,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3338,17 +3343,17 @@
         "decision": "REFUSE",
         "failing": ["W2"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"fail","reason":"VENDOR_NOT_ALLOWED"},
@@ -3363,8 +3368,8 @@
           "att:CD1150878D3AC3B6B60FA78F89DEF3BA0AFC53F21BF7C6086100BD75C247F360"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:0fe026890f4a04ce2b0b516fd681493695a1dde481772a49a6eb371e11e4a273",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:388966af705ce7cbef2329a9983ff1fbeed1b4999f3b64e08272e90eff578899",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -3486,7 +3491,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3494,17 +3499,17 @@
         "decision": "REFUSE",
         "failing": ["W6"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -3519,8 +3524,8 @@
           "att:D8B1C9B348A35C89BFD6BF3F8A523D83CB552350D64BC60540305F6486722FB8"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:1a9d4ed968773434aa22148385d1346a06382a4ab9cb57746576868c9cb5a7cc",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:eb4d27b6bd15c19d4d4f3faaac8e84089ec9112f538924b1ff918cf80165cd2d",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -3642,7 +3647,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3650,17 +3655,17 @@
         "decision": "REFUSE",
         "failing": ["W6"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -3675,8 +3680,8 @@
           "att:61B17298E6EBFB65FB86C145B914AA96C68028951BB56F963135063F5F177A1B"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:003a77c6bf6a04898db116b9a6e3a59879669621339f9c2c4107900e3be27a6f",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:f3193a77b8b9ed8fb55e0cb266ada2ad826b23ba7068834238347d5b66f04315",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -3798,7 +3803,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3806,17 +3811,17 @@
         "decision": "REFUSE",
         "failing": ["B10"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"fail","reason":"WRONG_ISSUER"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"fail","reason":"WRONG_ISSUER"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -3831,8 +3836,8 @@
           "att:6C8721480DBB8B397C20528EE8113676F074CC97A42F315A4DF8B1D125D7172F"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:0eb576bcb120935611deec4d07bcc47e24e8acd543e53121baefe4dfc914ef78",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:a2dff0b93fabe0756363ca2ecf57087c2d491b29cf20987835dc4c5114262bbf",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -3977,7 +3982,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3985,17 +3990,17 @@
         "decision": "REFUSE",
         "failing": ["B2","W1"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"fail","reason":"TX_TYPE_NOT_ALLOWED"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"fail","reason":"TX_TYPE_NOT_ALLOWED"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"fail","reason":"TX_SHAPE"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -4010,8 +4015,8 @@
           "att:457A97C073EE30AF5394DE7EAEDEB82135362B052FD70BB056157C15299FDE11"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:2169608f52338952bdd3366611bdc9e47b46cb2cf3b6198f896c2c14629dc317",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:a6f6bab65c6181573c679bb62446608e2a0b5848135335987eda744a9de7214d",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -4133,7 +4138,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -4141,17 +4146,17 @@
         "decision": "REFUSE",
         "failing": ["B3"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"fail","reason":"FEE_TOO_HIGH"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"fail","reason":"FEE_TOO_HIGH"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -4166,8 +4171,8 @@
           "att:740E17B0666C9634392440CA46DABCA2E87D348C49BE1621FFC5052B3BBCC8A7"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:c8bac17534d4a0050fa92b68e7ff9063e3afd02d8040ecb0d3551f645a01b38e",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:0752fd97c9206650e5c4a92c6c5be3d052f633bbbaca7408a90e53519c712275",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -4288,7 +4293,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -4296,17 +4301,17 @@
         "decision": "REFUSE",
         "failing": ["B4"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"fail","reason":"NO_EXPIRY"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"fail","reason":"NO_EXPIRY"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -4321,8 +4326,8 @@
           "att:7821C15F253A9A89743F192A3BE3903FCC0A351F2FACFB5FBF262D22E23DB3C2"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:da8f9e1e96273c8cd076cb46fd7f5d8f3561337d3df52b14c3a3e2ea645745a7",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:cd6c134c5fd0195f4a1585abd6fc0407d392c5c5cd8a2e6729ef212e9b34af9c",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -4444,7 +4449,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -4452,17 +4457,17 @@
         "decision": "REFUSE",
         "failing": ["W0"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_procurement@1.3.0","id":"W0","result":"fail","reason":"MANDATE_INVALID"},
           {"layer":"pol_procurement@1.3.0","id":"W1","result":"pass"},
           {"layer":"pol_procurement@1.3.0","id":"W2","result":"pass"},
@@ -4477,8 +4482,8 @@
           "att:78B8D1AF2D6C3E3DE355D83FA549CBD758B09FCFB0FFD0CC67D5B5BAE80BA36E"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:330867aafcb1ad4fbdfc38ad71dd893894882da0c372da4c1de7a5536504bd63",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:d7754456e7427a096b5bb606e221cf77e86911eec70e78fe6ee8a4b7c3f170f6",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -4600,7 +4605,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -4609,25 +4614,25 @@
         "failing": ["NO_RULES_FOR_STAGE","B2"],
         "results": [
           {"layer":"-","id":"NO_RULES_FOR_STAGE","result":"fail","reason":"NO_RULES_FOR_STAGE"},
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"error","reason":"TX_TYPE_NOT_ALLOWED"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"}
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"error","reason":"TX_TYPE_NOT_ALLOWED"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"}
         ],
         "statementsUsed": [
           "att:2C45EEBC278B913C5A36998EFBB06681AD0420345AA0FCAFC04688C796C69D4D",
           "att:2D9BB3BF5A87BD3DBC589BCF4FA857692DB95CD2A1130C0DC1B31E16561BBAF3"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:8993790aff051e363f0bebb3881178dbe3b7f919c908e81eb37c20ddbc9b91ca",
-        "effectiveHash": "att:464E9FA1E64A1290EB7B5E31ED838088CD9C7C650B4585879E96C1D5EA02F924"
+        "inputsHash": "sha256:5bb61810ebe3a4803ea9b0e5ac2b45af941302c6f8db30b5c5921960fb1bcc40",
+        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
       }
     },
     {
@@ -4804,7 +4809,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -4812,17 +4817,17 @@
         "decision": "SIGN",
         "failing": [],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_hotel@1.1.0","id":"S1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S4","result":"pass"},
@@ -4833,8 +4838,8 @@
           "att:B3B2C63D7F1ABDD29A13D50B396715A4218CA956FD6C569582649F00E19EC58F"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:ab7c41ed70aaa0b1504685d4eba2bf5b74c18ef158e696b0cbb4e5ad9837f4b8",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:f4e4d793225f5f01f5306c250cbca125ee6069c735bada26b506809ad2f83773",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -4993,7 +4998,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -5001,17 +5006,17 @@
         "decision": "REFUSE",
         "failing": ["S5"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_hotel@1.1.0","id":"S1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S4","result":"pass"},
@@ -5019,8 +5024,8 @@
         ],
         "statementsUsed": ["att:0DD5AA9D7064F4A203335BCB01C97EC7936236D369370F100F53C1A759FFDF46"],
         "statementsRejected": [],
-        "inputsHash": "sha256:97ecc84edefd28f7dfcf098d2b569a9374b0477eb83cc78553cb85d40e649d19",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:b4ec4b1d67b401f85e0e74ba4d13e88a7102be63effc8215481e7d392054ad60",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -5205,7 +5210,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -5213,17 +5218,17 @@
         "decision": "REFUSE",
         "failing": ["S1"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_hotel@1.1.0","id":"S1","result":"fail","reason":"WRONG_STATE"},
           {"layer":"pol_hotel@1.1.0","id":"S2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S4","result":"pass"},
@@ -5234,8 +5239,8 @@
           "att:A6D0746BA92C6FB58DB8AC2E4F160573FA9EC57D1F40DD2A4117EF8DF76D5D91"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:6eaf12bb40724f917616423ab3f80bef87dfe9e1cdb7821caad2f2cd002452b9",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:b2bb6b7a8c68d8fce087e6fd2c6bb14e803642a0eb039a428963bd2d0c24e51e",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -5412,7 +5417,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -5420,17 +5425,17 @@
         "decision": "REFUSE",
         "failing": ["S4"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_hotel@1.1.0","id":"S1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S4","result":"fail","reason":"FEE_MISMATCH"},
@@ -5441,8 +5446,8 @@
           "att:56AD2E3F671F576A6577219F4E2B86445596DF138AD5042025F75CDE6C19044D"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:db07b5bb24cbca9c2ad466c3eb7bdf54392c43a8d435b27aa90ca85a6f530f7c",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:a817ccba46b30a54a54d10fe76de35ffc26c8a3e685e797cc7f279241265a91a",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -5619,7 +5624,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -5627,17 +5632,17 @@
         "decision": "REFUSE",
         "failing": ["B7","S4"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"fail","reason":"UNCLEAN_CLOSE"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"fail","reason":"UNCLEAN_CLOSE"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_hotel@1.1.0","id":"S1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S4","result":"fail","reason":"FEE_MISMATCH"},
@@ -5648,8 +5653,8 @@
           "att:D6EF0EB7619738A7D74B1F19B40D0E3DBB344169D86D05E7968C6E222A21BA31"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:04617233c39a1dabd2a727daf160316d9d9c5e787097f4d6a335a9acc5ccd23f",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:763048cfd53b525cce6d1df445295d4a7bc9dcbdfa50d15037c56fe148f3af2e",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -5842,7 +5847,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -5850,17 +5855,17 @@
         "decision": "SIGN",
         "failing": [],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_hotel@1.1.0","id":"S1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S4","result":"pass"},
@@ -5871,8 +5876,8 @@
           "att:8F246E50868B523EBF7E97166B50431A80ED8F76E9ACF8DEB38B8232E92450A8"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:986cde919009a4e405f33cc1728a1e5ce97e58f89c249cbcb246e72c64133417",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:b1cf152626323ab62497d1e5747b19050c5cbe2c5bb37c38a43280b88c4a7b66",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -6049,7 +6054,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6057,17 +6062,17 @@
         "decision": "REFUSE",
         "failing": ["B7"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"fail","reason":"UNCLEAN_CLOSE"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"fail","reason":"UNCLEAN_CLOSE"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_hotel@1.1.0","id":"S1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S4","result":"pass"},
@@ -6078,8 +6083,8 @@
           "att:E2AF5CCA8560D4AF776EBC75ADA1D0F841A3EE410113396F4E7471CCB607E996"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:aa2eb227ab40b329fd5f8979f614e862f81cce3c135fd816f6608253b299781a",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:13637d062131aab057e2ed1d989ef845a45a8d331b58cb163a0a97ca45ae9e92",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -6256,7 +6261,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6264,17 +6269,17 @@
         "decision": "REFUSE",
         "failing": ["B5"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"fail","reason":"NOT_ALL_OR_NOTHING"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"fail","reason":"NOT_ALL_OR_NOTHING"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_hotel@1.1.0","id":"S1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"S4","result":"pass"},
@@ -6285,8 +6290,8 @@
           "att:23575B8652F0B7ED44C041BFC88F377EDAEE877843C56648324A1A186E8AF63A"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:80efbc7392069bb0fb2fffcbdae4ff9a63bc500fd175ac2ec6a214bb67136659",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:3e2aa27a9bbb5bbc7a244a1840005d5f8d1bbea3fe781523e2e67193bc77e9fb",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -6395,7 +6400,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6403,17 +6408,17 @@
         "decision": "SIGN",
         "failing": [],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_hotel@1.1.0","id":"C1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"C2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"C4","result":"pass"}
@@ -6423,8 +6428,8 @@
           "att:71E3A063B6B8F685D0DCD5DA0CAD0A92A3167BAD8FE20972D16404A3924B64DC"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:f3387ef227d04e1ada05b6ad750f8d136df4d09d43880793a33f91d5975e8a35",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:d18618fe02a594194e7a65602ef380cc515874a11db43675babe39a2ef40609d",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -6533,7 +6538,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6541,17 +6546,17 @@
         "decision": "REFUSE",
         "failing": ["C2"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"n/a"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_hotel@1.1.0","id":"C1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"C2","result":"fail","reason":"MANDATE_MISMATCH"},
           {"layer":"pol_hotel@1.1.0","id":"C4","result":"pass"}
@@ -6561,8 +6566,8 @@
           "att:E8512D06D8F3CAB9CD81DC9D7151BA8876AD17DB546433E4A097E2F524A2584C"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:46e83d4522f7bf843b0e96572bddc7fb247768d018eb51de804ef9d378c78c55",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:5d3187e5cdddf132301e79e6cf678e11ba3800731d38468dfdc2dbc1e9d583bb",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -6700,7 +6705,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6708,25 +6713,25 @@
         "decision": "REFUSE",
         "failing": ["R1"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"R1","result":"fail","reason":"NOT_DUE"},
           {"layer":"pol_hotel@1.1.0","id":"R2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"R3","result":"pass"}
         ],
         "statementsUsed": ["att:299EAE5DEC4BFEACEC83DE37154551B0AA637BEDB2426A57AD7BFDFFB2CCF21C"],
         "statementsRejected": [],
-        "inputsHash": "sha256:bd86d359850c86e19304327f1d424ce2c98ef4675959b9c30b5c6b55b39d9284",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:a21f781b94dd2c33b7a4a57999848dfec1f3cb6c39dc9e96f5a01c13f7d07920",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -6864,7 +6869,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6872,25 +6877,25 @@
         "decision": "SIGN",
         "failing": [],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"R1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"R2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"R3","result":"pass"}
         ],
         "statementsUsed": ["att:A8F579D7D1063CF5C32B1DB4C416764407B14EB971047003A8B93782635B699C"],
         "statementsRejected": [],
-        "inputsHash": "sha256:e65d614784e57709c92c03a76caef97ada04566ac1a50282a84d136475cb1090",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:ad9841743278ae7eba8d3a24d435e1547e8a7ecd994038154380f537926b9109",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -7045,7 +7050,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -7053,17 +7058,17 @@
         "decision": "SIGN",
         "failing": [],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"L1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"L2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"L3","result":"pass"},
@@ -7071,8 +7076,8 @@
         ],
         "statementsUsed": ["att:CA2224AA83049001AACFC106A12B441B87025050ED614F1EA66AB05B0B921E32"],
         "statementsRejected": [],
-        "inputsHash": "sha256:cf85dc0dcf6dab5fdf84976df8f4cc829095abf3bf5e6230b9c20accb994ff8a",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:b0243e77721c7947d2b27cf221ed1212ed30cb139e5ed18629ba817ebd9ddd57",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -7235,7 +7240,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -7243,17 +7248,17 @@
         "decision": "REFUSE",
         "failing": ["L2"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"L1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"L2","result":"fail","reason":"DISPUTE_OPEN"},
           {"layer":"pol_hotel@1.1.0","id":"L3","result":"pass"},
@@ -7261,8 +7266,8 @@
         ],
         "statementsUsed": ["att:D49111F1C024ADD2A2AA133F8C6447B871DF00485EAA50FC9AC7065B12BC5429"],
         "statementsRejected": [],
-        "inputsHash": "sha256:52e066bd0d88228a5ee790e09f0e34fd68f9b41241bc9fbfcc9416856cfd4310",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:e03a8f5dce544d515a5ca7e21a092c408d35aa79da4746da1f84146851462a16",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -7417,7 +7422,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -7425,17 +7430,17 @@
         "decision": "REFUSE",
         "failing": ["B7","B11","L3"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"fail","reason":"UNCLEAN_CLOSE"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"fail","reason":"WOULD_FAIL"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"fail","reason":"UNCLEAN_CLOSE"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"fail","reason":"WOULD_FAIL"},
           {"layer":"pol_hotel@1.1.0","id":"L1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"L2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"L3","result":"fail","reason":"BALANCE_CHANGED"},
@@ -7443,8 +7448,8 @@
         ],
         "statementsUsed": ["att:1D910FD3C8A4DCE7DB8088B3A800222CB4537AEE036FB486E6DE65A638A3BE37"],
         "statementsRejected": [],
-        "inputsHash": "sha256:b6d763f165ed30f660dccc50edd7937c3c461f3a13c8176ea8bb377f235c8a1e",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:ae94fe859ae10c4ce9d1cff2e9506ff6c1e4c8fd3be076ae94532f9119224c64",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -7599,7 +7604,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -7607,17 +7612,17 @@
         "decision": "REFUSE",
         "failing": ["B11"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"fail","reason":"WOULD_FAIL"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"fail","reason":"WOULD_FAIL"},
           {"layer":"pol_hotel@1.1.0","id":"L1","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"L2","result":"pass"},
           {"layer":"pol_hotel@1.1.0","id":"L3","result":"pass"},
@@ -7625,8 +7630,8 @@
         ],
         "statementsUsed": ["att:C6754208D5EC038644C6B44069F2C2B1D09E0BB0273805D1754A0EEE5DB449D8"],
         "statementsRejected": [],
-        "inputsHash": "sha256:e83ff06bea43c6a1d372f149098d7db556f32ca28105f22f831531d87528cea9",
-        "effectiveHash": "att:4CAE86332F2321A4E0624B2824367DE2F0BAF78BE041210CA34D24C3F335A650"
+        "inputsHash": "sha256:657b2d8928f1a4f190870bbc3b990a84211a1bb7131d57d1e4598dedb8d198a1",
+        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
       }
     },
     {
@@ -7745,7 +7750,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -7753,17 +7758,17 @@
         "decision": "SIGN",
         "failing": [],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_shopping@1.0.0","id":"SH0","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH1","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH2","result":"pass"},
@@ -7777,8 +7782,8 @@
           "att:C216D4BFBF4F1174DD438B4D229A6B3B2B1D3870AAB540C884434CB6ADFA1D34"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:f62cbb52caf6f932dbd7ee7faa6b63e9d0d94168ca88ada982b042f0ca8ddaa9",
-        "effectiveHash": "att:0ACB7B9DD4898F37DCE3EEA9C27651455E8759B8BEAAE436C0F1B937CA660BF6"
+        "inputsHash": "sha256:b216d90d2edc60b4ab5f87418c901c0fcb3cdc5364bc7ecf9141c347af581393",
+        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
       }
     },
     {
@@ -7880,7 +7885,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -7888,17 +7893,17 @@
         "decision": "REFUSE",
         "failing": ["SH2"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_shopping@1.0.0","id":"SH0","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH1","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH2","result":"fail","reason":"MERCHANT_CATEGORY_NOT_ALLOWED"},
@@ -7911,8 +7916,8 @@
           "att:942D6420E63CA28C8C04768C0AE388DDE5A0E0F48819E0EF3257A847B0F0D290"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:4b47c83f6178aa307c93ae1490038f35e8fc80886d82be296f4ae2427e2bd788",
-        "effectiveHash": "att:0ACB7B9DD4898F37DCE3EEA9C27651455E8759B8BEAAE436C0F1B937CA660BF6"
+        "inputsHash": "sha256:7503efd12d7704bb261a9674a343eeaf1eeb53f78fad28d9bd13f512e035a8b5",
+        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
       }
     },
     {
@@ -8031,7 +8036,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8039,17 +8044,17 @@
         "decision": "REFUSE",
         "failing": ["SH2"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_shopping@1.0.0","id":"SH0","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH1","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH2","result":"fail","reason":"MERCHANT_CATEGORY_NOT_ALLOWED"},
@@ -8063,8 +8068,8 @@
           "att:362D192F4337872E3884D515CCBF8C4AE9D1160CA151B4392C634B7CBE0B3E7A"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:d6d346579f13956950b441310efa4b238c17bb5fface2706ebeab801c8009c02",
-        "effectiveHash": "att:0ACB7B9DD4898F37DCE3EEA9C27651455E8759B8BEAAE436C0F1B937CA660BF6"
+        "inputsHash": "sha256:10347cdc9e45e8de1c48bc5b33a3a6170399fc8ff5ce7f1cac0f23dad65368e3",
+        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
       }
     },
     {
@@ -8192,7 +8197,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8200,17 +8205,17 @@
         "decision": "REFUSE",
         "failing": ["SH3"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_shopping@1.0.0","id":"SH0","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH1","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH2","result":"pass"},
@@ -8224,8 +8229,8 @@
           "att:D115A6176A68B21B79ED1416D72BF69C4C03371EBF36CF34915849DFFB589BAB"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:ed7c527a778ef0c31b31dd1b8dedc6490ee1129dbbb2897ad08ae19e70593708",
-        "effectiveHash": "att:0ACB7B9DD4898F37DCE3EEA9C27651455E8759B8BEAAE436C0F1B937CA660BF6"
+        "inputsHash": "sha256:7e37e46e7e4d6db2d41dd6e89846e494c437e03269ac08788c1f9b9d13dd7e27",
+        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
       }
     },
     {
@@ -8353,7 +8358,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8361,17 +8366,17 @@
         "decision": "REFUSE",
         "failing": ["SH4"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_shopping@1.0.0","id":"SH0","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH1","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH2","result":"pass"},
@@ -8385,8 +8390,8 @@
           "att:9E9F229FD27E4911A9B7825034EB618D6017B1051D99E61929F1755DF3C6F812"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:7fe1207cb28d19281f31b1ada7a1990040dd0a6f15725c1ee9134d51e336cd53",
-        "effectiveHash": "att:0ACB7B9DD4898F37DCE3EEA9C27651455E8759B8BEAAE436C0F1B937CA660BF6"
+        "inputsHash": "sha256:480a9c1c1993f9beb10493d3c1fab32b1fb60f6e65ed807d5ca1867585b4e010",
+        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
       }
     },
     {
@@ -8505,7 +8510,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8513,17 +8518,17 @@
         "decision": "REFUSE",
         "failing": ["B6","SH2"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"fail","reason":"UNAUTHORIZED_DESTINATION"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"fail","reason":"UNAUTHORIZED_DESTINATION"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_shopping@1.0.0","id":"SH0","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH1","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH2","result":"fail","reason":"MERCHANT_CATEGORY_NOT_ALLOWED"},
@@ -8537,8 +8542,8 @@
           "att:04702A62B723182D7D8C70F64C9CCE1FDF77941CD86E8524A9927801ED000818"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:ae9cb5a74dc01c536c3b991e8f19b8e817b16ab849b59989565ef25c20584959",
-        "effectiveHash": "att:0ACB7B9DD4898F37DCE3EEA9C27651455E8759B8BEAAE436C0F1B937CA660BF6"
+        "inputsHash": "sha256:3888613db5710e9b2d6e2ec66c002d06c2cf284151970f96b67fed494f917807",
+        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
       }
     },
     {
@@ -8669,7 +8674,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8677,17 +8682,17 @@
         "decision": "SIGN",
         "failing": [],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_shopping@1.0.0","id":"SH0","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH1","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH2","result":"pass"},
@@ -8701,8 +8706,8 @@
           "att:AEDDC859422E2B48FE056A60CB69CD4DF51F845C77F3DD1A27D1811C682A8203"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:e769b1de04b9274cc9c49f89500758f46495132840bfb4c23ac479fa2b4a6527",
-        "effectiveHash": "att:0ACB7B9DD4898F37DCE3EEA9C27651455E8759B8BEAAE436C0F1B937CA660BF6"
+        "inputsHash": "sha256:de78fcc807fbc5ae8d3500e775f3d4b9db160178f49c52f2b6527f539f03462d",
+        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
       }
     },
     {
@@ -8833,7 +8838,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8841,17 +8846,17 @@
         "decision": "REFUSE",
         "failing": ["SH5"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_shopping@1.0.0","id":"SH0","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH1","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH2","result":"pass"},
@@ -8865,8 +8870,8 @@
           "att:60D28348FB576238DF1C2439E6E0DE24D455352E53341541F1C008CDF8A800A2"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:21a2d3171950000e16b962cc8861b38c6dd9da4b1b49b852bb385efa94286f5a",
-        "effectiveHash": "att:0ACB7B9DD4898F37DCE3EEA9C27651455E8759B8BEAAE436C0F1B937CA660BF6"
+        "inputsHash": "sha256:e4963a271538f124d4bee9ca62106109ba88c9f6c562709ad936b1918a0e6aa5",
+        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
       }
     },
     {
@@ -8985,7 +8990,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:51CDA57D731B1B51F6D6D951A8E40B52182A103A076BF5B045E40B7C80909E33",
+          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8993,17 +8998,17 @@
         "decision": "REFUSE",
         "failing": ["SH0"],
         "results": [
-          {"layer":"pol_baseline@1.0.0","id":"B1","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B2","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B3","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B4","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B5","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B6","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B7","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B8","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B9","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B10","result":"pass"},
-          {"layer":"pol_baseline@1.0.0","id":"B11","result":"n/a"},
+          {"layer":"pol_baseline@1.1.0","id":"B1","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B2","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B3","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B4","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B5","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B6","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B7","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B8","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B9","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B10","result":"pass"},
+          {"layer":"pol_baseline@1.1.0","id":"B11","result":"n/a"},
           {"layer":"pol_shopping@1.0.0","id":"SH0","result":"fail","reason":"MANDATE_INVALID"},
           {"layer":"pol_shopping@1.0.0","id":"SH1","result":"pass"},
           {"layer":"pol_shopping@1.0.0","id":"SH2","result":"pass"},
@@ -9017,8 +9022,8 @@
           "att:5071E646C5DA9E93B870F55018EE6A946912F2604F39EE8F0A4B5C3C7D01A44E"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:6e53fa56b37c233bfb0ae56f257dd6c3d221c36d05fc294a19497827e0da5e28",
-        "effectiveHash": "att:0ACB7B9DD4898F37DCE3EEA9C27651455E8759B8BEAAE436C0F1B937CA660BF6"
+        "inputsHash": "sha256:708c12273e7c43708e9069d741f91c16934241af23a79dedc84a2774827dbbff",
+        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
       }
     }
   ]

@@ -55,7 +55,7 @@ export const templates = {
   shopping: readJson<Template>('templates/shopping@1.json'),
 }
 export const policies = {
-  baseline: readJson<PolicyDoc>('policies/baseline@1.0.0.json'),
+  baseline: readJson<PolicyDoc>('policies/baseline@1.1.0.json'),
   procurement: withIssuer(readJson<PolicyDoc>('policies/procurement@1.3.0.json')),
   hotel: withIssuer(readJson<PolicyDoc>('policies/hotel@1.1.0.json')),
   shopping: withIssuer(readJson<PolicyDoc>('policies/shopping@1.0.0.json')),

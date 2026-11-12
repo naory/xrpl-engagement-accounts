@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { signStatement, verifyStatement } from '@eng/core'
-import { Assets, TxFacts, decide, decisionStatementBody, lintPolicy, type DecideInput, type Decision, type PolicyDoc } from '@eng/policy'
+import { Assets, REGISTRY, REGISTRY_VERSION, TxFacts, decide, decisionStatementBody, lintPolicy, type DecideInput, type Decision, type PolicyDoc } from '@eng/policy'
 import {
   LEDGER_INDEX, NOW, W, b1Approval, b1Challenge, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, closeBatch, confirmation,
   historyEntry, hotelEngagement, hotelLedger, hotelMandate, inflight, memo, policies, review, templates,
@@ -367,6 +367,21 @@ describe('Hotel — pre-signed defaults (final signature)', () => {
     ledger.accounts[W.engHotel.address].ownerObjects!.other = 1
     const d = decide(hotel({ stage: 'default.release', proposedTx: release(), statements: [], ledger }))
     expect(fails(d)).toEqual(['B11'])
+  })
+})
+
+describe('Task 1 prerequisites', () => {
+  const release = () => closeBatch([{ to: W.atlas.address, value: '409.94' }, { to: W.service.address, value: '2.06' }], { tickets: true, memos: [memo('eng/basis', 'default.release')] })
+  const releaseInput = (ledger = hotelLedger()) => hotel({ stage: 'default.release', proposedTx: release(), statements: [], ledger })
+  it('B11: a closing pre-signed default is refused while the account is younger than 256 ledgers', () => {
+    const young = hotelLedger(); young.accounts[W.engHotel.address].sequence = LEDGER_INDEX - 100
+    expect(fails(decide(releaseInput(young)))).toContain('B11')
+    const old = hotelLedger(); old.accounts[W.engHotel.address].sequence = LEDGER_INDEX - 300
+    expect(fails(decide(releaseInput(old)))).not.toContain('B11')
+  })
+  it('registry knows the hotel@2 attestation types', () => {
+    for (const t of ['party.checkin/1', 'party.concession/1', 'party.issue/1', 'party.claim/1']) expect(REGISTRY[t]).toBeDefined()
+    expect(REGISTRY_VERSION).toBe('att-registry@2026.11')
   })
 })
 
