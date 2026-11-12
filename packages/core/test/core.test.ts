@@ -75,6 +75,20 @@ describe('template validator', () => {
     expect(r.errors).toEqual([])
     expect(r.minimalWinningSets).toEqual([['owner'], ['agent', 'cosigner']])
   })
+  it('accepts hotel@2: 15 tickets, no arbiter-only winning set, arbiters+service disclosed', () => {
+    const r = validateTemplate(load('hotel@2.json'))
+    expect(r.errors).toEqual([])
+    expect(r.ok).toBe(true)
+    expect(r.ticketsNeeded).toBe(15)
+    expect(r.disclosures.filter((d) => d.id === 'V11').map((d) => d.message)).toEqual([expect.stringContaining('arbiter, backupArbiter, cosigner')])
+    expect(r.minimalWinningSets).toContainEqual(['principal', 'arbiter'])
+    expect(r.minimalWinningSets).not.toContainEqual(['arbiter', 'backupArbiter'])
+  })
+  it('V6 accepts onExpire "none" (a window that only closes)', () => {
+    const t = structuredClone(load('hotel@1.json'))
+    t.timers = { ...t.timers, claimBy: { from: 'deliveryBy', durationSecs: 86400, onExpire: 'none' } }
+    expect(validateTemplate(t).errors).toEqual([])
+  })
   const hotel = () => structuredClone(load('hotel@1.json'))
   it('V1: rejects a service that can reach quorum', () => {
     const t = hotel(); t.roles.cosigner.weight = 5

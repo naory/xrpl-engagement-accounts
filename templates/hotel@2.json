@@ -1,0 +1,47 @@
+{
+  "templateId": "settlement-vault/hotel@2",
+  "class": "escrow",
+  "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, arbiter and backup arbiter (hotel stay escrow)",
+  "asset": { "code": "RLUSD" },
+  "roles": {
+    "principal":     { "weight": 3, "kind": "principal",    "operatedBy": "external" },
+    "counterparty":  { "weight": 3, "kind": "counterparty", "operatedBy": "external" },
+    "arbiter":       { "weight": 4, "kind": "arbiter",      "operatedBy": "external" },
+    "backupArbiter": { "weight": 2, "kind": "arbiter",      "operatedBy": "external" },
+    "cosigner":      { "weight": 2, "kind": "cosigner",     "operatedBy": "service" }
+  },
+  "quorum": 7,
+  "outcomes": {
+    "settle.agreed":   { "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.split", "policyStage": "settle", "enforcement": "ledger" },
+    "refund.conceded": { "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.refundAll", "policyStage": "refund.conceded", "enforcement": "ledger" },
+    "settle.ruling":   { "signers": [["arbiter", "principal"], ["arbiter", "counterparty"]], "blueprint": "close.split", "policyStage": null, "enforcement": "none", "requires": "ruling" },
+    "ruling.backup":   { "signers": [["backupArbiter", "principal", "cosigner"], ["backupArbiter", "counterparty", "cosigner"]], "blueprint": "close.split", "policyStage": "ruling.backup", "enforcement": "ledger" },
+    "default.refund":  { "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.refundAll", "policyStage": "default.refund", "enforcement": "final-signature" },
+    "default.noshow":  { "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseAll", "policyStage": "default.noshow", "enforcement": "final-signature" },
+    "default.release": { "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseWithDeposit", "policyStage": "default.release", "enforcement": "final-signature" }
+  },
+  "timers": {
+    "confirmBy":         { "from": "open",          "durationSecs": 7200,   "onExpire": "default.refund" },
+    "checkInBy":         { "from": "checkIn",       "durationSecs": 32400,  "onExpire": "default.noshow" },
+    "entryDisputeBy":    { "from": "checkIn",       "durationSecs": 75600,  "onExpire": "none" },
+    "claimBy":           { "from": "deliveryBy",    "durationSecs": 86400,  "onExpire": "none" },
+    "disputeWindowEnds": { "from": "deliveryBy",    "durationSecs": 259200, "onExpire": "default.release" },
+    "rulingDueBy":       { "from": "disputeOpened", "durationSecs": 432000, "onExpire": "escalate" }
+  },
+  "attestationWindows": {
+    "party.checkin/1": "checkInBy",
+    "party.claim/1": "claimBy",
+    "party.issue/1": "disputeWindowEnds",
+    "party.dispute/1#entry": "entryDisputeBy",
+    "party.dispute/1#settlement": "disputeWindowEnds"
+  },
+  "blueprints": {
+    "close.split":              { "steps": ["pay.counterparty?", "pay.serviceFee?", "pay.principal?", "trustline.remove", "account.delete"], "closes": true },
+    "close.releaseAll":         { "steps": ["pay.counterparty", "pay.serviceFee", "trustline.remove", "account.delete"], "closes": true },
+    "close.refundAll":          { "steps": ["pay.principal", "trustline.remove", "account.delete"], "closes": true },
+    "close.releaseWithDeposit": { "steps": ["pay.counterparty", "pay.serviceFee", "pay.principal", "trustline.remove", "account.delete"], "closes": true }
+  },
+  "reserveObjects": { "trustlines": 1, "signerList": 1 },
+  "fees": { "serviceFeeBps": 50, "paidBy": "counterparty" },
+  "policyRef": "pol_hotel@2.0.0"
+}

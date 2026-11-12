@@ -28,7 +28,7 @@ export interface OutcomeDef {
 export interface TimerDef {
   from: string
   durationSecs: number
-  /** A pre-signed outcome name, or "arbiter" / "escalate". */
+  /** A pre-signed outcome name, "arbiter" / "escalate", or "none" (a window that only closes). */
   onExpire: string
 }
 
@@ -51,6 +51,8 @@ export interface Template {
   /** Object counts the engagement account holds while open (besides tickets), for the reserve check. */
   reserveObjects?: { trustlines: number; signerList: number }
   fees?: { serviceFeeBps: number; paidBy: string }
+  /** Statement-type (or `type#phase`) -> timer name whose expiry closes the window in which it may be posted. */
+  attestationWindows?: Record<string, string>
   policyRef?: string
 }
 
@@ -172,7 +174,7 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
 
   // V6: every timer resolves to a pre-signed outcome or is explicitly arbiter-resolved.
   for (const [tn, tm] of Object.entries(t.timers ?? {})) {
-    if (tm.onExpire === 'arbiter' || tm.onExpire === 'escalate') continue
+    if (tm.onExpire === 'arbiter' || tm.onExpire === 'escalate' || tm.onExpire === 'none') continue
     const o = t.outcomes[tm.onExpire]
     if (!o) err('V6', `timer ${tn}: onExpire ${tm.onExpire} is not an outcome`)
     else if (!o.presigned) err('V6', `timer ${tn}: onExpire outcome ${tm.onExpire} is not pre-signed`)
