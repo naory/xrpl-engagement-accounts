@@ -1,8 +1,8 @@
 import type { AddressInfo } from 'node:net'
 import { describe, expect, it } from 'vitest'
 import xrpl from 'xrpl'
-import { signStatement, newNonce, type StatementBody } from '@eng/core'
-import { ProvisioningCoordinator, makeEnrolment, createProvisioningServer, type SessionSpec, type CreatedSession } from '@eng/provisioning'
+import { signStatement, newNonce, localSigner, type StatementBody } from '@eng/core'
+import { ProvisioningCoordinator, makeEnrolment, makeEnrolmentWithSigner, verifyEnrolment, createProvisioningServer, type SessionSpec, type CreatedSession } from '@eng/provisioning'
 
 const roles = [{ role: 'owner', weight: 2 }, { role: 'agent', weight: 1 }, { role: 'cosigner', weight: 1 }]
 function spec(account: string, mandate: ReturnType<typeof signStatement> | null = null): SessionSpec {
@@ -38,6 +38,16 @@ describe('provisioning protocol (eng.provision/1)', () => {
     const session = coord.createSession(spec(xrpl.Wallet.generate().address))
     const e = makeEnrolment(session, 'agent', xrpl.Wallet.generate())
     expect(() => coord.enrol({ ...e, address: xrpl.Wallet.generate().address })).toThrow(/derive to address/)
+  })
+
+  it('makeEnrolmentWithSigner: a custodied Signer (no private key in hand) enrols by PoP', async () => {
+    const coord = new ProvisioningCoordinator()
+    const session = coord.createSession(spec(xrpl.Wallet.generate().address))
+    const w = xrpl.Wallet.generate()
+    const e = await makeEnrolmentWithSigner(session, 'agent', localSigner(w))
+    expect(e).toEqual(makeEnrolment(session, 'agent', w))
+    expect(verifyEnrolment(session.sessionId, session.challenge, e)).toEqual({ ok: true })
+    expect(coord.enrol(e)).toBeTruthy()
   })
 
   it('rejects a tampered proof', () => {

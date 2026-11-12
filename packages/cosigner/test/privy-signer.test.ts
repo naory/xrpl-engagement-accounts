@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import * as keypairs from 'ripple-keypairs'
 import { signerHashOf, canonicalize } from '@eng/core'
+import { verifyEnrolment, makeEnrolmentWithSigner } from '@eng/provisioning'
 import { privySigner, createPrivyXrplWallet, generateAuthorizationSignature } from '../src/privy-signer.ts'
 
 // A P-256 authorization key, as Privy issues it: base64-encoded PKCS8 DER.
@@ -67,6 +68,14 @@ describe('privySigner', () => {
     expect(sig).toBeTruthy()
     const payload = { version: 1, method: 'POST', url: 'https://api.privy.io/v1/wallets/w1/raw_sign', body: cap.body, headers: { 'privy-app-id': 'app1' } }
     expect(crypto.verify('sha256', Buffer.from(canonicalize(payload)), authKp.publicKey, Buffer.from(sig, 'base64'))).toBe(true)
+  })
+
+  it('a Privy-custodied signer enrols in eng.provision/1 by proof-of-possession', async () => {
+    const session = { sessionId: 'prov_1', challenge: 'chal_1' }
+    const pop = keypairs.sign(Buffer.from(['eng.provision/1', 'prov_1', 'cosigner', address, 'chal_1'].join('|')).toString('hex').toUpperCase(), kp.privateKey).toUpperCase()
+    const c = derToCompact(pop)
+    const e = await makeEnrolmentWithSigner(session, 'cosigner', cfg(mockFetch({ status: 200, body: { data: { signature: c.r + c.s } } })))
+    expect(verifyEnrolment('prov_1', 'chal_1', e)).toEqual({ ok: true })
   })
 
   it('signHex: rejects on a raw_sign error, surfacing status + body', async () => {

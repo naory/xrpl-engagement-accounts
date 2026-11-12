@@ -32,6 +32,8 @@ const session = coord.createSession({
 coord.enrol(makeEnrolment(session, 'owner', ownerWallet))
 coord.enrol(makeEnrolment(session, 'agent', agentWallet))
 coord.enrol(makeEnrolment(session, 'cosigner', cosignerWallet))
+// …or, for a custodied key (e.g. Privy sign-not-export via @eng/cosigner's privySigner), enrol via a Signer:
+// coord.enrol(await makeEnrolmentWithSigner(session, 'cosigner', privySignerFromEnv()!))
 
 const plan = coord.plan(session.sessionId)   // throws until every role has enrolled
 // → { signerEntries (sorted by address), quorum, engagement record, mandate, funder, fundingAmount }

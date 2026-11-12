@@ -7,7 +7,7 @@
 // PoP is what makes enrolment safe: you can only enrol an address you can sign for, so no party can
 // slip in its own key under another role or register an address it does not control.
 import * as keypairs from 'ripple-keypairs'
-import type { Statement } from '@eng/core'
+import type { Signer, Statement } from '@eng/core'
 import type { EngagementRecord } from '@eng/policy'
 
 const PROTOCOL = 'eng.provision/1'
@@ -97,6 +97,18 @@ export function makeEnrolment(
 ): Enrollment {
   const msg = enrolmentMessage(session.sessionId, session.challenge, role, wallet.address)
   return { sessionId: session.sessionId, role, address: wallet.address, publicKey: wallet.publicKey, proof: keypairs.sign(msg, wallet.privateKey) }
+}
+
+/** Signer side, for a custodied key (e.g. Privy sign-not-export): the PoP is produced by the
+ *  {@link Signer} — XRPL-sign over sha512Half(message) — so the private key is never in hand.
+ *  Produces the same enrolment as {@link makeEnrolment} for the same key. */
+export async function makeEnrolmentWithSigner(
+  session: { sessionId: string; challenge: string },
+  role: string,
+  signer: Signer,
+): Promise<Enrollment> {
+  const msg = enrolmentMessage(session.sessionId, session.challenge, role, signer.address)
+  return { sessionId: session.sessionId, role, address: signer.address, publicKey: signer.publicKey, proof: await signer.signHex(msg) }
 }
 
 export class ProvisioningCoordinator {
