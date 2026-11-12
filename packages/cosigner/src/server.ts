@@ -10,6 +10,7 @@
 //   POST /v1/decide               { engagementId, stage, tx | txBlob, statements } → DecideResponse
 //   GET  /v1/engagements/:id      → engagement record + in-flight decisions
 //   GET  /v1/engagements/:id/decisions → signed cosigner.decision/1 records
+//   POST /v1/engagements/:id/attestations { statement }                     → Receipt (signed cosigner.receipt/1)
 //   GET  /healthz                 → liveness  (open, never rate-limited)
 //   GET  /readyz                  → readiness (open, reflects ledger connectivity)
 //
@@ -132,6 +133,10 @@ export function createServer(svc: CosignerService, opts: ServerOptions = {}): ht
       if (method === 'POST' && url.pathname === '/v1/decide') {
         const b = await body(req)
         return send(200, await svc.decide(b as never))
+      }
+      if (method === 'POST' && isV1 && parts[1] === 'engagements' && parts[2] && parts[3] === 'attestations' && parts.length === 4) {
+        const b = await body(req)
+        return send(200, await svc.ingest(decodeURIComponent(parts[2]), b.statement as never))
       }
       if (method === 'GET' && isV1 && parts[1] === 'engagements' && parts[2]) {
         const id = decodeURIComponent(parts[2])

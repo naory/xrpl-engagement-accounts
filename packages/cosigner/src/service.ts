@@ -4,10 +4,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import xrpl from 'xrpl'
-import { documentHash, newNonce, signStatementAsync, signerBlob, verifyStatement, type AssetDef, type Signer, type Statement, type Template } from '@eng/core'
+import { documentHash, newNonce, parseAmount, signStatementAsync, signerBlob, verifyStatement, zero, type AssetDef, type Signer, type Statement, type Template } from '@eng/core'
 import {
   Assets, REGISTRY, TxFacts, decide, decisionStatementBody, layerHash,
-  type Decision, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc,
+  type Decision, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc, verifyStatements,
 } from '@eng/policy'
 import type { LedgerSource } from './snapshot.ts'
 import { unsigned } from './xrpl-io.ts'
@@ -51,11 +51,18 @@ export interface DecideResponse {
   advisory?: true
 }
 
+/** Proof that the co-signer received a statement in time: a co-signer-signed cosigner.receipt/1. */
+export interface Receipt {
+  statement: Statement
+}
+
 interface EngagementState {
   record: EngagementRecord
   mandate: Statement | null
   layers: PolicyDoc[]
   template: Template
+  /** Receipted ("posted") attestations, keyed by statement id. Kept out of `record` (hashed into inputsHash). */
+  attestations: Map<string, { statement: Statement; receipt: Receipt }>
 }
 
 export interface CosignerOptions {
@@ -72,6 +79,8 @@ export interface CosignerOptions {
 }
 
 const DAY = 86400
+/** A statement may not be received more than this long after its issuedAt (bounds backdating). */
+const MAX_ISSUE_LAG_SECS = 300
 
 export class CosignerService {
   private readonly engagements = new Map<string, EngagementState>()
@@ -104,7 +113,7 @@ export class CosignerService {
       if (!p) throw new Error(`no template policy for ${record.template}`)
       layers = [p]
     }
-    this.engagements.set(record.engagementId, { record: structuredClone({ consumed: [], ...record }), mandate, layers: [baseline, ...layers], template })
+    this.engagements.set(record.engagementId, { record: structuredClone({ consumed: [], ...record }), mandate, layers: [baseline, ...layers], template, attestations: new Map() })
     return { ok: true, layers: [baseline, ...layers].map((l) => `${l.policyId}@${l.version} ${layerHash(l)}`) }
   }
 
@@ -112,10 +121,72 @@ export class CosignerService {
   decisions(engagementId?: string): Statement[] { return engagementId ? this.log.filter((s) => s.engagementId === engagementId) : [...this.log] }
   inflightFor(engagementId: string): InflightRecord[] { return this.inflight.filter((i) => i.engagementId === engagementId) }
 
+  /** Receipted statements for an engagement, in ingest order. */
+  statements(engagementId: string): Statement[] {
+    return [...(this.engagements.get(engagementId)?.attestations.values() ?? [])].map((a) => a.statement)
+  }
+
   async decide(req: DecideRequest): Promise<DecideResponse> {
-    const prev = this.locks.get(req.engagementId) ?? Promise.resolve()
-    const run = prev.then(() => this.decideLocked(req), () => this.decideLocked(req))
-    this.locks.set(req.engagementId, run.catch(() => undefined))
+    return this.serialized(req.engagementId, () => this.decideLocked(req))
+  }
+
+  /**
+   * Store a party's attestation and return a signed receipt (spec §5.2a). "Posted" means receipted:
+   * the window is judged on a fresh validated ledger's closeTime (inclusive), and a late statement is
+   * rejected and never stored. Re-ingesting a stored statement returns its original receipt.
+   */
+  async ingest(engagementId: string, s: Statement): Promise<Receipt> {
+    return this.serialized(engagementId, () => this.ingestLocked(engagementId, s))
+  }
+
+  private async ingestLocked(engagementId: string, s: Statement): Promise<Receipt> {
+    const st = this.engagements.get(engagementId)
+    if (!st) throw new Error(`unknown engagement ${engagementId}`)
+    const v = verifyStatement(s)
+    if (!v.ok) throw new Error(`BAD_STATEMENT: ${v.reason}`)
+    const prior = st.attestations.get(s.id)
+    if (prior) return prior.receipt
+    if (s.engagementId !== engagementId) throw new Error(`WRONG_ENGAGEMENT: statement is for ${s.engagementId}`)
+    const attester = s.attester.account
+    if (!Object.values(st.record.parties).includes(attester)) throw new Error(`NOT_A_PARTY: ${attester}`)
+
+    const assets = this.assetsOf(st.layers)
+    const ledger = await this.o.source.snapshot({ account: st.record.account, assets, accounts: [attester], credentialSubjects: [attester], historySecs: 0 })
+    const received = Date.parse(ledger.closeTime)
+
+    const windows = st.template.attestationWindows ?? {}
+    const phase = (s.claim as { phase?: unknown }).phase
+    const window = (typeof phase === 'string' ? windows[`${s.type}#${phase}`] : undefined) ?? windows[s.type]
+    if (window) {
+      const deadline = Date.parse(st.record.timers?.[window] ?? '')
+      if (Number.isNaN(deadline)) throw new Error(`NO_DEADLINE: engagement has no timer ${window}`)
+      if (received > deadline) throw new Error(`LATE: ${s.type} after ${window}`)
+    }
+    const issued = Date.parse(s.issuedAt)
+    if (Number.isNaN(issued) || received - issued > MAX_ISSUE_LAG_SECS * 1000) throw new Error(`STALE_ISSUED: issued ${s.issuedAt}, received ${ledger.closeTime}`)
+    if (s.type === 'party.claim/1') checkClaimTotal(s, assets)
+    // Key authorization, role, binding and time checks of the policy pipeline, at the receipt ledger.
+    const rejected = verifyStatements([s], st.record, ledger).rejected[0]
+    if (rejected) throw new Error(`REJECTED: ${rejected.code}`)
+
+    const receipt: Receipt = {
+      statement: await signStatementAsync({
+        v: 'eng.att/1', type: 'cosigner.receipt/1', engagementId,
+        subject: { statementId: s.id, statementType: s.type },
+        claim: { receivedAt: ledger.closeTime, ledgerIndex: ledger.index },
+        observedAt: ledger.closeTime, issuedAt: ledger.closeTime, nonce: newNonce(),
+        attester: { account: this.address, kind: 'COSIGNER', ...(this.o.accreditation ? { accreditation: this.o.accreditation } : {}) },
+      }, this.o.signer),
+    }
+    st.attestations.set(s.id, { statement: s, receipt })
+    return receipt
+  }
+
+  /** Serialize work per engagement so in-flight accounting and the attestation store are race-free. */
+  private serialized<T>(engagementId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(engagementId) ?? Promise.resolve()
+    const run = prev.then(fn, fn)
+    this.locks.set(engagementId, run.catch(() => undefined))
     return run
   }
 
@@ -123,7 +194,8 @@ export class CosignerService {
     const st = this.engagements.get(req.engagementId)
     if (!st) throw new Error(`unknown engagement ${req.engagementId}`)
     const tx = req.txBlob ? unsigned(xrpl.decode(req.txBlob) as Json) : req.tx ? unsigned(req.tx) : null
-    const statements = req.statements ?? []
+    // Stored (receipted) statements plus those passed in, deduplicated by id.
+    const statements = [...new Map([...this.statements(req.engagementId), ...(req.statements ?? [])].map((s) => [s.id, s])).values()]
     const assets = this.assetsOf(st.layers)
 
     // Snapshot: key state for attesters; credentials for payees, attesters and the account.
@@ -215,6 +287,23 @@ export class CosignerService {
       fs.mkdirSync(this.o.dataDir, { recursive: true })
       fs.appendFileSync(path.join(this.o.dataDir, 'decisions.jsonl'), JSON.stringify(s) + '\n')
     }
+  }
+}
+
+/** A claim's total must equal the exact sum of its items, in the asset's minor units. */
+function checkClaimTotal(s: Statement, assets: Record<string, AssetDef>): void {
+  const c = s.claim as { items?: Array<{ amount?: { currency?: string; value?: string } }>; total?: { currency?: string; value?: string } }
+  const asset = Object.values(assets).find((a) => a.code === c.total?.currency)
+  if (!asset || !Array.isArray(c.items) || typeof c.total?.value !== 'string') throw new Error('CLAIM_TOTAL: malformed claim')
+  let sum = zero(asset.code)
+  try {
+    for (const i of c.items) {
+      if (i.amount?.currency !== asset.code || typeof i.amount.value !== 'string') throw new Error('item currency differs from total')
+      sum = sum.add(parseAmount(i.amount.value, asset))
+    }
+    if (sum.cmp(parseAmount(c.total.value, asset)) !== 0) throw new Error(`items sum to ${sum.minor} minor units, total is ${c.total.value}`)
+  } catch (e) {
+    throw new Error(`CLAIM_TOTAL: ${(e as Error).message}`)
   }
 }
 
