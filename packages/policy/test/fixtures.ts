@@ -282,7 +282,7 @@ let hotel2MandateCache: Statement | undefined
 export function hotel2Mandate(): Statement {
   hotel2MandateCache ??= statement(W.dana, {
     kind: 'PRINCIPAL', type: 'party.mandate/1', engagementId: ENG2, subject: { mandateId: 'mnd_9H4' },
-    claim: { purpose: 'lodging', constraints: { city: 'Lisbon', country: 'PT', checkIn: '2026-11-11', checkOut: '2026-11-14', maxTotal: rlusd('450.00'), maxDeposit: '200.00' }, expires: '2026-11-02T00:00:00Z' },
+    claim: { purpose: 'lodging', constraints: { city: 'Lisbon', country: 'PT', checkIn: '2026-11-11', checkOut: '2026-11-14', maxTotal: rlusd('450.00'), maxDeposit: rlusd('200.00') }, expires: '2026-11-02T00:00:00Z' },
     ...at('2026-11-01T08:55:00Z'),
   })
   return hotel2MandateCache
@@ -304,24 +304,27 @@ export function checkin(status: 'checked_in' | 'refused'): Statement {
   })
 }
 
-/** The hotel's deposit claim, posted before claimBy. `total` is the sum of the item amounts. */
+/** The hotel's deposit claim, posted before claimBy. Amounts become {currency, value}; `total` is the exact sum of the items. */
 export function claim(items: Array<{ kind: string; amount: string }>): Statement {
   const cents = (v: string) => { const [w, f = ''] = v.split('.'); return BigInt(w) * 100n + BigInt((f + '00').slice(0, 2)) }
   const minor = items.reduce((s, i) => s + cents(i.amount), 0n)
   const total = `${minor / 100n}.${(minor % 100n).toString().padStart(2, '0')}`
   return statement(W.atlas, {
     kind: 'COUNTERPARTY', type: 'party.claim/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
-    claim: { items: items.map((i) => ({ ...i, evidenceHashes: [] })), total },
+    claim: { items: items.map((i) => ({ kind: i.kind, amount: rlusd(i.amount), evidenceHashes: [] })), total: rlusd(total) },
     ...at('2026-11-14T15:00:00Z'),
   })
 }
 
-/** The guest's dispute attestation (pair with `hotel2Ledger({ dispute: true })` for the Credential). */
-export function dispute(phase: 'entry' | 'settlement'): Statement {
+/**
+ * The guest's dispute attestation. Pair with `hotel2Ledger({ dispute: true })` for the Credential and a balance
+ * that includes the 10.00 bond. `issuedAt` overrides the default posting time (e.g. to model backdating).
+ */
+export function dispute(phase: 'entry' | 'settlement', issuedAt?: string): Statement {
   return statement(W.dana, {
     kind: 'PRINCIPAL', type: 'party.dispute/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
     claim: { phase, reason: phase === 'entry' ? 'room not as booked' : 'claim disputed', bond: rlusd('10.00'), evidenceHashes: [] },
-    ...at(phase === 'entry' ? '2026-11-11T20:00:00Z' : '2026-11-16T10:00:00Z'),
+    ...at(issuedAt ?? (phase === 'entry' ? '2026-11-11T20:00:00Z' : '2026-11-16T10:00:00Z')),
   })
 }
 
@@ -333,11 +336,11 @@ export function concession(disputeId: string): Statement {
   })
 }
 
-export function ruling(signer: Wallet, payouts: Array<{ to: string; value: string }>): Statement {
+export function ruling(signer: Wallet, payouts: Array<{ to: string; value: string }>, issuedAt = '2026-11-20T09:00:00Z'): Statement {
   return statement(signer, {
     kind: 'ARBITER', type: 'party.ruling/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
     claim: { payouts, rationale: 'fixture ruling' },
-    ...at('2026-11-20T09:00:00Z'),
+    ...at(issuedAt),
   })
 }
 
