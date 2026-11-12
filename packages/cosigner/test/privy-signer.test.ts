@@ -1,7 +1,12 @@
+import crypto from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import * as keypairs from 'ripple-keypairs'
-import { signerHashOf } from '@eng/core'
-import { privySigner, createPrivyXrplWallet } from '../src/privy-signer.ts'
+import { signerHashOf, canonicalize } from '@eng/core'
+import { privySigner, createPrivyXrplWallet, generateAuthorizationSignature } from '../src/privy-signer.ts'
+
+// A P-256 authorization key, as Privy issues it: base64-encoded PKCS8 DER.
+const authKp = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' })
+const authKeyB64 = authKp.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64')
 
 const SECP_N = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141')
 function derToCompact(derHex: string): { r: string; s: string } {
@@ -49,10 +54,19 @@ describe('privySigner', () => {
     expect(keypairs.verify(msg, der, kp.publicKey)).toBe(true)
   })
 
-  it('signHex: includes privy-authorization-signature when configured', async () => {
+  it('generateAuthorizationSignature: P-256 ECDSA over the RFC8785-canonical payload (base64)', () => {
+    const payload = { version: 1, method: 'POST', url: 'https://api.privy.io/v1/wallets/w1/raw_sign', body: { params: { hash: '0xab' } }, headers: { 'privy-app-id': 'app1' } }
+    const sigB64 = generateAuthorizationSignature(authKeyB64, payload)
+    expect(crypto.verify('sha256', Buffer.from(canonicalize(payload)), authKp.publicKey, Buffer.from(sigB64, 'base64'))).toBe(true)
+  })
+
+  it('signHex: attaches a verifying privy-authorization-signature when an authorization key is set', async () => {
     const cap: Record<string, unknown> = {}
-    await cfg(mockFetch({ status: 200, body: { data: { signature: r + s } } }, cap), { authorizationSignature: 'sig-abc' }).signHex(msg)
-    expect((cap.headers as Record<string, string>)['privy-authorization-signature']).toBe('sig-abc')
+    await cfg(mockFetch({ status: 200, body: { data: { signature: r + s } } }, cap), { authorizationKey: authKeyB64 }).signHex(msg)
+    const sig = (cap.headers as Record<string, string>)['privy-authorization-signature']
+    expect(sig).toBeTruthy()
+    const payload = { version: 1, method: 'POST', url: 'https://api.privy.io/v1/wallets/w1/raw_sign', body: cap.body, headers: { 'privy-app-id': 'app1' } }
+    expect(crypto.verify('sha256', Buffer.from(canonicalize(payload)), authKp.publicKey, Buffer.from(sig, 'base64'))).toBe(true)
   })
 
   it('signHex: rejects on a raw_sign error, surfacing status + body', async () => {
