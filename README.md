@@ -304,6 +304,8 @@ npm run demo:privy          # same agent + co-signer flow with the co-signer key
 ### Next
 
 - **Arbiter service** (AI + human queue) and evidence API.
+- **Arbiter neutrality safeguards** (for arbiters a merchant contracts). At open, the co-signer checks the arbiter holds `ARBITER_ACCREDITED` from the service root and is on the guest's mandate `allowedArbiters`, and refuses to open otherwise. The backup arbiter is appointed by the service (or nominated by the guest's side), never by the merchant, so a stalled or captured primary doesn't leave the guest with the merchant's pick. Arbiter fees are flat, never contingent on the outcome.
+- **Persistent co-signer state.** Attestations, receipts and pre-signed defaults are in memory today; a restart drops them (see the hotel@2 entry above).
 - **Indexer:** settlements → reputation records (reviews, rulings, bonds).
 - **x402 `engagement` scheme + facilitator.** A facilitator that verifies `Signers` against the account's SignerList at a pinned ledger; a proposal to the x402 Foundation for multisig support in the `exact` scheme (the spec text allows it; the reference code rejects it), with our `exact` verifier as the reference implementation.
 - **Collateral bonds.** Bond template + slashing by arbiter + harmed party; bond size exposed as a trust signal (ERC-8004 / KYA cross-reference).
