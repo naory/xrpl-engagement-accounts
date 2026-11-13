@@ -1,5 +1,7 @@
 # Use case: Dana's agent books a hotel
 
+> **Status update (November 2026):** this flow is now built as `settlement-vault/hotel@2` with policy `pol_hotel@2.0.0`, and verified live on Testnet (`npm run demo:hotel`, 14/14). See [the design spec](../superpowers/specs/2026-11-12-hotel-stay-escrow-design.md). Beyond the draft below, hotel@2 adds: a security deposit at check-in; entry disputes that end the deal early; deposit claims (capped at the deposit); guest-only disputes (a Credential plus a receipted statement); silence rules; and default and backup arbiter rulings. The co-signer holds attestations and pre-signed defaults in memory, so production needs a persistent store.
+
 > A worked specification for the full design. One deal is followed end to end, with concrete artifacts at every step: template, mandate, policy, x402 messages, XRPL transactions, ledger state and indexer records.
 > Status: **design draft** (October 2026). Stage 0 primitives only (multisig, Tickets, Credentials, Batch), all live on mainnet. Addresses, hashes and signatures are placeholders.
 
