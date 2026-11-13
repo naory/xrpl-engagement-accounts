@@ -122,7 +122,7 @@
             "enforcement": "ledger"
           },
           "default.refund": {
-            "description": "The hotel never confirmed in time: the guest gets the room money back automatically.",
+            "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -131,7 +131,7 @@
             "enforcement": "final-signature"
           },
           "default.noshow": {
-            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically.",
+            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically (the account holds exactly the room price).",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -139,8 +139,17 @@
             "policyStage": "default.noshow",
             "enforcement": "final-signature"
           },
+          "default.noshowSweep": {
+            "description": "The same no-show when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room, and everything else goes back to the guest.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "policyStage": "default.noshow",
+            "enforcement": "final-signature"
+          },
           "default.release": {
-            "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically.",
+            "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -211,7 +220,7 @@
         "fees": {"serviceFeeBps":50,"paidBy":"counterparty"},
         "policyRef": "pol_hotel@2.0.0"
       },
-      "options": {"preCreateFundingDrops":"6000000"},
+      "options": {"preCreateFundingDrops":"7000000"},
       "expect": {
         "ok": true,
         "errors": [],
@@ -226,8 +235,8 @@
           ["principal","counterparty","backupArbiter"],
           ["principal","counterparty","cosigner"]
         ],
-        "ticketsNeeded": 15,
-        "reserveDrops": "4400000"
+        "ticketsNeeded": 21,
+        "reserveDrops": "5600000"
       }
     },
     {
@@ -896,7 +905,7 @@
             "enforcement": "ledger"
           },
           "default.refund": {
-            "description": "The hotel never confirmed in time: the guest gets the room money back automatically.",
+            "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -905,7 +914,7 @@
             "enforcement": "final-signature"
           },
           "default.noshow": {
-            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically.",
+            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically (the account holds exactly the room price).",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -913,8 +922,17 @@
             "policyStage": "default.noshow",
             "enforcement": "final-signature"
           },
+          "default.noshowSweep": {
+            "description": "The same no-show when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room, and everything else goes back to the guest.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "policyStage": "default.noshow",
+            "enforcement": "final-signature"
+          },
           "default.release": {
-            "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically.",
+            "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1000,8 +1018,8 @@
           ["principal","counterparty","backupArbiter"],
           ["principal","counterparty","cosigner"]
         ],
-        "ticketsNeeded": 15,
-        "reserveDrops": "4400000"
+        "ticketsNeeded": 21,
+        "reserveDrops": "5600000"
       }
     },
     {
@@ -1051,7 +1069,7 @@
             "enforcement": "ledger"
           },
           "default.refund": {
-            "description": "The hotel never confirmed in time: the guest gets the room money back automatically.",
+            "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1060,7 +1078,7 @@
             "enforcement": "final-signature"
           },
           "default.noshow": {
-            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically.",
+            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically (the account holds exactly the room price).",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1068,8 +1086,17 @@
             "policyStage": "default.noshow",
             "enforcement": "final-signature"
           },
+          "default.noshowSweep": {
+            "description": "The same no-show when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room, and everything else goes back to the guest.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "policyStage": "default.noshow",
+            "enforcement": "final-signature"
+          },
           "default.release": {
-            "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically.",
+            "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1156,8 +1183,8 @@
           ["principal","counterparty","backupArbiter"],
           ["principal","counterparty","cosigner"]
         ],
-        "ticketsNeeded": 15,
-        "reserveDrops": "4400000"
+        "ticketsNeeded": 21,
+        "reserveDrops": "5600000"
       }
     },
     {
@@ -1207,7 +1234,7 @@
             "enforcement": "ledger"
           },
           "default.refund": {
-            "description": "The hotel never confirmed in time: the guest gets the room money back automatically.",
+            "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1216,7 +1243,7 @@
             "enforcement": "final-signature"
           },
           "default.noshow": {
-            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically.",
+            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically (the account holds exactly the room price).",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1224,8 +1251,17 @@
             "policyStage": "default.noshow",
             "enforcement": "final-signature"
           },
+          "default.noshowSweep": {
+            "description": "The same no-show when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room, and everything else goes back to the guest.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "policyStage": "default.noshow",
+            "enforcement": "final-signature"
+          },
           "default.release": {
-            "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically.",
+            "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1311,8 +1347,8 @@
           ["principal","counterparty","backupArbiter"],
           ["principal","counterparty","cosigner"]
         ],
-        "ticketsNeeded": 15,
-        "reserveDrops": "4400000"
+        "ticketsNeeded": 21,
+        "reserveDrops": "5600000"
       }
     },
     {
@@ -1362,7 +1398,7 @@
             "enforcement": "ledger"
           },
           "default.refund": {
-            "description": "The hotel never confirmed in time: the guest gets the room money back automatically.",
+            "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1371,7 +1407,7 @@
             "enforcement": "final-signature"
           },
           "default.noshow": {
-            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically.",
+            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically (the account holds exactly the room price).",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1379,8 +1415,17 @@
             "policyStage": "default.noshow",
             "enforcement": "final-signature"
           },
+          "default.noshowSweep": {
+            "description": "The same no-show when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room, and everything else goes back to the guest.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "policyStage": "default.noshow",
+            "enforcement": "final-signature"
+          },
           "default.release": {
-            "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically.",
+            "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1466,8 +1511,8 @@
           ["principal","counterparty","backupArbiter"],
           ["principal","counterparty","cosigner"]
         ],
-        "ticketsNeeded": 15,
-        "reserveDrops": "4400000"
+        "ticketsNeeded": 21,
+        "reserveDrops": "5600000"
       }
     },
     {

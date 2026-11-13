@@ -4,7 +4,7 @@
 //   XRPL_URL=wss://s.devnet.rippletest.net:51233 npm run demo:hotel
 //
 // All engagement accounts are pre-created first, then the script waits until each can be deleted
-// (Sequence + 256 ≤ ledger index, counting the open Batch's Sequence numbers), then the eight paths run
+// (Sequence + 256 ≤ ledger index, counting the open Batch's Sequence numbers), then the nine paths run
 // concurrently, each opening its own account when it starts (timers count from open). Keys are fresh per
 // run; results land in demo/results/hotel-run-*.json, with the co-signer's decision log beside them.
 import fs from 'node:fs'
@@ -130,7 +130,7 @@ async function main() {
   console.log('')
 
   // ── Checks (spec §7.1) ──
-  const { room, deposit, bond, claim } = DEMO_HOTEL_BOOKING
+  const { room, deposit, bond, claim, partialDeposit } = DEMO_HOTEL_BOOKING
   const flow = flows.happy
   const S = (p: HotelPath, name: string, nth = 0) => steps[p].filter((s) => s.step === name)[nth]
   const deleted = async (p: HotelPath) => (await accountInfo(client, results.accounts[`engagement:${p}`])) === null
@@ -186,10 +186,12 @@ async function main() {
       s?.decision === 'REFUSE' && !!s.failing?.includes('L5'), { path: 'claimUnanswered' })
   }
   {
-    const r = S('happy', 'tick default.refund'), n = S('happy', 'tick default.noshow')
-    record('H12', 'Open-time default.refund / default.noshow after the deposit', 'both REFUSE incl. BALANCE_CHANGED (R2, N5)',
-      `refund ${fmt(r)} (${reasons(r, ['R2'])}); noshow ${fmt(n)} (${reasons(n, ['N5'])})`,
-      r?.decision === 'REFUSE' && !!r.failing?.includes('R2') && n?.decision === 'REFUSE' && !!n.failing?.includes('N5'), { path: 'happy' })
+    // Extra money no longer jams a default (it is swept back to the guest), so after check-in the open-time defaults are
+    // refused for what they are: the booking was confirmed (R1) and the guest checked in (N3).
+    const r = S('happy', 'tick default.refund'), n = S('happy', 'tick default.noshow'), ns = S('happy', 'tick default.noshowSweep')
+    record('H12', 'Open-time default.refund / both default.noshow variants after check-in + deposit', 'all REFUSE: refund R1 (NOT_DUE: confirmed), no-shows N3 (CHECKED_IN)',
+      `refund ${fmt(r)} (${reasons(r, ['R1'])}); noshow ${fmt(n)} (${reasons(n, ['N3'])}); noshowSweep ${fmt(ns)} (${reasons(ns, ['N3'])})`,
+      r?.decision === 'REFUSE' && !!r.failing?.includes('R1') && [n, ns].every((x) => x?.decision === 'REFUSE' && !!x.failing?.includes('N3')), { path: 'happy' })
   }
   {
     const s = S('entryRuled', 'tick default.noshow')
@@ -199,6 +201,15 @@ async function main() {
   {
     const s = S('backupRuling', 'probe:arbiter+backupArbiter')
     record('H14', 'Arbiter + backup arbiter alone (weight 6 < quorum 7)', 'tefBAD_QUORUM', fmt(s), s?.final === 'tefBAD_QUORUM', { tx: s?.tx, path: 'backupRuling' })
+  }
+
+  {
+    // H15: partial deposit + refused check-in → no-show; the sweep variant returns the partial deposit inside a ticketed
+    // ALLORNOTHING Batch (tfPartialPayment), and the exact variant is refused.
+    const exact = S('partialDeposit', 'tick default.noshow')
+    await closed('H15', 'Partial deposit, hotel refuses check-in → no-show; the guest\'s partial deposit swept back', 'partialDeposit', S('partialDeposit', 'tick default.noshowSweep'),
+      [...want(m(room), 0), { to: guest.address, value: partialDeposit }], `exact default.noshow REFUSE incl. N8 (was ${fmt(exact)}); default.noshowSweep SIGN; tesSUCCESS`)
+    if (!(exact?.decision === 'REFUSE' && exact.failing?.includes('N8'))) record('H15b', 'Exact no-show refused when the account holds more than the room', 'REFUSE incl. N8', fmt(exact), false, { path: 'partialDeposit' })
   }
 
   results.decisionLog = path.relative(root, path.join(dataDir, 'decisions.jsonl'))

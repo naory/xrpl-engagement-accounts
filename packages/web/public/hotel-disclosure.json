@@ -152,17 +152,17 @@
         {
           "timer": "confirmBy",
           "outcome": "default.refund",
-          "description": "The hotel never confirmed in time: the guest gets the room money back automatically."
+          "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account."
         },
         {
           "timer": "checkInBy",
           "outcome": "default.noshow",
-          "description": "The guest never checked in and never disputed: the hotel is paid the room automatically."
+          "description": "The guest never checked in and never disputed: the hotel is paid the room automatically, and anything else in the account goes back to the guest."
         },
         {
           "timer": "disputeWindowEnds",
           "outcome": "default.release",
-          "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically."
+          "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically."
         }
       ],
       "arbiters": {
@@ -350,17 +350,17 @@
         {
           "timer": "confirmBy",
           "outcome": "default.refund",
-          "description": "The hotel never confirmed in time: the guest gets the room money back automatically."
+          "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account."
         },
         {
           "timer": "checkInBy",
           "outcome": "default.noshow",
-          "description": "The guest never checked in and never disputed: the hotel is paid the room automatically."
+          "description": "The guest never checked in and never disputed: the hotel is paid the room automatically, and anything else in the account goes back to the guest."
         },
         {
           "timer": "disputeWindowEnds",
           "outcome": "default.release",
-          "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically."
+          "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically."
         }
       ],
       "arbiters": {

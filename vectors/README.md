@@ -8,8 +8,8 @@ implementation disagrees with that expectation, so a vector can't silently recor
 | File | Spec | Cases | What to compare |
 |---|---|---|---|
 | `statements.json` | [attestations](../docs/spec/attestations.md) §3–§4 | 6 | JCS bytes, digest, `id`, signature verification (including tampered and wrong-key) |
-| `templates.json` | [policy](../docs/spec/policy.md), [hotel](../docs/use-cases/hotel-booking.md) §2 (V1–V12) | 12 | `ok`, error / warning / disclosure ids, minimal winning sets, tickets needed, reserve |
-| `policy.json` | [policy](../docs/spec/policy.md) §3–§8 | 90 | `decision`, `failing`, per-rule `results` (layer, id, result, reason), statements used / rejected, `inputsHash`, `effectiveHash` |
+| `templates.json` | [policy](../docs/spec/policy.md), [hotel](../docs/use-cases/hotel-booking.md) §2 (V1–V12) | 16 | `ok`, error / warning / disclosure ids, minimal winning sets, tickets needed, reserve |
+| `policy.json` | [policy](../docs/spec/policy.md) §3–§8 | 105 | `decision`, `failing`, per-rule `results` (layer, id, result, reason), statements used / rejected, `inputsHash`, `effectiveHash` |
 
 ## Normative and non-normative fields
 
@@ -48,8 +48,8 @@ The cases cover the following.
 - Confirmation deposit versus the mandate cap (C5) and check-in once the deposit is on-ledger (K2).
 - Agreed settle with a claim: fee and review, payees limited to guest, hotel and fee account (S6).
 - Conceded entry dispute refund (F1): concession required, entry phase only, dispute Credential issued by the guest.
-- Default refund (never confirmed, over-cap confirmation does not count) and no-show release (N1 to N5): bonded disputes only, strict deadlines.
-- Default release after the dispute window (L1 to L5): open claim, stray funds, open dispute, strict boundary at `disputeWindowEnds`.
+- Default refund (never confirmed, over-cap confirmation does not count; stray money swept back to the guest, R4) and no-show release (N1 to N8): bonded disputes only, strict deadlines, and the two pre-signed no-show variants: exact room price, or a residual sweep returning a partial deposit or stray money to the guest (refused by B11 when it would deliver nothing).
+- Default release after the dispute window (L1 to L6): open claim, stray funds swept to the guest, open dispute, strict boundary at `disputeWindowEnds`.
 - Backup arbiter ruling (U1 to U6): phase-floored ruling window, primary arbiter precedence, payee and fee checks, claim-only branch.
 - Advisory `ruling.default`: claim capped at the deposit (D4) and payouts matching the claim (D5).
 

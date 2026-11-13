@@ -467,7 +467,8 @@
         {id:"entryRuled", title:"Downgraded room → arbiter rules", sub:"entry dispute, partial refund (arbiter + guest)", path:"entryRuled", shows:"The guest gets a worse room than booked and disputes at check-in. The arbiter reviews it and orders a partial refund."},
         {id:"silence", title:"Stay, no claim, silence", sub:"the pre-signed release returns the deposit", path:"silence", shows:"The stay happens, the hotel claims nothing, and nobody does anything. The hotel gets the room price and the deposit comes back to the guest automatically."},
         {id:"claimUnanswered", title:"Claim posted, guest silent", sub:"arbiter + hotel default ruling pays the claim", path:"claimUnanswered", shows:"The hotel claims against the deposit and the guest never answers. The claim stands: the arbiter confirms it and the hotel is paid."},
-        {id:"backupRuling", title:"Claim disputed, arbiter silent", sub:"backup arbiter rules after the ruling window", path:"backupRuling", shows:"The guest disputes the hotel’s claim, but the arbiter never rules. Once its time runs out, a backup arbiter steps in."}
+        {id:"backupRuling", title:"Claim disputed, arbiter silent", sub:"backup arbiter rules after the ruling window", path:"backupRuling", shows:"The guest disputes the hotel’s claim, but the arbiter never rules. Once its time runs out, a backup arbiter steps in."},
+        {id:"partialDeposit", title:"Partial deposit → check-in refused", sub:"no-show pays the hotel, the partial deposit goes back", path:"partialDeposit", shows:"The guest pays only part of the deposit and the hotel refuses check-in. It ends as a no-show: the hotel is paid the room, and the guest gets the partial deposit back automatically."}
       ]
     },
     bond: {
@@ -1008,8 +1009,10 @@
     "open|tesSUCCESS":"A fresh single-use account opens. The guest pays the room price into it, and from now on only the signer list (guest, hotel, arbiter, backup arbiter, co-signer) controls it.",
     "confirm|SIGN":"The hotel confirms the booking. The co-signer checks it against what the guest asked for: city, dates, price and the deposit limit.",
     "checkin attestation|RECEIPTED":"The hotel records the guest’s arrival. The co-signer stamps it with a signed receipt, proof it was posted on time.",
-    "default.release pre-signed|STORED":"Guest and hotel sign the “nobody acts” ending in advance: room to the hotel, deposit back to the guest. The co-signer keeps it until it is due.",
+    "default.release pre-signed|STORED":"Guest and hotel sign the “nobody acts” ending in advance: room to the hotel, the deposit (and anything extra) back to the guest. The co-signer keeps it until it is due.",
     "deposit|tesSUCCESS":"Only now does the guest pay the security deposit into the account.",
+    "deposit (partial)|tesSUCCESS":"The guest pays only part of the security deposit into the account.",
+    "checkin refused|RECEIPTED":"Without the full deposit the hotel refuses check-in, and records that. The co-signer receipts it.",
     "checkin|SIGN":"The co-signer confirms the guest is checked in and the deposit is in the account.",
     "claim|RECEIPTED":"After checkout the hotel posts an itemized claim against the deposit. The co-signer receipts it; the guest can accept or dispute it.",
     "probe:principal+counterparty|tefBAD_QUORUM":"Test: guest and hotel try to move the money on their own. The XRP Ledger itself rejects it: together they are below the signing threshold.",
@@ -1019,23 +1022,26 @@
     "dispute (settlement)|tesSUCCESS":"The guest disputes the hotel’s claim, filing it on the ledger with a bond.",
     "refund.conceded|SIGN":"The hotel admits it has no room. Guest, hotel and co-signer refund everything to the guest, bond included, and the account closes.",
     "tick default.refund|REFUSE":"The co-signer checks whether the automatic refund is due. It isn’t: the hotel confirmed the booking.",
-    "tick default.refund|SIGN":"The hotel missed its confirmation deadline, so the pre-signed refund completes. The guest gets the room money back without anyone having to act.",
+    "tick default.refund|SIGN":"The hotel missed its confirmation deadline, so the pre-signed refund completes. The guest gets the room money back (and anything else in the account) without anyone having to act.",
     "tick default.noshow|REFUSE":"The co-signer checks whether the automatic no-show payout applies. It doesn’t here.",
     "tick default.noshow|SIGN":"The guest never arrived and didn’t dispute in time, so the pre-signed no-show completes: the hotel is paid the room, less the fee.",
+    "tick default.noshowSweep|REFUSE":"The no-show is signed in two versions: one for exactly the room price, one that also returns anything extra to the guest. This second one doesn’t fit: there is nothing extra to return.",
+    "tick default.noshowSweep|SIGN":"The guest never checked in and didn’t dispute in time, so the no-show completes: the hotel is paid the room, less the fee, and everything else in the account goes back to the guest.",
     "tick default.release|REFUSE":"The co-signer checks whether the automatic release is due. Not yet.",
-    "tick default.release|SIGN":"The dispute window closed with no claim and no dispute, so the pre-signed release completes: room to the hotel, the full deposit back to the guest.",
+    "tick default.release|SIGN":"The dispute window closed with no claim and no dispute, so the pre-signed release completes: room to the hotel, the full deposit (and anything extra) back to the guest.",
     "ruling:arbiter|tesSUCCESS":"The arbiter reviews the evidence and rules. Arbiter and guest sign the ruling and the account closes; a ruling doesn’t need the co-signer.",
     "ruling:arbiter|SIGN":"The guest never answered the claim before the window closed, so it stands. The arbiter signs a default ruling with the hotel paying exactly the claim, and the co-signer records that it checks out.",
     "ruling:backupArbiter|REFUSE":"The backup arbiter tries to rule early. The co-signer refuses: the primary arbiter’s time to rule hasn’t run out yet.",
     "ruling:backupArbiter|SIGN":"The primary arbiter stayed silent past its deadline, so the backup arbiter’s ruling is allowed. Backup, guest and co-signer sign, and the account closes."
   };
   var STEP_WHY_PATH={
-    unconfirmed:{"tick default.noshow|REFUSE":"No-show doesn’t apply: the booking was never confirmed, and the refund is already on its way."},
+    unconfirmed:{"tick default.noshow|REFUSE":"No-show doesn’t apply: the booking was never confirmed, and the refund is already on its way.","tick default.noshowSweep|REFUSE":"No-show doesn’t apply: the booking was never confirmed, and the refund is already on its way."},
+    partialDeposit:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed.","tick default.noshow|REFUSE":"This version of the no-show is for exactly the room price. The account also holds the partial deposit, which isn’t the hotel’s, so it doesn’t fit."},
     noshow:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel did confirm."},
-    happy:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed, and the account now also holds the deposit.","tick default.noshow|REFUSE":"No-show doesn’t apply: the guest checked in.","tick default.release|REFUSE":"Too early: the “nobody acts” release only fires once the guest’s window to dispute has closed."},
-    silence:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed, and the account now also holds the deposit.","tick default.noshow|REFUSE":"No-show doesn’t apply: the guest checked in."},
-    claimUnanswered:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed, and the account now also holds the deposit.","tick default.noshow|REFUSE":"No-show doesn’t apply: the guest checked in.","tick default.release|REFUSE":"The release can’t just return the deposit: the hotel posted a claim against it, which has to be agreed or ruled on."},
-    entryRuled:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed, and the dispute bond is now in the account.","tick default.noshow|REFUSE":"No-show can’t fire: the guest has an open, bonded dispute. Silence can’t override a raised flag."}
+    happy:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed.","tick default.noshow|REFUSE":"No-show doesn’t apply: the guest checked in.","tick default.noshowSweep|REFUSE":"No-show doesn’t apply: the guest checked in.","tick default.release|REFUSE":"Too early: the “nobody acts” release only fires once the guest’s window to dispute has closed."},
+    silence:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed.","tick default.noshow|REFUSE":"No-show doesn’t apply: the guest checked in.","tick default.noshowSweep|REFUSE":"No-show doesn’t apply: the guest checked in."},
+    claimUnanswered:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed.","tick default.noshow|REFUSE":"No-show doesn’t apply: the guest checked in.","tick default.noshowSweep|REFUSE":"No-show doesn’t apply: the guest checked in.","tick default.release|REFUSE":"The release can’t just return the deposit: the hotel posted a claim against it, which has to be agreed or ruled on."},
+    entryRuled:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed.","tick default.noshow|REFUSE":"No-show can’t fire: the guest has an open, bonded dispute. Silence can’t override a raised flag.","tick default.noshowSweep|REFUSE":"No-show can’t fire: the guest has an open, bonded dispute. Silence can’t override a raised flag."}
   };
   function stepWhy(pathId, s){
     var k=s.step+"|"+(s.decision||s.final||"");

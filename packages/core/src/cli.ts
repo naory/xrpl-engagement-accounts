@@ -10,7 +10,7 @@ if (cmd !== 'validate-template' || files.length === 0) {
 let failed = 0
 for (const f of files) {
   const t = JSON.parse(fs.readFileSync(f, 'utf8')) as Template
-  const r = validateTemplate(t, { preCreateFundingDrops: 6_000_000n })
+  const r = validateTemplate(t, { preCreateFundingDrops: 7_000_000n })
   console.log(`\n${r.ok ? '✅' : '❌'} ${t.templateId}  (${f})`)
   console.log(`   minimal winning sets: ${r.minimalWinningSets.map((s) => `{${s.join(', ')}}`).join('  ')}`)
   console.log(`   tickets needed: ${r.ticketsNeeded}, reserve: ${Number(r.reserveDrops) / 1e6} XRP`)

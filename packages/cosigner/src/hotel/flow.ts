@@ -16,8 +16,8 @@ type Json = Record<string, unknown>
 type Client = InstanceType<typeof xrpl.Client>
 type Wallet = InstanceType<typeof xrpl.Wallet>
 
-export type HotelPath = 'happy' | 'unconfirmed' | 'noshow' | 'entryConceded' | 'entryRuled' | 'silence' | 'claimUnanswered' | 'backupRuling'
-export const HOTEL_PATHS: HotelPath[] = ['happy', 'unconfirmed', 'noshow', 'entryConceded', 'entryRuled', 'silence', 'claimUnanswered', 'backupRuling']
+export type HotelPath = 'happy' | 'unconfirmed' | 'noshow' | 'entryConceded' | 'entryRuled' | 'silence' | 'claimUnanswered' | 'backupRuling' | 'partialDeposit'
+export const HOTEL_PATHS: HotelPath[] = ['happy', 'unconfirmed', 'noshow', 'entryConceded', 'entryRuled', 'silence', 'claimUnanswered', 'backupRuling', 'partialDeposit']
 
 export interface HotelStepResult {
   step: string
@@ -59,12 +59,19 @@ export interface HotelCast {
   currency: string
 }
 
-export interface HotelBooking { room: string; deposit: string; bond: string; claim: string; maxDeposit: string }
-export const DEMO_HOTEL_BOOKING: HotelBooking = { room: '400', deposit: '100', bond: '10', claim: '20', maxDeposit: '200' }
+/** `partialDeposit`: what the guest pays at check-in on the partialDeposit path (less than `deposit`; the hotel refuses check-in). */
+export interface HotelBooking { room: string; deposit: string; bond: string; claim: string; maxDeposit: string; partialDeposit: string }
+export const DEMO_HOTEL_BOOKING: HotelBooking = { room: '400', deposit: '100', bond: '10', claim: '20', maxDeposit: '200', partialDeposit: '40' }
 
-/** Ticket slices of the 15 reserved at open (spec §5.4): outer + inner Tickets of each pre-signed default. */
-const TICKETS = { 'default.refund': [0, 4], 'default.noshow': [4, 9], 'default.release': [9, 15] } as const
-const TICKET_COUNT = 15
+/**
+ * Ticket slices of the 21 reserved at open (spec §5.4): outer + inner Tickets of each pre-signed default. The no-show is
+ * pre-signed twice: exact (the account holds just the room) and with a residual sweep returning anything extra to the
+ * guest; the co-signer completes whichever fits the balance and the other dies at AccountDelete.
+ */
+export const HOTEL_TICKETS = { 'default.refund': [0, 4], 'default.noshow': [4, 9], 'default.noshowSweep': [9, 15], 'default.release': [15, 21] } as const
+export const HOTEL_TICKET_COUNT = 21
+const TICKETS = HOTEL_TICKETS
+const TICKET_COUNT = HOTEL_TICKET_COUNT
 /** Sequence numbers the open Batch consumes (outer, SignerListSet, TicketCreate + its Tickets, SetRegularKey). */
 export const OPEN_SEQUENCES = 4 + TICKET_COUNT
 const ACCOUNT_DELETE_MIN_AGE = 256
@@ -73,6 +80,8 @@ const TEMPLATE = 'settlement-vault/hotel@2'
 
 type Role = 'principal' | 'counterparty' | 'arbiter' | 'backupArbiter'
 type Payout = { to: string; value: string }
+/** A pre-signed payout: a fixed amount, or a residual sweep (tfPartialPayment) of whatever is left. */
+type PresignPayout = { to: string; value?: string; partial?: boolean }
 
 // Per-account submission lock: paths run concurrently and share the cast's accounts (Sequence numbers).
 const locks = new Map<string, Promise<unknown>>()
@@ -158,7 +167,7 @@ export class HotelFlow {
   }
 
   // ── Steps ────────────────────────────────────────────────────────────────
-  /** Open Batch (guest funds the room, SignerList, 15 Tickets, RegularKey cleared), register, pre-sign the open-time defaults. */
+  /** Open Batch (guest funds the room, SignerList, 21 Tickets, RegularKey cleared), register, pre-sign the open-time defaults. */
   async open(eng: Wallet, path: HotelPath): Promise<HotelStepResult> {
     const { client, fees, cast, svc } = this.o
     this.eng = eng.address
@@ -199,9 +208,12 @@ export class HotelFlow {
       ...(this.o.policyLayers ? { policyLayers: this.o.policyLayers } : {}),
     }
     svc.register(this.record, this.mandate)
-    await this.presign('default.refund', [{ to: cast.guest.address, value: this.booking.room }])
+    // Automatic endings return any extra money to the guest (residual sweep). The refund sweeps everything; the no-show
+    // is signed exact and with a sweep, since a sweep that delivers nothing would fail on-ledger and burn its Tickets.
+    await this.presign('default.refund', [this.sweepToGuest()])
     await this.presign('default.noshow', this.split(this.micro(this.booking.room), 0n))
-    this.log(`opened ${this.id} at ${eng.address} (t0 ${at(0)}); default.refund + default.noshow pre-signed`)
+    await this.presign('default.noshowSweep', [...this.split(this.micro(this.booking.room), 0n), this.sweepToGuest()])
+    this.log(`opened ${this.id} at ${eng.address} (t0 ${at(0)}); default.refund + default.noshow (exact and sweep) pre-signed`)
     return { step: 'open', tx: r.hash, final }
   }
 
@@ -222,7 +234,7 @@ export class HotelFlow {
     const out: HotelStepResult[] = []
     const receipt = await this.post(this.stmt(cast.hotel, 'COUNTERPARTY', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'checked_in', room: '204', deposit: this.money(this.booking.deposit) }))
     out.push({ step: 'checkin attestation', final: 'RECEIPTED', receipt })
-    await this.presign('default.release', this.split(this.micro(this.booking.room), this.micro(this.booking.deposit)))
+    await this.presign('default.release', [...this.split(this.micro(this.booking.room), 0n), this.sweepToGuest()]) // deposit + anything extra
     out.push({ step: 'default.release pre-signed', final: 'STORED' })
     const r = await withLock(cast.guest.address, async () => this.track('deposit', await sendSimple(client, cast.guest, {
       TransactionType: 'Payment', Account: cast.guest.address, Destination: this.eng, Amount: iou(cast.currency, cast.issuer.address, this.booking.deposit), Memos: [memo('eng/deposit', this.id)],
@@ -230,6 +242,22 @@ export class HotelFlow {
     out.push({ step: 'deposit', tx: r.hash, final: r.final })
     this.checkedIn = true
     out.push(this.decided('checkin', await this.o.svc.decide({ engagementId: this.id, stage: 'checkin' })))
+    return out
+  }
+
+  /**
+   * The guest pays only part of the deposit (`booking.partialDeposit`); the hotel refuses check-in. Not a stay: after
+   * the deadlines it ends as a no-show, and the sweep variant returns the partial deposit to the guest.
+   */
+  async partialDepositRefused(): Promise<HotelStepResult[]> {
+    const { cast, client } = this.o
+    const out: HotelStepResult[] = []
+    const r = await withLock(cast.guest.address, async () => this.track('deposit (partial)', await sendSimple(client, cast.guest, {
+      TransactionType: 'Payment', Account: cast.guest.address, Destination: this.eng, Amount: iou(cast.currency, cast.issuer.address, this.booking.partialDeposit), Memos: [memo('eng/deposit', this.id)],
+    })))
+    out.push({ step: 'deposit (partial)', tx: r.hash, final: r.final })
+    const receipt = await this.post(this.stmt(cast.hotel, 'COUNTERPARTY', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'refused', room: '204', deposit: this.money(this.booking.deposit) }))
+    out.push({ step: 'checkin refused', final: 'RECEIPTED', receipt })
     return out
   }
 
@@ -398,6 +426,13 @@ export class HotelFlow {
         add(await this.tickAndSubmit()) // H11: release refused while a claim is posted
         add(await this.ruling('arbiter', this.split(room + claim, deposit - claim), { party: 'counterparty', advisory: 'ruling.default' })) // H7
         break
+      case 'partialDeposit':
+        add(await this.confirm())
+        await this.waitPast('checkIn')
+        add(await this.partialDepositRefused())
+        await this.waitPast(this.o.timers.entryDisputeBy >= this.o.timers.checkInBy ? 'entryDisputeBy' : 'checkInBy')
+        add(await this.tickAndSubmit()) // H15: the sweep no-show returns the partial deposit; the exact one is refused
+        break
       case 'backupRuling': {
         add(await this.confirm())
         await this.waitPast('checkIn')
@@ -445,6 +480,9 @@ export class HotelFlow {
     ].filter((p) => p.value > 0n).map((p) => ({ to: p.to, value: this.fmt(p.value) }))
   }
 
+  /** A residual sweep to the guest: tfPartialPayment of whatever the fixed payouts leave in the account. */
+  private sweepToGuest(): PresignPayout { return { to: this.o.cast.guest.address, partial: true } }
+
   /** The pinned policy's params.rulingWindow (the flow only uses it to know how long to wait). */
   private rulingWindowSecs(): number { return this.o.rulingWindowSecs ?? 60 }
 
@@ -478,7 +516,7 @@ export class HotelFlow {
     return receipt
   }
 
-  private async presign(outcome: keyof typeof TICKETS, payouts: Payout[]): Promise<void> {
+  private async presign(outcome: keyof typeof TICKETS, payouts: PresignPayout[]): Promise<void> {
     const { cast, fees, svc } = this.o
     const [a, b] = TICKETS[outcome]
     const tx = buildCloseBatch({

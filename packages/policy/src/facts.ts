@@ -151,6 +151,9 @@ export class TxFacts {
   /** B11: a pre-signed outcome must certainly succeed at the pinned ledger (single-shot, F2). */
   wouldSucceed(): boolean {
     const code = this.ctx.eng.asset
+    // A partial payment (residual sweep) that can deliver nothing fails on-ledger (tecPATH_DRY), which inside an
+    // ALLORNOTHING Batch fails the whole Batch and burns its Tickets: only sign a sweep that delivers > 0.
+    if (this.payouts.items.some((p) => p.partial && p.amount.minor <= 0n)) return false
     if (this.closes()) {
       const seq = this.ctx.ledger.accounts[this.ctx.eng.account]?.sequence
       const oldEnough = seq == null || seq + ACCOUNT_DELETE_MIN_AGE <= this.ctx.ledger.index

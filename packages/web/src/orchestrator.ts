@@ -16,7 +16,7 @@ import {
   accountInfo, addBatchSigner, buildOpenBatch, currencyHex, hex, iou, iouBalance, memo, sendSimple, serverFees, sleep, submit, innerResults,
   inner, batchFee, multisignBlob, combine, currentLedger, TF_ALL_OR_NOTHING, type Fees,
   PoolManager, XrplPoolLedger, LocalFileSeedStore, FilePoolStateStore, LocalKeys, type PoolConfig,
-  HotelFlow, HOTEL_PATHS, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, OPEN_SEQUENCES,
+  HotelFlow, HOTEL_PATHS, HOTEL_TICKET_COUNT, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, OPEN_SEQUENCES,
   type HotelBooking, type HotelCast, type HotelPath, type HotelStepResult, type HotelTimerOffsets,
 } from '@eng/cosigner'
 import { EngagementAgent, XrplChain } from '@eng/agent-mcp'
@@ -567,7 +567,7 @@ export class DemoOrchestrator {
     })
   }
 
-  /** Pooled: lease a pre-aged account, hand it to this run's service key, and top up its reserve for the SignerList + 15 Tickets. */
+  /** Pooled: lease a pre-aged account, hand it to this run's service key, and top up its reserve for the SignerList + the pre-signed defaults' Tickets. */
   private async leaseHotelAccount(flow: HotelFlow, p: HotelPath): Promise<Wallet> {
     const h = this.hotelRun!
     const leased = await this.pool!.lease(`${this.engagementId}_${p}`)
@@ -575,7 +575,7 @@ export class DemoOrchestrator {
     const eng = xrpl.Wallet.fromSeed(leased.seed)
     const service = h.cast.service
     must(await sendSimple(this.client, this.poolService, { TransactionType: 'SetRegularKey', Account: eng.address, RegularKey: service.address }), 'hand the leased account to the service key')
-    must(await sendSimple(this.client, service, { TransactionType: 'Payment', Account: service.address, Destination: eng.address, Amount: String(this.fees.reserveBase + this.fees.inc * (2 + 15) + 1_000_000) }), 'reserve top-up')
+    must(await sendSimple(this.client, service, { TransactionType: 'Payment', Account: service.address, Destination: eng.address, Amount: String(this.fees.reserveBase + this.fees.inc * (2 + HOTEL_TICKET_COUNT) + 1_000_000) }), 'reserve top-up')
     await flow.waitUntilAged([eng.address], OPEN_SEQUENCES) // pool-aged; may still need the open Batch's Sequence headroom
     return eng
   }

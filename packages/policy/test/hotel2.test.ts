@@ -102,10 +102,10 @@ describe('hotel@2 — default.noshow', () => {
   it('releases the room to the hotel after entryDisputeBy when confirmed and not checked in', () => {
     expect(failing(input())).toEqual([])
   })
-  it('refuses once the guest checked in and paid the deposit (N3; the deposit also trips N5)', () => {
+  it('refuses once the guest checked in and paid the deposit (N3; this exact variant also cannot leave the deposit behind, N8)', () => {
     const f = failing(input([hotel2Confirmation(), checkin('checked_in')], hotel2Ledger({ closeTime: after, balance: '562' })))
     expect(f).toContain('N3')
-    expect(f).toContain('N5')
+    expect(f).toContain('N8')
   })
   it('a hotel-only checked_in with no deposit paid does not block the no-show (R29)', () => {
     expect(failing(input([hotel2Confirmation(), checkin('checked_in')]))).toEqual([])
@@ -114,12 +114,12 @@ describe('hotel@2 — default.noshow', () => {
     const refused = checkinAt('refused', '2026-11-11T15:05:00Z')
     const f = failing(input([hotel2Confirmation(), checkin('checked_in'), refused], hotel2Ledger({ closeTime: after, balance: '562' })))
     expect(f).not.toContain('N3')
-    expect(f).toContain('N5') // the deposit is in, so the no-show still cannot take it
+    expect(f).toContain('N8') // the deposit is in: this exact variant cannot take it (the sweep variant returns it to the guest)
   })
-  it('refuses while a guest dispute is open and the bond changed the balance (N4, N5)', () => {
+  it('refuses while a guest dispute is open (N4; the exact variant also cannot leave the bond behind, N8)', () => {
     const f = failing(input([hotel2Confirmation(), dispute('entry')], hotel2Ledger({ closeTime: after, dispute: true, balance: '422' })))
     expect(f).toContain('N4')
-    expect(f).toContain('N5')
+    expect(f).toContain('N8')
   })
   it('ignores a dispute Credential with no dispute attestation', () => {
     expect(failing(input([hotel2Confirmation()], hotel2Ledger({ closeTime: after, dispute: true, balance: '412' })))).toEqual([])
@@ -146,11 +146,11 @@ describe('hotel@2 — default.release', () => {
   it('refuses while a claim is posted (L5)', () => {
     expect(failing(input([claim([{ kind: 'minibar', amount: '58.00' }])]))).toEqual(['L5'])
   })
-  it('refuses when stray RLUSD changed the balance (L3)', () => {
-    expect(failing(input([], '563'))).toContain('L3')
+  it('refuses a fixed-deposit release that would leave stray RLUSD behind (L6; the sweep variant returns it)', () => {
+    expect(failing(input([], '563'))).toContain('L6')
   })
   it('refuses while a guest dispute is open (L2)', () => {
-    // room + deposit + 10.00 bond; the bond also trips the exact-balance locks (L3, B7, B11)
+    // room + deposit + 10.00 bond; this fixed-deposit release would also strand the bond (L6, B7, B11)
     const i = { ...input([dispute('settlement')]), ledger: hotel2Ledger({ balance: '572', dispute: true }) }
     expect(failing(i)).toContain('L2')
   })
@@ -260,5 +260,92 @@ describe('hotel@2 — ruling.default (advisory)', () => {
   })
   it('flags payouts that do not match the claim (D5)', () => {
     expect(failing(input('50.00'))).toEqual(['D5'])
+  })
+})
+
+describe('hotel@2 — automatic endings return extra money to the guest (residual sweep)', () => {
+  // Room 412, confirmed deposit 150. A sweep is a tfPartialPayment to the guest whose amount the engine resolves
+  // from the ledger balance (whatever is left after the fixed payouts).
+  const sweep = { to: guest, value: '0', partial: true }
+  const roomToHotel = [{ to: hotel, value: '409.94' }, { to: fee, value: '2.06' }]
+  const refundSweep = hotel2Close([sweep], { tickets: true, memos: basis('default.refund') })
+  const refundExact = hotel2Close([{ to: guest, value: '412' }], { tickets: true, memos: basis('default.refund') })
+  const noshowExact = hotel2Close(roomToHotel, { tickets: true, memos: basis('default.noshow') })
+  const noshowSweep = hotel2Close([...roomToHotel, sweep], { tickets: true, memos: basis('default.noshow') })
+  const releaseSweep = hotel2Close([...roomToHotel, sweep], { tickets: true, memos: basis('default.release') })
+  const releaseExact = hotel2Close([...roomToHotel, { to: guest, value: '150' }], { tickets: true, memos: basis('default.release') })
+  const afterConfirmBy = '2026-11-01T11:00:01Z'
+  const afterEntry = '2026-11-12T11:00:01Z'
+  const refused = checkinAt('refused', '2026-11-11T15:05:00Z')
+  const result = (i: Parameters<typeof hotel2Input>[0], id: string) => decide(hotel2Input(i)).results.find((r) => r.id === id)
+
+  describe('default.refund', () => {
+    it('stray 1 RLUSD on an unconfirmed booking: the refund signs and returns room + 1 to the guest', () => {
+      expect(failing({ stage: 'default.refund', proposedTx: refundSweep, ledger: hotel2Ledger({ balance: '413', closeTime: afterConfirmBy }) })).toEqual([])
+    })
+    it('with no extra money the sweep still delivers the whole room price', () => {
+      expect(failing({ stage: 'default.refund', proposedTx: refundSweep, ledger: hotel2Ledger({ closeTime: afterConfirmBy }) })).toEqual([])
+    })
+    it('a fixed-amount refund that would leave the extra behind is refused (R4)', () => {
+      expect(failing({ stage: 'default.refund', proposedTx: refundExact, ledger: hotel2Ledger({ balance: '413', closeTime: afterConfirmBy }) })).toEqual(['B7', 'B11', 'R4'])
+    })
+    it('still refuses when less than the room price is in the account (R2)', () => {
+      expect(failing({ stage: 'default.refund', proposedTx: refundSweep, ledger: hotel2Ledger({ balance: '400', closeTime: afterConfirmBy }) })).toContain('R2')
+    })
+  })
+
+  describe('default.noshow', () => {
+    const at = (proposedTx: Record<string, unknown>, balance: string, statements: Statement[] = [hotel2Confirmation(), refused], dispute = false) =>
+      ({ stage: 'default.noshow', proposedTx, statements, ledger: hotel2Ledger({ balance, dispute, closeTime: afterEntry }) })
+    it('partial deposit (40) + refused check-in: the sweep variant pays the hotel the room less fee and returns the 40 to the guest', () => {
+      expect(failing(at(noshowSweep, '452'))).toEqual([])
+    })
+    it('partial deposit + refused check-in: the exact variant is refused (N8; it would also strand the deposit, B7/B11)', () => {
+      expect(failing(at(noshowExact, '452'))).toEqual(['B7', 'B11', 'N8'])
+    })
+    it('a full deposit then refused check-in: the room goes to the hotel, the whole deposit back to the guest', () => {
+      expect(failing(at(noshowSweep, '562', [hotel2Confirmation(), checkin('checked_in'), refused]))).toEqual([])
+    })
+    it('no extra money: the exact variant signs', () => {
+      expect(failing(at(noshowExact, '412', [hotel2Confirmation()]))).toEqual([])
+    })
+    it('no extra money: the sweep variant is refused because the sweep would deliver nothing (B11, N8)', () => {
+      expect(failing(at(noshowSweep, '412', [hotel2Confirmation()]))).toEqual(['B11', 'N8'])
+      expect(result({ ...at(noshowSweep, '412', [hotel2Confirmation()]) }, 'B11')).toMatchObject({ result: 'fail', reason: 'WOULD_FAIL' })
+    })
+    it('an unopened "bond" (no Credential, no dispute statement) is just extra money: it goes back to the guest', () => {
+      expect(failing(at(noshowSweep, '422', [hotel2Confirmation()]))).toEqual([])
+    })
+    it('an open entry dispute still blocks both variants (N4)', () => {
+      expect(failing(at(noshowSweep, '422', [hotel2Confirmation(), dispute('entry')], true))).toEqual(['N4'])
+      expect(failing(at(noshowExact, '422', [hotel2Confirmation(), dispute('entry')], true))).toContain('N4')
+    })
+    it('the guest who checked in with the full deposit is still not a no-show (N3)', () => {
+      expect(failing(at(noshowSweep, '562', [hotel2Confirmation(), checkin('checked_in')]))).toEqual(['N3'])
+    })
+    it('the hotel is paid the room only: a sweep variant that takes more than the room is refused (N8)', () => {
+      const greedy = hotel2Close([{ to: hotel, value: '449.74' }, { to: fee, value: '2.26' }, sweep], { tickets: true, memos: basis('default.noshow') })
+      expect(failing(at(greedy, '462'))).toContain('N8')
+    })
+  })
+
+  describe('default.release', () => {
+    const at = (proposedTx: Record<string, unknown>, balance: string, extra: Statement[] = [], dispute = false) =>
+      ({ stage: 'default.release', proposedTx, statements: [hotel2Confirmation(), checkin('checked_in'), ...extra], ledger: hotel2Ledger({ balance, dispute }) })
+    it('stray RLUSD after a normal stay: the release signs, the guest gets deposit + extra', () => {
+      expect(failing(at(releaseSweep, '563'))).toEqual([])
+    })
+    it('with no extra money the sweep returns exactly the deposit', () => {
+      expect(failing(at(releaseSweep, '562'))).toEqual([])
+    })
+    it('a fixed-deposit release that would leave the extra behind is refused (L6)', () => {
+      expect(failing(at(releaseExact, '563'))).toEqual(['B7', 'B11', 'L6'])
+    })
+    it('an open settlement dispute still blocks it (L2)', () => {
+      expect(failing(at(releaseSweep, '572', [dispute('settlement')], true))).toEqual(['L2'])
+    })
+    it('a posted claim still blocks it (L5)', () => {
+      expect(failing(at(releaseSweep, '563', [claim([{ kind: 'minibar', amount: '58.00' }])]))).toEqual(['L5'])
+    })
   })
 })
