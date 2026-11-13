@@ -516,6 +516,48 @@ describe('co-signer closes the last silence/timing wins', () => {
     expect(d.failing).toEqual([])
   })
 
+  it('R38: only the hotel confirms — a guest-posted confirmation is NOT_COUNTERPARTY and cannot lock the hotel out', async () => {
+    const { svc, source } = setup('2026-11-01T09:31:00Z')
+    const c = hotel2Confirmation()
+    const byGuest = statement(W.dana, { kind: 'PRINCIPAL', type: 'party.confirmation/1', engagementId: ENG, subject: c.subject, claim: c.claim, observedAt: '2026-11-01T09:30:00Z', issuedAt: '2026-11-01T09:30:00Z' })
+    await expect(svc.ingest(ENG, byGuest)).rejects.toThrow(/NOT_COUNTERPARTY/)
+    await svc.ingest(ENG, c)
+    expect(svc.statements(ENG)).toEqual([c])
+    source.snap.closeTime = '2026-11-01T12:01:00Z'
+    const d = await svc.decide({ engagementId: ENG, stage: 'default.refund', tx: refundTx() })
+    expect(d.failing).toContain('R1')
+  })
+
+  it('R39b: an entry dispute received before checkIn is TOO_EARLY', async () => {
+    const { svc, source } = await confirmedSetup('2026-11-02T10:01:00Z')
+    await expect(svc.ingest(ENG, dispute('entry', '2026-11-02T10:00:00Z'))).rejects.toThrow(/TOO_EARLY/)
+    source.snap = hotel2Ledger({ closeTime: '2026-11-11T13:59:59Z', dispute: true, balance: '422' })
+    await expect(svc.ingest(ENG, dispute('entry', '2026-11-11T13:59:00Z'))).rejects.toThrow(/TOO_EARLY/) // bonded but still early
+    source.snap.closeTime = '2026-11-11T14:00:00Z' // from checkIn on (inclusive)
+    await svc.ingest(ENG, dispute('entry', '2026-11-11T13:59:30Z'))
+    expect(svc.statements(ENG).filter((x) => x.type === 'party.dispute/1')).toHaveLength(1)
+  })
+
+  it('R39a: an entry dispute without the Credential and bond does not freeze check-in', async () => {
+    for (const ledger of [{ dispute: false, balance: '422' }, { dispute: true, balance: '412' }]) {
+      const { svc, source } = await confirmedSetup('2026-11-11T14:31:00Z')
+      source.snap = hotel2Ledger({ closeTime: '2026-11-11T14:31:00Z', ...ledger })
+      await svc.ingest(ENG, dispute('entry', '2026-11-11T14:30:00Z')) // receipted
+      source.snap.closeTime = '2026-11-11T15:01:00Z'
+      const ci = checkin('checked_in')
+      const r = await svc.ingest(ENG, ci)
+      expect(r.statement.subject.statementId).toBe(ci.id)
+    }
+  })
+
+  it('R39a: with the Credential and the bond on the ledger, checked_in is ENTRY_DISPUTED', async () => {
+    const { svc, source } = await confirmedSetup('2026-11-11T14:31:00Z')
+    source.snap = hotel2Ledger({ closeTime: '2026-11-11T14:31:00Z', dispute: true, balance: '422' })
+    await svc.ingest(ENG, dispute('entry', '2026-11-11T14:30:00Z'))
+    source.snap.closeTime = '2026-11-11T15:01:00Z'
+    await expect(svc.ingest(ENG, checkin('checked_in'))).rejects.toThrow(/ENTRY_DISPUTED/)
+  })
+
   it('R30: re-registering the identical record keeps all state; a different record is ALREADY_REGISTERED', async () => {
     const { svc } = await confirmedSetup('2026-11-11T15:01:00Z')
     await svc.ingest(ENG, checkin('checked_in'))

@@ -9,7 +9,7 @@ import * as keypairs from 'ripple-keypairs'
 import { encodeForMultisigning } from 'ripple-binary-codec'
 import { documentHash, newNonce, parseAmount, signStatementAsync, signerBlob, verifyStatement, zero, type AssetDef, type Signer, type Statement, type Template } from '@eng/core'
 import {
-  Assets, REGISTRY, TxFacts, decide, decisionStatementBody, layerHash,
+  Assets, LedgerFacts, REGISTRY, TxFacts, decide, decisionStatementBody, layerHash,
   type Decision, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc, verifyStatements,
 } from '@eng/policy'
 import type { LedgerSource } from './snapshot.ts'
@@ -206,7 +206,7 @@ export class CosignerService {
     }
     const issued = Date.parse(s.issuedAt)
     if (Number.isNaN(issued) || received - issued > MAX_ISSUE_LAG_SECS * 1000) throw new Error(`STALE_ISSUED: issued ${s.issuedAt}, received ${ledger.closeTime}`)
-    this.checkSequence(st, s, assets)
+    this.checkSequence(st, s, assets, ledger)
     // Key authorization, role, binding and time checks of the policy pipeline, at the receipt ledger.
     const rejected = verifyStatements([s], st.record, ledger).rejected[0]
     if (rejected) throw new Error(`REJECTED: ${rejected.code}`)
@@ -225,19 +225,27 @@ export class CosignerService {
   }
 
   /**
-   * Ordering rules no single statement can show (R28–R33): a booking is confirmed once; a guest's entry dispute
-   * freezes the stay (the hotel can no longer record a check-in); a claim is itemized, positive, and capped at the
-   * deposit of the (first) confirmation.
+   * Ordering rules no single statement can show (R28–R33, R38, R39): only the hotel confirms, and only once; an
+   * entry dispute is filed from check-in on, and a bonded one (principal's ENG/DISPUTE Credential on the account and
+   * the bond on the ledger at this receipt) freezes the stay — the hotel can no longer record a check-in; a claim is
+   * itemized, positive, and capped at the deposit of the (first) confirmation.
    */
-  private checkSequence(st: EngagementState, s: Statement, assets: Record<string, AssetDef>): void {
+  private checkSequence(st: EngagementState, s: Statement, assets: Record<string, AssetDef>, ledger: LedgerSnapshot): void {
+    const { parties } = st.record
     const posted = [...st.attestations.values()].map((a) => a.statement)
-    const firstConfirmation = posted.find((p) => p.type === 'party.confirmation/1' && p.attester.account === st.record.parties.counterparty)
-    if (s.type === 'party.confirmation/1' && posted.some((p) => p.type === 'party.confirmation/1')) {
-      throw new Error('ALREADY_CONFIRMED: the booking already has a receipted confirmation')
+    const isConfirmation = (p: Statement) => p.type === 'party.confirmation/1' && p.attester.account === parties.counterparty
+    const firstConfirmation = posted.find(isConfirmation)
+    if (s.type === 'party.confirmation/1') {
+      if (s.attester.account !== parties.counterparty) throw new Error(`NOT_COUNTERPARTY: only the counterparty confirms the booking (${s.attester.account})`)
+      if (firstConfirmation) throw new Error('ALREADY_CONFIRMED: the booking already has a receipted confirmation')
+    }
+    if (s.type === 'party.dispute/1' && (s.claim as { phase?: unknown }).phase === 'entry') {
+      const checkIn = Date.parse(st.record.timers?.checkIn ?? '')
+      if (!Number.isNaN(checkIn) && Date.parse(ledger.closeTime) < checkIn) throw new Error(`TOO_EARLY: an entry dispute can be filed from checkIn (${st.record.timers!.checkIn})`)
     }
     if (s.type === 'party.checkin/1' && (s.claim as { status?: unknown }).status === 'checked_in') {
-      const entryDispute = posted.some((p) => p.type === 'party.dispute/1' && p.attester.account === st.record.parties.principal && (p.claim as { phase?: unknown }).phase === 'entry')
-      if (entryDispute) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
+      const entryDispute = posted.some((p) => p.type === 'party.dispute/1' && p.attester.account === parties.principal && (p.claim as { phase?: unknown }).phase === 'entry')
+      if (entryDispute && parties.principal && this.disputeBonded(st, assets, ledger)) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
     }
     if (s.type === 'party.claim/1') {
       checkClaimTotal(s, assets)
@@ -251,6 +259,18 @@ export class CosignerService {
       if (!cap) throw new Error('CLAIM_OVER_DEPOSIT: no confirmed deposit to claim against')
       if (parseAmount(c.total.value, asset).cmp(cap) > 0) throw new Error(`CLAIM_OVER_DEPOSIT: claim ${c.total.value} exceeds the confirmed deposit ${dep!.value}`)
     }
+  }
+
+  /** At this ledger: the principal's ENG/DISPUTE Credential is on the account and the balance covers booked + minDisputeBond. */
+  private disputeBonded(st: EngagementState, assets: Record<string, AssetDef>, ledger: LedgerSnapshot): boolean {
+    const { parties, account, amount } = st.record
+    const asset = Object.values(assets).find((a) => a.code === (amount?.asset ?? st.record.asset))
+    if (!asset || !amount) return false
+    const facts = new LedgerFacts(ledger, new Assets(assets))
+    if (!facts.credentialExists(parties.principal!, account, 'ENG/DISPUTE')) return false
+    const bond = [...st.layers].reverse().map((l) => (l.params as { minDisputeBond?: unknown } | undefined)?.minDisputeBond).find((b) => typeof b === 'string') as string | undefined
+    const need = parseAmount(amount.value, asset).add(bond ? parseAmount(bond, asset) : zero(asset.code))
+    return facts.balance(account, asset.code).cmp(need) >= 0
   }
 
   /**
