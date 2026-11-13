@@ -55,9 +55,9 @@ A template dropdown switches between five scenarios, both in simulated and live 
 - **Procurement agent** (owner wallet, quorum 2): the agent spends repeatedly; the co-signer signs
   in-policy payments and refuses the rest.
 - **Hotel stay** (`settlement-vault/hotel@2`, quorum 7): guest (3), hotel (3), arbiter (4), backup
-  arbiter (2), co-signer (2), under `pol_hotel@2.0.0`. A path picker runs any of the eight paths
+  arbiter (2), co-signer (2), under `pol_hotel@2.0.0`. A path picker runs any of the nine paths
   (happy, unconfirmed, no-show, entry dispute conceded / ruled, silence, claim unanswered, backup
-  ruling). Each step shows the co-signer's decision record as it is — stage, SIGN/REFUSE, failing rules,
+  ruling, partial deposit refused at check-in). Each step shows the co-signer's decision record as it is — stage, SIGN/REFUSE, failing rules,
   and every rule row (id · result · reason) — plus its receipt for posted statements, the transaction
   and the payouts. The page writes no check text of its own. Simulated mode replays
   `public/hotel-sim.json` (`npm run web:hotel-sim`), a transcript the real co-signer produced over a

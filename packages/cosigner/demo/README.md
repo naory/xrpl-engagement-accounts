@@ -33,11 +33,13 @@ An owner-wallet engagement account: the owner (treasury) has weight 2, the agent
 
 ## `hotel-testnet.ts`: what it checks
 
-The hotel@2 stay escrow (spec `docs/superpowers/specs/2026-11-12-hotel-stay-escrow-design.md` §5, §7.1), driven by `HotelFlow` (`src/hotel/flow.ts`). Signers: guest 3, hotel 3, arbiter 4, backup arbiter 2, co-signer 2; quorum 7. The guest books a 400 RLUSD room with a 100 deposit; disputes carry a 10 bond; claims are a 20 minibar charge; the service fee is 50 bps of everything the hotel receives.
+The hotel@2 stay escrow (spec `docs/superpowers/specs/2026-11-12-hotel-stay-escrow-design.md` §5, §7.1), driven by `HotelFlow` (`src/hotel/flow.ts`). Signers: guest 3, hotel 3, arbiter 4, backup arbiter 2, co-signer 2; quorum 7. The guest books a 400 RLUSD room with a 100 deposit (40 on the partial-deposit path); disputes carry a 10 bond; claims are a 20 minibar charge; the service fee is 50 bps of everything the hotel receives.
 
 The co-signer loads a copy of `pol_hotel@2.0.0` as version `2.0.0-demo` with `params.rulingWindow: "60s"` (and this run's RLUSD issuer), pinned in every engagement record through `policyLayers`. Timers are seconds from open, judged on validated-ledger close time: `confirmBy` 40, `checkIn` 60, `checkInBy` 90, `entryDisputeBy` 120, `deliveryBy` 150, `claimBy` 180, `disputeWindowEnds` 210.
 
-The script pre-creates all eight engagement accounts, waits until each can be deleted (`Sequence + 256 ≤ ledger index`, counting the Sequence numbers the open Batch consumes), then runs the eight paths concurrently. Each path opens its own account when it starts, because timers count from open. The open Batch reserves 15 Tickets: `default.refund` uses 0–3, `default.noshow` 4–8 (both pre-signed at open), and `default.release` 9–14 (pre-signed at check-in, before the deposit is paid).
+The script pre-creates all nine engagement accounts, waits until each can be deleted (`Sequence + 256 ≤ ledger index`, counting the Sequence numbers the open Batch consumes), then runs the nine paths concurrently. Each path opens its own account when it starts, because timers count from open. The open Batch reserves 21 Tickets: `default.refund` uses 0–3, `default.noshow` 4–8 and `default.noshowSweep` 9–14 (all pre-signed at open), and `default.release` 15–20 (pre-signed at check-in, before the deposit is paid).
+
+Automatic endings return any extra money to the guest with a residual sweep (a `tfPartialPayment` that delivers whatever the fixed payouts leave): the refund sweeps the whole balance, the release sweeps the deposit plus anything extra. A sweep that can deliver nothing fails on-ledger and burns the default, so the no-show is pre-signed twice, exact and with a sweep, and the co-signer completes whichever fits the balance (B11 refuses the other); the unused one dies at `AccountDelete`.
 
 | # | Path | Expected |
 |---|---|---|
@@ -52,9 +54,10 @@ The script pre-creates all eight engagement accounts, waits until each can be de
 | H9 | Backup ruling before `rulingDueBy` | REFUSE `U1` (`NOT_DUE`) |
 | H10 | Guest + hotel alone | `tefBAD_QUORUM` |
 | H11 | `default.release` while a claim is posted | REFUSE `L5` (`CLAIM_POSTED`) |
-| H12 | Open-time `default.refund` / `default.noshow` after the deposit | REFUSE `R2` / `N5` (`BALANCE_CHANGED`) |
+| H12 | Open-time `default.refund` / both `default.noshow` variants after check-in + deposit | REFUSE `R1` (confirmed) / `N3` (`CHECKED_IN`) |
 | H13 | `default.noshow` while an entry dispute is open | REFUSE `N4` (`DISPUTE_OPEN`) |
 | H14 | Arbiter + backup arbiter alone | `tefBAD_QUORUM` |
+| H15 | Guest pays a partial deposit, hotel posts `refused` | exact `default.noshow` REFUSE `N8`; `default.noshowSweep` SIGN: hotel paid the room less the fee, the 40 swept back to the guest inside the ticketed ALLORNOTHING Batch |
 
 Results go to `demo/results/hotel-run-*.json`: every transaction hash, each path's steps (with the rule results from the co-signer's decision records), and the checks. The signed decision log is written next to them.
 
