@@ -171,8 +171,8 @@ class PathSim {
       amount: { asset: 'RLUSD', value: BOOKING.room }, timers: { ...TIMERS }, state: 'OPEN', consumed: [], mandateId: this.mandate.id,
     }
     this.svc.register(record, this.mandate)
-    this.presign('default.refund', [{ to: W.guest.address, value: BOOKING.room }])
-    this.presign('default.noshow', split(micro(BOOKING.room), 0n))
+    await this.presign('default.refund', [{ to: W.guest.address, value: BOOKING.room }])
+    await this.presign('default.noshow', split(micro(BOOKING.room), 0n))
     this.add({ step: 'open', final: 'tesSUCCESS' })
   }
 
@@ -188,7 +188,7 @@ class PathSim {
   async checkIn(): Promise<void> {
     const receipt = await this.post(this.stmt(W.hotel, 'COUNTERPARTY', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'checked_in', room: '204', deposit: money(BOOKING.deposit) }))
     this.add({ step: 'checkin attestation', final: 'RECEIPTED', receipt })
-    this.presign('default.release', split(micro(BOOKING.room), micro(BOOKING.deposit)))
+    await this.presign('default.release', split(micro(BOOKING.room), micro(BOOKING.deposit)))
     this.add({ step: 'default.release pre-signed', final: 'STORED' })
     this.balance += micro(BOOKING.deposit)
     this.add({ step: 'deposit', final: 'tesSUCCESS' })
@@ -277,13 +277,13 @@ class PathSim {
   /** Posted = receipted by the co-signer (ingest judges the window on the snapshot's closeTime). */
   private async post(s: Statement): Promise<HotelReceipt> { return receiptOf(await this.svc.ingest(this.id, s)) }
 
-  private presign(outcome: keyof typeof TICKETS, payouts: Payout[]): void {
+  private async presign(outcome: keyof typeof TICKETS, payouts: Payout[]): Promise<void> {
     const [a, b] = TICKETS[outcome]
     const tx = buildCloseBatch({
       eng: this.eng.address, currency: CURRENCY, issuer: W.issuer.address, payouts, deleteTo: W.service.address,
       tickets: this.tickets.slice(a, b), memos: [memo('eng/basis', outcome)], fees: FEES, signatures: 3,
     })
-    this.svc.storePresigned(this.id, outcome, combine([multisignBlob(W.guest, tx), multisignBlob(W.hotel, tx)]))
+    await this.svc.storePresigned(this.id, outcome, combine([multisignBlob(W.guest, tx), multisignBlob(W.hotel, tx)]))
   }
 
   /** A live close (Sequence + short LastLedgerSequence), payouts in blueprint order. */

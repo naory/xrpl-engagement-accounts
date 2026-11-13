@@ -3,6 +3,7 @@
 // its multisig signature to exactly the transaction it evaluated.
 import fs from 'node:fs'
 import path from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import xrpl from 'xrpl'
 import * as keypairs from 'ripple-keypairs'
 import { encodeForMultisigning } from 'ripple-binary-codec'
@@ -72,6 +73,8 @@ export interface Receipt {
 
 interface EngagementState {
   record: EngagementRecord
+  /** The registration exactly as received; a re-registration must match it (R30). */
+  registered: { record: EngagementRecord; mandate: Statement | null }
   mandate: Statement | null
   layers: PolicyDoc[]
   template: Template
@@ -111,8 +114,17 @@ export class CosignerService {
 
   get address(): string { return this.o.signer.address }
 
-  /** Register an engagement (normally done by the service at open, from the signed engagement record). */
+  /**
+   * Register an engagement (normally done by the service at open, from the signed engagement record).
+   * Registering an existing engagementId again is accepted only with the identical record and mandate, and keeps
+   * all state (receipts, pre-signed defaults, completed decisions); anything else is ALREADY_REGISTERED.
+   */
   register(record: EngagementRecord, mandate: Statement | null = null): { ok: true; layers: string[] } {
+    const existing = this.engagements.get(record?.engagementId)
+    if (existing) {
+      if (!isDeepStrictEqual(existing.registered, { record, mandate })) throw new Error(`ALREADY_REGISTERED: ${record.engagementId} is registered with a different record`)
+      return { ok: true, layers: existing.layers.map((l) => `${l.policyId}@${l.version} ${layerHash(l)}`) }
+    }
     const template = this.o.templates.find((t) => t.templateId === record.template)
     if (!template) throw new Error(`unknown template ${record.template}`)
     if (record.parties.cosigner && record.parties.cosigner !== this.address) throw new Error(`engagement names a different co-signer (${record.parties.cosigner})`)
@@ -131,13 +143,20 @@ export class CosignerService {
       if (!p) throw new Error(`no template policy for ${record.template}`)
       layers = [p]
     }
-    this.engagements.set(record.engagementId, { record: structuredClone({ consumed: [], ...record }), mandate, layers: [baseline, ...layers], template, attestations: new Map(), presigned: new Map(), completed: new Map() })
+    this.engagements.set(record.engagementId, { record: structuredClone({ consumed: [], ...record }), registered: structuredClone({ record, mandate }), mandate, layers: [baseline, ...layers], template, attestations: new Map(), presigned: new Map(), completed: new Map() })
     return { ok: true, layers: [baseline, ...layers].map((l) => `${l.policyId}@${l.version} ${layerHash(l)}`) }
   }
 
   engagement(id: string): EngagementRecord | undefined { return this.engagements.get(id)?.record }
   decisions(engagementId?: string): Statement[] { return engagementId ? this.log.filter((s) => s.engagementId === engagementId) : [...this.log] }
   inflightFor(engagementId: string): InflightRecord[] { return this.inflight.filter((i) => i.engagementId === engagementId) }
+
+  /** Receipted statements with their receipts, in ingest order. */
+  attestations(engagementId: string): Array<{ statement: Statement; receipt: Receipt }> {
+    const st = this.engagements.get(engagementId)
+    if (!st) throw new Error(`unknown engagement ${engagementId}`)
+    return [...st.attestations.values()]
+  }
 
   /** Receipted statements for an engagement, in ingest order. */
   statements(engagementId: string): Statement[] {
@@ -187,7 +206,7 @@ export class CosignerService {
     }
     const issued = Date.parse(s.issuedAt)
     if (Number.isNaN(issued) || received - issued > MAX_ISSUE_LAG_SECS * 1000) throw new Error(`STALE_ISSUED: issued ${s.issuedAt}, received ${ledger.closeTime}`)
-    if (s.type === 'party.claim/1') checkClaimTotal(s, assets)
+    this.checkSequence(st, s, assets)
     // Key authorization, role, binding and time checks of the policy pipeline, at the receipt ledger.
     const rejected = verifyStatements([s], st.record, ledger).rejected[0]
     if (rejected) throw new Error(`REJECTED: ${rejected.code}`)
@@ -206,11 +225,44 @@ export class CosignerService {
   }
 
   /**
+   * Ordering rules no single statement can show (R28–R33): a booking is confirmed once; a guest's entry dispute
+   * freezes the stay (the hotel can no longer record a check-in); a claim is itemized, positive, and capped at the
+   * deposit of the (first) confirmation.
+   */
+  private checkSequence(st: EngagementState, s: Statement, assets: Record<string, AssetDef>): void {
+    const posted = [...st.attestations.values()].map((a) => a.statement)
+    const firstConfirmation = posted.find((p) => p.type === 'party.confirmation/1' && p.attester.account === st.record.parties.counterparty)
+    if (s.type === 'party.confirmation/1' && posted.some((p) => p.type === 'party.confirmation/1')) {
+      throw new Error('ALREADY_CONFIRMED: the booking already has a receipted confirmation')
+    }
+    if (s.type === 'party.checkin/1' && (s.claim as { status?: unknown }).status === 'checked_in') {
+      const entryDispute = posted.some((p) => p.type === 'party.dispute/1' && p.attester.account === st.record.parties.principal && (p.claim as { phase?: unknown }).phase === 'entry')
+      if (entryDispute) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
+    }
+    if (s.type === 'party.claim/1') {
+      checkClaimTotal(s, assets)
+      const c = s.claim as { items: Array<{ amount: { value: string } }>; total: { currency: string; value: string } }
+      const asset = Object.values(assets).find((a) => a.code === c.total.currency)!
+      if (!c.items.length) throw new Error('CLAIM_INVALID: a claim needs at least one item')
+      if (c.items.some((i) => parseAmount(i.amount.value, asset).cmp(zero(asset.code)) <= 0)) throw new Error('CLAIM_INVALID: every item amount must be positive')
+      const dep = (firstConfirmation?.claim as { deposit?: { currency?: string; value?: string } } | undefined)?.deposit
+      let cap
+      try { cap = dep?.currency === asset.code && typeof dep.value === 'string' ? parseAmount(dep.value, asset) : undefined } catch { cap = undefined }
+      if (!cap) throw new Error('CLAIM_OVER_DEPOSIT: no confirmed deposit to claim against')
+      if (parseAmount(c.total.value, asset).cmp(cap) > 0) throw new Error(`CLAIM_OVER_DEPOSIT: claim ${c.total.value} exceeds the confirmed deposit ${dep!.value}`)
+    }
+  }
+
+  /**
    * Store a pre-signed default (spec §5.4): the blob must carry exactly the outcome's signer set minus its
    * finalSigner, each signature valid over this exact transaction, and be a Ticket-based transaction (no
    * LastLedgerSequence) of the engagement account matching the outcome's blueprint. Otherwise nothing is stored.
    */
-  storePresigned(engagementId: string, outcome: string, blob: string): void {
+  async storePresigned(engagementId: string, outcome: string, blob: string): Promise<void> {
+    return this.serialized(engagementId, async () => this.storePresignedLocked(engagementId, outcome, blob))
+  }
+
+  private storePresignedLocked(engagementId: string, outcome: string, blob: string): void {
     const st = this.engagements.get(engagementId)
     if (!st) throw new Error(`unknown engagement ${engagementId}`)
     const o = st.template.outcomes[outcome]
@@ -282,7 +334,9 @@ export class CosignerService {
     this.resolveInflight(st, ledger)
 
     const out: TickResult[] = []
-    const tickets = new Set(ledger.accounts[st.record.account]?.ownerObjects?.tickets ?? [])
+    // A snapshot without owner objects says nothing about Tickets: skip the check rather than retire (R35).
+    const owned = ledger.accounts[st.record.account]?.ownerObjects
+    const tickets = owned ? new Set(owned.tickets ?? []) : null
     for (const [outcome, stored] of [...st.presigned]) {
       const stage = st.template.outcomes[outcome]?.policyStage ?? outcome
       const tx = unsigned(xrpl.decode(stored) as Json)
@@ -292,7 +346,7 @@ export class CosignerService {
       st.completed.delete(txHash)
 
       const used = [tx, ...((tx.RawTransactions ?? []) as Array<{ RawTransaction: Json }>).map((r) => r.RawTransaction)].map((t) => Number(t.TicketSequence))
-      const gone = used.filter((t) => !tickets.has(t))
+      const gone = tickets ? used.filter((t) => !tickets.has(t)) : []
       if (gone.length) {
         st.presigned.delete(outcome)
         const record = await this.refusalRecord(st, ledger, stage, txHash, { id: 'TICKET_CONSUMED', result: 'fail', reason: 'TICKET_CONSUMED', message: `Tickets ${gone.join(', ')} are no longer on the account; the pre-signed default can never apply.` })

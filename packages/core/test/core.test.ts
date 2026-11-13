@@ -142,6 +142,26 @@ describe('template validator', () => {
     const t = hotel(); t.outcomes['settle.ruling'].enforcement = 'ledger'
     expect(validateTemplate(t).errors.map((e) => e.id)).toContain('V12')
   })
+  const hotel2 = () => structuredClone(load('hotel@2.json'))
+  it('V13: attestation windows must name a statement type and a known timer', () => {
+    const bads: Array<Record<string, string>> = [{ 'party.claim/1': 'claimByTypo' }, { 'claim': 'claimBy' }, { 'party.dispute/1#': 'entryDisputeBy' }, { 'party.dispute/1#a#b': 'entryDisputeBy' }]
+    for (const bad of bads) {
+      const t = hotel2(); t.attestationWindows = bad
+      expect(validateTemplate(t).errors.map((e) => e.id)).toEqual(['V13'])
+    }
+    const t = hotel2(); t.attestationWindows = { 'party.checkin/1': 'checkIn' } // an anchor a template timer runs from
+    expect(validateTemplate(t).errors).toEqual([])
+  })
+  it('V14: entryDisputeBy may not close before checkInBy; claimBy must close before disputeWindowEnds', () => {
+    const a = hotel2(); a.timers!.entryDisputeBy.durationSecs = a.timers!.checkInBy.durationSecs - 1
+    expect(validateTemplate(a).errors.map((e) => e.id)).toEqual(['V14'])
+    const b = hotel2(); b.timers!.claimBy.durationSecs = b.timers!.disputeWindowEnds.durationSecs
+    expect(validateTemplate(b).errors.map((e) => e.id)).toEqual(['V14'])
+    const c = hotel2(); c.timers!.entryDisputeBy.durationSecs = c.timers!.checkInBy.durationSecs // equal is allowed
+    expect(validateTemplate(c).errors).toEqual([])
+    const d = hotel2(); d.timers!.claimBy.from = 'checkIn'; d.timers!.claimBy.durationSecs = 10 ** 7 // different anchors: not compared
+    expect(validateTemplate(d).errors).toEqual([])
+  })
   it('minimal winning sets exclude supersets', () => {
     const t = hotel()
     const sets = minimalWinningSets(t).map((s) => s.join('+'))

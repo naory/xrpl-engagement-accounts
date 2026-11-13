@@ -29,6 +29,7 @@
     "rulingDueBy":       { "from": "disputeOpened", "durationSecs": 432000, "onExpire": "escalate" }
   },
   "attestationWindows": {
+    "party.confirmation/1": "confirmBy",
     "party.checkin/1": "checkInBy",
     "party.claim/1": "claimBy",
     "party.issue/1": "disputeWindowEnds",

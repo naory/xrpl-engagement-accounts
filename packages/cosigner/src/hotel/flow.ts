@@ -199,8 +199,8 @@ export class HotelFlow {
       ...(this.o.policyLayers ? { policyLayers: this.o.policyLayers } : {}),
     }
     svc.register(this.record, this.mandate)
-    this.presign('default.refund', [{ to: cast.guest.address, value: this.booking.room }])
-    this.presign('default.noshow', this.split(this.micro(this.booking.room), 0n))
+    await this.presign('default.refund', [{ to: cast.guest.address, value: this.booking.room }])
+    await this.presign('default.noshow', this.split(this.micro(this.booking.room), 0n))
     this.log(`opened ${this.id} at ${eng.address} (t0 ${at(0)}); default.refund + default.noshow pre-signed`)
     return { step: 'open', tx: r.hash, final }
   }
@@ -222,7 +222,7 @@ export class HotelFlow {
     const out: HotelStepResult[] = []
     const receipt = await this.post(this.stmt(cast.hotel, 'COUNTERPARTY', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'checked_in', room: '204', deposit: this.money(this.booking.deposit) }))
     out.push({ step: 'checkin attestation', final: 'RECEIPTED', receipt })
-    this.presign('default.release', this.split(this.micro(this.booking.room), this.micro(this.booking.deposit)))
+    await this.presign('default.release', this.split(this.micro(this.booking.room), this.micro(this.booking.deposit)))
     out.push({ step: 'default.release pre-signed', final: 'STORED' })
     const r = await withLock(cast.guest.address, async () => this.track('deposit', await sendSimple(client, cast.guest, {
       TransactionType: 'Payment', Account: cast.guest.address, Destination: this.eng, Amount: iou(cast.currency, cast.issuer.address, this.booking.deposit), Memos: [memo('eng/deposit', this.id)],
@@ -478,14 +478,14 @@ export class HotelFlow {
     return receipt
   }
 
-  private presign(outcome: keyof typeof TICKETS, payouts: Payout[]): void {
+  private async presign(outcome: keyof typeof TICKETS, payouts: Payout[]): Promise<void> {
     const { cast, fees, svc } = this.o
     const [a, b] = TICKETS[outcome]
     const tx = buildCloseBatch({
       eng: this.eng, currency: cast.currency, issuer: cast.issuer.address, payouts, deleteTo: cast.service.address,
       tickets: this.tickets.slice(a, b), memos: [memo('eng/basis', outcome)], fees, signatures: 3,
     })
-    svc.storePresigned(this.id, outcome, combine([multisignBlob(cast.guest, tx), multisignBlob(cast.hotel, tx)]))
+    await svc.storePresigned(this.id, outcome, combine([multisignBlob(cast.guest, tx), multisignBlob(cast.hotel, tx)]))
   }
 
   private async balance(): Promise<string> {

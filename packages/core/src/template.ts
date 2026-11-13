@@ -232,6 +232,25 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
     if (o.enforcement === 'final-signature' && !o.presigned) err('V12', `outcome ${on}: final-signature enforcement requires a pre-signed outcome`)
   }
 
+  // V13: attestation windows name a statement type (optionally `#phase`) and a timer the engagement carries
+  // (a template timer, or an anchor a template timer runs `from`); a window without a deadline never closes.
+  const timers = t.timers ?? {}
+  const knownTimers = new Set([...Object.keys(timers), ...Object.values(timers).map((tm) => tm.from)])
+  for (const [key, timer] of Object.entries(t.attestationWindows ?? {})) {
+    const [type, phase, ...rest] = key.split('#')
+    if (!/^[a-z][a-z0-9]*(\.[a-z][a-zA-Z0-9]*)+\/\d+$/.test(type) || rest.length || phase === '') err('V13', `attestationWindows: "${key}" does not name a statement type (type/version, optionally #phase)`)
+    if (typeof timer !== 'string' || !knownTimers.has(timer)) err('V13', `attestationWindows["${key}"]: unknown timer ${JSON.stringify(timer)}`)
+  }
+  // V14: window ordering. The entry-dispute window may not close before check-in does (a guest denied entry
+  // could be shut out), and the hotel's claim window must close before the guest's last chance to dispute it.
+  const ordered = (early: string, late: string, strict: boolean, why: string) => {
+    const a = timers[early], b = timers[late]
+    if (!a || !b || a.from !== b.from) return
+    if (strict ? !(a.durationSecs < b.durationSecs) : !(a.durationSecs <= b.durationSecs)) err('V14', `timer ${late} (${b.durationSecs}s) must ${strict ? 'end after' : 'not end before'} ${early} (${a.durationSecs}s) from ${a.from}: ${why}`)
+  }
+  ordered('checkInBy', 'entryDisputeBy', false, 'the guest must be able to dispute entry until check-in closes')
+  ordered('claimBy', 'disputeWindowEnds', true, 'the guest must be able to answer the last possible claim')
+
   if (t.class === 'escrow' && !arbiters.length) warnings.push({ id: 'W1', message: 'escrow template without an arbiter role' })
 
   return { ok: errors.length === 0, errors, warnings, disclosures, minimalWinningSets: mws, ticketsNeeded: tickets, reserveDrops: reserve }
