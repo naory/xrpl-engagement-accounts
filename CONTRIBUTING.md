@@ -13,7 +13,7 @@ npm install
 npm test                 # core, policy, co-signer, conformance vectors
 npm run typecheck
 npm run validate-templates   # V1–V12 over templates/*.json
-npm run lint-policies        # L1–L7 over policies/*.json
+npm run lint-policies        # L1–L8 over policies/*.json (L8: every rule has a plain-English title and message)
 ```
 
 The x402 demo and its test depend on `x402-xrpl-settlement-adapter` (a

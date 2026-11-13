@@ -18,18 +18,18 @@
     "spend": {
       "enforcement": "ledger",
       "rules": [
-        { "id": "SH0", "reason": "MANDATE_INVALID", "check": "has(mandate.expires) && now < timestamp(mandate.expires)", "message": "A valid, unexpired mandate signed by the owner is required." },
-        { "id": "SH1", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('spend.payments') && tx.payouts.count() >= 1", "message": "Spends are 1–4 payments to merchants." },
-        { "id": "SH2", "reason": "MERCHANT_CATEGORY_NOT_ALLOWED", "check": "tx.payouts.destinations().all(d, att.list('merchant.category/1', 'classifier').exists(c, c.subject.account == d && c.claim.category in mandate.categories))", "message": "Every payee must be classified by an accepted classifier into a category the mandate allows." },
-        { "id": "SH3", "reason": "WEEKLY_CAP", "check": "history.outflow('RLUSD', duration('168h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.weeklyCap, 'RLUSD')", "message": "Rolling 7-day outflow cap." },
-        { "id": "SH4", "reason": "BUDGET_EXHAUSTED", "check": "history.outflow('RLUSD', duration('2160h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.budget, 'RLUSD')", "message": "Mandate budget (90 days)." },
-        { "id": "SH5", "reason": "PAYMENT_CHALLENGE_MISMATCH", "when": "hasTx && att.list('payment.challenge/1', 'agent').size() > 0", "check": "tx.payouts.count() == 1 && def.paymentChallenge.claim.payTo in tx.payouts.destinations() && tx.payouts.to(def.paymentChallenge.claim.payTo, 'RLUSD') == amt(def.paymentChallenge.claim.amount, 'RLUSD') && tx.boundToInvoice(def.paymentChallenge.claim.invoiceId)", "message": "The payment must match the agent's x402/MPP challenge: destination, amount and invoice binding." }
+        { "id": "SH0", "title": "Owner’s spending mandate is valid", "reason": "MANDATE_INVALID", "check": "has(mandate.expires) && now < timestamp(mandate.expires)", "message": "The agent can only spend under a mandate the owner signed, and only until it expires." },
+        { "id": "SH1", "title": "A plain merchant payment", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('spend.payments') && tx.payouts.count() >= 1", "message": "A spend is one to four payments to merchants, and nothing else." },
+        { "id": "SH2", "title": "Allowed kind of shop", "reason": "MERCHANT_CATEGORY_NOT_ALLOWED", "check": "tx.payouts.destinations().all(d, att.list('merchant.category/1', 'classifier').exists(c, c.subject.account == d && c.claim.category in mandate.categories))", "message": "Every merchant must be classified by an accepted classifier into a category the owner allowed (for example groceries)." },
+        { "id": "SH3", "title": "Within the weekly cap", "reason": "WEEKLY_CAP", "check": "history.outflow('RLUSD', duration('168h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.weeklyCap, 'RLUSD')", "message": "Everything spent in the last 7 days, including payments still settling, stays under the mandate’s weekly limit." },
+        { "id": "SH4", "title": "Within the overall budget", "reason": "BUDGET_EXHAUSTED", "check": "history.outflow('RLUSD', duration('2160h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.budget, 'RLUSD')", "message": "Everything spent over the mandate’s 90-day period, including payments still settling, stays within its budget." },
+        { "id": "SH5", "title": "Matches the merchant’s payment request", "reason": "PAYMENT_CHALLENGE_MISMATCH", "when": "hasTx && att.list('payment.challenge/1', 'agent').size() > 0", "check": "tx.payouts.count() == 1 && def.paymentChallenge.claim.payTo in tx.payouts.destinations() && tx.payouts.to(def.paymentChallenge.claim.payTo, 'RLUSD') == amt(def.paymentChallenge.claim.amount, 'RLUSD') && tx.boundToInvoice(def.paymentChallenge.claim.invoiceId)", "message": "When paying a merchant’s x402 or MPP request, the payment must go to the address, for the amount and invoice, that the merchant asked for, so it can’t be redirected or replayed." }
       ]
     },
     "close.owner": {
       "enforcement": "advisory",
       "rules": [
-        { "id": "O1", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.sweep')", "message": "Owner close: sweep to the owner, remove the trust line, delete." }
+        { "id": "O1", "title": "Valid owner close", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.sweep')", "message": "The owner closes the account by sweeping everything back to themselves, then deleting it." }
       ]
     }
   }

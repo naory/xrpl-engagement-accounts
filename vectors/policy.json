@@ -349,7 +349,7 @@
           }
         }
       },
-      "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36": {
+      "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169": {
         "policyId": "pol_procurement",
         "version": "1.3.0",
         "layer": "template",
@@ -378,53 +378,61 @@
             "rules": [
               {
                 "id": "W0",
+                "title": "Owner’s spending mandate is valid",
                 "reason": "MANDATE_INVALID",
                 "check": "has(mandate.expires) && now < timestamp(mandate.expires)",
-                "message": "A valid, unexpired mandate signed by the owner is required."
+                "message": "The agent can only spend under a mandate the owner signed, and only until it expires."
               },
               {
                 "id": "W1",
+                "title": "A plain vendor payment",
                 "reason": "TX_SHAPE",
                 "check": "tx.matchesBlueprint('spend.payments') && tx.payouts.count() >= 1",
-                "message": "Spends are 1–4 payments to vendors."
+                "message": "A spend is one to four payments to vendors, and nothing else."
               },
               {
                 "id": "W2",
+                "title": "Approved, verified vendor",
                 "reason": "VENDOR_NOT_ALLOWED",
                 "check": "tx.payouts.destinations().all(d, d in mandate.vendors && ledger.hasCredential(d, params.kybType, params.kybIssuers))",
-                "message": "Every payee must be a mandate vendor holding a KYB credential from an accepted issuer."
+                "message": "Every payee must be on the owner’s vendor list and hold a business-verification (KYB) credential from an accepted issuer."
               },
               {
                 "id": "W3",
+                "title": "Within the daily cap",
                 "reason": "DAILY_CAP",
                 "check": "history.outflow('RLUSD', duration('24h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.dailyCap, 'RLUSD')",
-                "message": "Daily outflow cap."
+                "message": "Everything spent in the last 24 hours, including payments still settling, stays under the mandate’s daily limit."
               },
               {
                 "id": "W4",
+                "title": "Within the overall budget",
                 "reason": "BUDGET_EXHAUSTED",
                 "check": "history.outflow('RLUSD', duration('2160h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.budget, 'RLUSD')",
-                "message": "Mandate budget (90 days)."
+                "message": "Everything spent over the mandate’s 90-day period, including payments still settling, stays within its budget."
               },
               {
                 "id": "W5",
+                "title": "Large payment approved",
                 "reason": "APPROVAL_REQUIRED",
                 "when": "def.spendNow > amt(params.approvalThreshold, 'RLUSD')",
                 "check": "tx.payouts.count() == 1 && att.list('approval.payment/1', 'approver').exists(a, a.subject.intentHash == tx.intentHash() && now < timestamp(a.claim.notAfter))",
-                "message": "Payments above the threshold need a single-use approval bound to this payment intent."
+                "message": "Payments over the approval threshold need a one-time approval from the owner’s approver, tied to this exact payment."
               },
               {
                 "id": "W6",
+                "title": "Matches a vendor invoice",
                 "reason": "NO_MATCHING_INVOICE",
                 "check": "tx.payouts.items.all(p, att.list('party.invoice/1', 'vendor').exists(i, i.attester.account == p.to && amt(i.claim.amount, 'RLUSD') == p.amount && i.claim.invoiceRef == tx.memo('eng/invoice')))",
-                "message": "Each payment must match a vendor-signed invoice (amount and invoice reference)."
+                "message": "Each payment must match an invoice the vendor signed: same amount, same invoice number."
               },
               {
                 "id": "W7",
+                "title": "Matches the merchant’s payment request",
                 "reason": "X402_CHALLENGE_MISMATCH",
                 "when": "hasTx && att.list('payment.challenge/1', 'agent').size() > 0",
                 "check": "tx.payouts.count() == 1 && def.paymentChallenge.claim.payTo in tx.payouts.destinations() && tx.payouts.to(def.paymentChallenge.claim.payTo, 'RLUSD') == amt(def.paymentChallenge.claim.amount, 'RLUSD') && tx.boundToInvoice(def.paymentChallenge.claim.invoiceId)",
-                "message": "The payment must match the x402 challenge: destination, amount and invoice binding."
+                "message": "When paying a merchant’s x402 request, the payment must go to the address, for the amount and invoice, that the merchant asked for, so it can’t be redirected or replayed."
               }
             ]
           },
@@ -433,15 +441,16 @@
             "rules": [
               {
                 "id": "O1",
+                "title": "Valid owner close",
                 "reason": "TX_SHAPE",
                 "check": "tx.matchesBlueprint('close.sweep')",
-                "message": "Owner close: sweep to the owner, remove the trust line, delete."
+                "message": "The owner closes the account by sweeping everything back to themselves, then deleting it."
               }
             ]
           }
         }
       },
-      "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC": {
+      "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101": {
         "policyId": "pol_hotel",
         "version": "1.1.0",
         "layer": "template",
@@ -472,18 +481,24 @@
             "rules": [
               {
                 "id": "C1",
+                "title": "Confirms the guest’s actual booking",
                 "reason": "BAD_CONFIRMATION",
-                "check": "att.latest('party.confirmation/1', 'counterparty') != null && att.latest('party.confirmation/1', 'counterparty').claim.mandateHash == eng.mandateId"
+                "check": "att.latest('party.confirmation/1', 'counterparty') != null && att.latest('party.confirmation/1', 'counterparty').claim.mandateHash == eng.mandateId",
+                "message": "The hotel’s confirmation must point to the guest’s own booking request."
               },
               {
                 "id": "C2",
+                "title": "Right city and dates",
                 "reason": "MANDATE_MISMATCH",
-                "check": "att.latest('party.confirmation/1', 'counterparty').claim.city == mandate.constraints.city && att.latest('party.confirmation/1', 'counterparty').claim.checkIn == mandate.constraints.checkIn && att.latest('party.confirmation/1', 'counterparty').claim.checkOut == mandate.constraints.checkOut"
+                "check": "att.latest('party.confirmation/1', 'counterparty').claim.city == mandate.constraints.city && att.latest('party.confirmation/1', 'counterparty').claim.checkIn == mandate.constraints.checkIn && att.latest('party.confirmation/1', 'counterparty').claim.checkOut == mandate.constraints.checkOut",
+                "message": "The confirmed city and check-in/check-out dates must match what the guest asked for."
               },
               {
                 "id": "C4",
+                "title": "Right price",
                 "reason": "AMOUNT_MISMATCH",
-                "check": "amt(att.latest('party.confirmation/1', 'counterparty').claim.total.value, 'RLUSD') == def.booked"
+                "check": "amt(att.latest('party.confirmation/1', 'counterparty').claim.total.value, 'RLUSD') == def.booked",
+                "message": "The confirmed total must equal the room price the guest paid in."
               }
             ]
           },
@@ -492,19 +507,31 @@
             "rules": [
               {
                 "id": "S1",
+                "title": "Deal is ready to settle",
                 "reason": "WRONG_STATE",
-                "check": "eng.state in ['CONFIRMED', 'AWAITING_SETTLEMENT'] && !def.disputeOpen"
+                "check": "eng.state in ['CONFIRMED', 'AWAITING_SETTLEMENT'] && !def.disputeOpen",
+                "message": "Settlement happens once the booking is confirmed or the stay is over, and never while a guest dispute is open."
               },
-              {"id":"S2","reason":"TX_SHAPE","check":"tx.matchesBlueprint('close.split')"},
+              {
+                "id": "S2",
+                "title": "Valid settlement",
+                "reason": "TX_SHAPE",
+                "check": "tx.matchesBlueprint('close.split')",
+                "message": "An agreed settlement splits the money between guest and hotel and closes the account, in one transaction."
+              },
               {
                 "id": "S4",
+                "title": "Correct service fee",
                 "reason": "FEE_MISMATCH",
-                "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)"
+                "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
+                "message": "The service takes 0.5% of whatever the hotel receives."
               },
               {
                 "id": "S5",
+                "title": "Guest left a review",
                 "reason": "REVIEW_REQUIRED",
-                "check": "tx.memo('eng/review') != null && att.list('party.review/1', 'principal').exists(r, r.id == tx.memo('eng/review'))"
+                "check": "tx.memo('eng/review') != null && att.list('party.review/1', 'principal').exists(r, r.id == tx.memo('eng/review'))",
+                "message": "A stay settles together with the guest’s review, so every completed booking leaves a reputation record."
               }
             ]
           },
@@ -513,11 +540,25 @@
             "rules": [
               {
                 "id": "R1",
+                "title": "Refund is due",
                 "reason": "NOT_DUE",
-                "check": "now >= timestamp(eng.timers.confirmBy) && eng.state == 'OPEN'"
+                "check": "now >= timestamp(eng.timers.confirmBy) && eng.state == 'OPEN'",
+                "message": "The automatic refund is only for a booking the hotel never confirmed by its deadline."
               },
-              {"id":"R2","reason":"BALANCE_CHANGED","check":"def.balance == def.booked"},
-              {"id":"R3","reason":"TX_SHAPE","check":"tx.matchesBlueprint('close.refundAll')"}
+              {
+                "id": "R2",
+                "title": "Account holds just the room price",
+                "reason": "BALANCE_CHANGED",
+                "check": "def.balance == def.booked",
+                "message": "This refund was signed in advance for exactly the room price. If anything else is in the account now (such as a dispute bond), it no longer fits."
+              },
+              {
+                "id": "R3",
+                "title": "Valid refund",
+                "reason": "TX_SHAPE",
+                "check": "tx.matchesBlueprint('close.refundAll')",
+                "message": "The automatic refund sends the room price back to the guest and closes the account."
+              }
             ]
           },
           "default.release": {
@@ -525,17 +566,37 @@
             "rules": [
               {
                 "id": "L1",
+                "title": "Release is due",
                 "reason": "NOT_DUE",
-                "check": "now >= timestamp(eng.timers.disputeWindowEnds) && eng.state == 'AWAITING_SETTLEMENT'"
+                "check": "now >= timestamp(eng.timers.disputeWindowEnds) && eng.state == 'AWAITING_SETTLEMENT'",
+                "message": "The “nobody acted” release only fires after the guest’s window to dispute has closed."
               },
-              {"id":"L2","reason":"DISPUTE_OPEN","check":"!def.disputeOpen"},
-              {"id":"L3","reason":"BALANCE_CHANGED","check":"def.balance == def.booked"},
-              {"id":"L4","reason":"TX_SHAPE","check":"tx.matchesBlueprint('close.releaseAll')"}
+              {
+                "id": "L2",
+                "title": "No open dispute",
+                "reason": "DISPUTE_OPEN",
+                "check": "!def.disputeOpen",
+                "message": "If the guest filed a dispute, the release waits for the arbiter. Silence can’t override a raised flag."
+              },
+              {
+                "id": "L3",
+                "title": "Account holds just the room price",
+                "reason": "BALANCE_CHANGED",
+                "check": "def.balance == def.booked",
+                "message": "The release was signed in advance for exactly the room price. If anything else is in the account, it no longer fits."
+              },
+              {
+                "id": "L4",
+                "title": "Valid release",
+                "reason": "TX_SHAPE",
+                "check": "tx.matchesBlueprint('close.releaseAll')",
+                "message": "The release pays the room to the hotel (less the fee) and closes the account."
+              }
             ]
           }
         }
       },
-      "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9": {
+      "att:16DB9AD5F47D02973FD1943BF31C900C4440411BC625263B9DD243960D0D313D": {
         "policyId": "pol_shopping",
         "version": "1.0.0",
         "layer": "template",
@@ -560,40 +621,46 @@
             "rules": [
               {
                 "id": "SH0",
+                "title": "Owner’s spending mandate is valid",
                 "reason": "MANDATE_INVALID",
                 "check": "has(mandate.expires) && now < timestamp(mandate.expires)",
-                "message": "A valid, unexpired mandate signed by the owner is required."
+                "message": "The agent can only spend under a mandate the owner signed, and only until it expires."
               },
               {
                 "id": "SH1",
+                "title": "A plain merchant payment",
                 "reason": "TX_SHAPE",
                 "check": "tx.matchesBlueprint('spend.payments') && tx.payouts.count() >= 1",
-                "message": "Spends are 1–4 payments to merchants."
+                "message": "A spend is one to four payments to merchants, and nothing else."
               },
               {
                 "id": "SH2",
+                "title": "Allowed kind of shop",
                 "reason": "MERCHANT_CATEGORY_NOT_ALLOWED",
                 "check": "tx.payouts.destinations().all(d, att.list('merchant.category/1', 'classifier').exists(c, c.subject.account == d && c.claim.category in mandate.categories))",
-                "message": "Every payee must be classified by an accepted classifier into a category the mandate allows."
+                "message": "Every merchant must be classified by an accepted classifier into a category the owner allowed (for example groceries)."
               },
               {
                 "id": "SH3",
+                "title": "Within the weekly cap",
                 "reason": "WEEKLY_CAP",
                 "check": "history.outflow('RLUSD', duration('168h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.weeklyCap, 'RLUSD')",
-                "message": "Rolling 7-day outflow cap."
+                "message": "Everything spent in the last 7 days, including payments still settling, stays under the mandate’s weekly limit."
               },
               {
                 "id": "SH4",
+                "title": "Within the overall budget",
                 "reason": "BUDGET_EXHAUSTED",
                 "check": "history.outflow('RLUSD', duration('2160h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.budget, 'RLUSD')",
-                "message": "Mandate budget (90 days)."
+                "message": "Everything spent over the mandate’s 90-day period, including payments still settling, stays within its budget."
               },
               {
                 "id": "SH5",
+                "title": "Matches the merchant’s payment request",
                 "reason": "PAYMENT_CHALLENGE_MISMATCH",
                 "when": "hasTx && att.list('payment.challenge/1', 'agent').size() > 0",
                 "check": "tx.payouts.count() == 1 && def.paymentChallenge.claim.payTo in tx.payouts.destinations() && tx.payouts.to(def.paymentChallenge.claim.payTo, 'RLUSD') == amt(def.paymentChallenge.claim.amount, 'RLUSD') && tx.boundToInvoice(def.paymentChallenge.claim.invoiceId)",
-                "message": "The payment must match the agent's x402/MPP challenge: destination, amount and invoice binding."
+                "message": "When paying a merchant’s x402 or MPP request, the payment must go to the address, for the amount and invoice, that the merchant asked for, so it can’t be redirected or replayed."
               }
             ]
           },
@@ -602,9 +669,10 @@
             "rules": [
               {
                 "id": "O1",
+                "title": "Valid owner close",
                 "reason": "TX_SHAPE",
                 "check": "tx.matchesBlueprint('close.sweep')",
-                "message": "Owner close: sweep to the owner, remove the trust line, delete."
+                "message": "The owner closes the account by sweeping everything back to themselves, then deleting it."
               }
             ]
           }
@@ -1102,7 +1170,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -1134,8 +1202,8 @@
           "att:EEC1175E4F7E88555919CD5F7685754836F2A913CDA4EAB10B757C31A692F073"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:3aff58f3081f1814e15210b509633394895bdb2e990dd4d60c4eccd8191f4c83",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:47536525bc9b94f19fc9596d7cc7e3d3a8c2197323279d783dfb4b17dcdfa3cb",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -1282,7 +1350,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -1315,8 +1383,8 @@
           "att:5E7FC764AE7CB7E071FF76B17BB9A0C055698A1A02496B26F97083F61A7DFCB2"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:15d17505608d890072fa43e5f80c04e7cd9681319e9d19a883e752285ee4ad47",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:f7488254a73b8e3ce5d84bd6360ab70d02f6f12ef6ea3536f911d03af65f76ee",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -1463,7 +1531,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -1496,8 +1564,8 @@
           "att:444E7A9F1E8E205AB8200D486B7F1AB680242139EBF4E7DFC570F68C046D4120"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:faf3369dadf44f422ee60f899695449e021d754be99f3db80ef5c44e7123d6ed",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:d28dee1ff9327532beaa4a46e856485b94ee66b3302ecf1478ce02733d8c6f79",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -1644,7 +1712,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -1677,8 +1745,8 @@
           "att:2EDBD81BB77F0EDE4FA6DBD970FB8F04F1F9F736F49235CB166B62C08405745B"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:26dd2b8813ba271f5075dc6804d9def6441c8679800fddd96cf3f4d32dbeec23",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:cf9dda35795819e45e8bdb3e7987320375537b21aefd949fbf41ae4941d714ce",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -1810,7 +1878,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -1842,8 +1910,8 @@
           "att:D6AA06FB2D241F5D8027CF72F3DBCFF571854839B2354D9B3C0917029CD786CC"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:9dbfc8e5643770730eae985e971e7b39d3081d0a064ee3bcf1f6d670d804f12e",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:922db94e021280813cc57e92198b5d3fde567943866e5685cbd4df1ae178cb50",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -1981,7 +2049,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -2013,8 +2081,8 @@
           "att:0E9DD851C22C433A53C1D62F58D74D9C9AA091418BEEEE63FA25FD5C17DDB8F9"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:0774845f0fdc04a0f5148d4a33cbf005fc97529014c911970bbb35e570f3fe4c",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:2b7a9bdd590c0c27e9b224bbcacc76419970da3c0f3ef9f1a4dbf0eb5eb67dc2",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -2143,7 +2211,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -2175,8 +2243,8 @@
           "att:EE1B30140FDA7EDD5F261A55243F14CA42D2BD7CC693353A44DE365C193C7537"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:49e1ec8009fc1286546a3b897b43fea6653523492e4adbb5744a434d2497f2e6",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:95211177e93fddf67d4a76f9556f09a4637f327fa20e3d904c6fb0ea66e5b8f1",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -2299,7 +2367,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -2331,8 +2399,8 @@
           "att:C13431928D8DD1C83D9FD0266A07BBC3530B400B0B5B19427048D41294470030"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:f6c5bc5fe5e00cd034df34292134805dfe4089970c81cb359f31ea3db24a7f35",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:378152953923f3c2dd46eecb1cb64cc9b34815ab802b6c8c62be0fef38cd8269",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -2472,7 +2540,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -2505,8 +2573,8 @@
           "att:ABAE742F934DFD4AF365CA8C287C3B1C4C5A50B64AFDD9609FEDE0A09B0701AC"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:8a5e1346ed89fcc20eef1e2ef9d15bae7e6e46aa48d1022ec320e60628f085f3",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:57449699b9d2866310582b4aca202c02d769f63e9c24e5677343a8b5b8b63e96",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -2646,7 +2714,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -2679,8 +2747,8 @@
           "att:FA09543A1D9504542C379A96D4F680FC205D272B559EDD10FE42785A5B659CBB"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:e0948433a327a225677127e44cbe709e149f4a5c2aed8be466e67a6b179b68a9",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:47620a44907dd298d6a34152193126a791002a942018e47e997faeb2011fe3d9",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -2820,7 +2888,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -2853,8 +2921,8 @@
           "att:06F1FFF5BEBA81E68BD013B1446DD47E10803182D101DECA9FC736279328BF5A"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:a202e8c1576a8ee1a7ef6f5a8da6a82a262aa74dec5465b33a87e058e6858b49",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:d179f1dcbee535fff87fffc6cc5dacec21ea27019e9174b5a5989fa68443b463",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -2994,7 +3062,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -3032,8 +3100,8 @@
             "code": "ATTESTER_NOT_IN_TERMS"
           }
         ],
-        "inputsHash": "sha256:579fe34b500968e0b53dbfef3c2d4324461d0f8d492473b43c2e7a78889314aa",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:d71a97d9f0d1426f64365ce47fbdbb22d4aec216b69b3ea028a48c765ade7e5d",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -3173,7 +3241,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -3211,8 +3279,8 @@
             "code": "STALE"
           }
         ],
-        "inputsHash": "sha256:ee8c0ef141c2502c89bd859fcf36524a17fd31aa8a58d7e4e6758240d9cd7765",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:58d415cb070d4ea36415759ec14fd83cdc7d308221ea711ff17535c2f3ac49b7",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -3352,7 +3420,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -3390,8 +3458,8 @@
             "code": "CONSUMED"
           }
         ],
-        "inputsHash": "sha256:35d48ad0ae6ba2f194ac2dd863867b8fa078a0f9e04da33576a03c3ea7864769",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:bbaff130fd989dbd5c3d969d310bb94740d364a9ba167d0547d3752edc5914e1",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -3514,7 +3582,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -3546,8 +3614,8 @@
           "att:3615313D0B4D8945A3C4613C2BF67B164DC3BE668F1A20317F30DF96CF1B0A84"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:f1256fdceade32e73a8e5e0d21a3f3f39c6bc8c9f1551a567fc55a26efd972d3",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:8ad72bad05b4bfc14e9232132dc2a25272c34c65d66ce173a9ee13f67cdd5293",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -3663,7 +3731,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -3695,8 +3763,8 @@
           "att:FCB3C74ED032E37BFB6973CA7CB5B59334EEDACA78F0DF48AE693D211B12D1C5"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:dccc19b97ad2d4b37f1a048b805d74fe8dcba96eacf473d208d7984f73ef9212",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:90cdf3dfd28f928ec5a72a80fea6d6ff9aec5e2212be4221609a6e08e0ab7927",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -3812,7 +3880,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -3844,8 +3912,8 @@
           "att:AE92AFF6E0A888A3DC1881D0205EED9C7FACA4D1FC33C4DA6415FF550B2BD400"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:18b1c4ae3f1ec975925d11c2bbc6df3b2925c9ff75ed72c1e02ac515bce2ed71",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:a9eeec587b7a321ad4acb1784008fbe5349f2a40e0393d5f61b632428923ae28",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -3968,7 +4036,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -4000,8 +4068,8 @@
           "att:E4DD493211EC840FA1FACB22168E0118A8CDD0763B2698B37AF09BBE4E096B5A"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:b49b5bf1461bc24fea312958490b0d85bf90af2961f431e9dba9dc4b7b369361",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:79080f2241d28df4259049aa8e798fccd03f7ee9537e4f72bdfa00653042f40d",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -4124,7 +4192,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -4156,8 +4224,8 @@
           "att:09EB7E6764133B05F301791DAD9F8A3B312AF7B19BFED460CB1D2A44DAB3DE21"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:10e02925a625dcdedcd7030b8222be1ac5f48b8d1e52df494d46c3cbf3a65f0f",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:fe208e1875946c098dfb13967609ca0226778c423e2f0fb48f4abf6403fc4304",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -4280,7 +4348,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -4312,8 +4380,8 @@
           "att:BF2C3DCE84296E3983BA7126B23C8E4CB1035BE71683F5C99743D8A9B4B33186"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:8ac1be09ea0897a48fd32121e785cae8bbf37d5854ad493cf21b91aad7110e86",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:35ed908a04f43b3419f5e095421480bd4f6340468ba7515c6da95c96e8e44eaa",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -4459,7 +4527,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -4491,8 +4559,8 @@
           "att:A4BC340AE71793BF8D881A622F3BEB109C0EB935DE758757361D9CD1D0821B1D"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:5181fd3e04bc80467f16a12bc224615cf5853e31de490831dd074e744e7f2573",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:cf882c378a9e0768f5a56da9639c909df003fde9200c55c331a45dd3a5561c73",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -4615,7 +4683,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -4647,8 +4715,8 @@
           "att:C90C12ACFEC7E532859D7893C6D37356C57EC35012728B88E39FA31878E54C2B"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:91acbc0c6d5fcf22b3e710f1357b8fc972225a96cb5993c5ee8e52346166743c",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:9bfcc438a1861f444ebba6f791f6103395c684ad89c07266215b2dbb0adc7cdb",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -4770,7 +4838,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -4802,8 +4870,8 @@
           "att:78B8D1AF2D6C3E3DE355D83FA549CBD758B09FCFB0FFD0CC67D5B5BAE80BA36E"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:f9e8c4fadc0f8b61c43660f9436b0352eecb27e5c008cb130971efbb1b49c847",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:3ae394f753c2915741e08bc037ac1aafac5977cc8f27d856fb29fda942e6f96b",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -4926,7 +4994,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -4958,8 +5026,8 @@
           "att:8B3EB6D72E96589F3D67B2A67C97048FD7EDC3575CC293020ED731D662E0D0BE"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:ebd8c29714ca5dad1944fe79606ab72bf5809d70ba2561390632eda8bf489de5",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:db9b2712ef9252ae16120a77de5a5c4d8979809856f93811ffd7a6b4cade322d",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -5082,7 +5150,7 @@
         "template": "owner-wallet/procurement@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
+          "att:99DE215AEE63E109EF6DA42EE9D85F12B7B6BAB18F48AA0F79C5BD56E9215169"
         ]
       },
       "expect": {
@@ -5107,8 +5175,8 @@
           "att:BCA7E72C6B916B592D7371ADC6025D047C9E86A901517CB68B0F0CF2B79E1680"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:00367b77ea6389ced66a336cb4f61383bc05d13512f1ee5817e3aef2ed4ff46e",
-        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
+        "inputsHash": "sha256:e94678dbd17886b143132160ccc1a8794ff9be1673096dc5d069ebaed59338a7",
+        "effectiveHash": "att:980B38AFD9AC464E06300BCE3E1A802D31A1063548C74B64E9FF6420A978383F"
       }
     },
     {
@@ -5286,7 +5354,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -5314,8 +5382,8 @@
           "att:B500BA0E74E3B1A96E3395A4C913CEE5610808C1C6D18AAEA495047DE79E8427"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:78c30e0b6b3d929ef869be830a6dc749f3b5363bf40652715e3e87b2c134958b",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:96edfc0a4eaf827afc57c9ccdd054b922cd607f316c99cdf316ca427acf655c4",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -5475,7 +5543,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -5500,8 +5568,8 @@
         ],
         "statementsUsed": ["att:EE9C47AD18E7F7EE60369FF2FCEE006FCB18BCA71DB0CAD8CD51FDFE53A9D7D1"],
         "statementsRejected": [],
-        "inputsHash": "sha256:a74f4a6a53c0551c16e977ace3a16d262a0a1d080cd93268794d35701b1edb73",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:2c3192e57c3263d787acfcb09cf756df3e0135037d413ed1cfbb9c6814d3ee37",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -5687,7 +5755,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -5715,8 +5783,8 @@
           "att:EA0D214FCCB76DD731371315F2C1CE7F58E750B713C151671F33E087E59A4422"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:d0c4116b158edd2f9d14f97efc65a9e5f9c84e73e638b8f813d8b820e426d5b7",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:b678ab92b96f927ca9e982d1dc0acc920cbea0d7f1ef3cafef97080aa2938011",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -5894,7 +5962,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -5922,8 +5990,8 @@
           "att:DB93FBBE57F59C13D694BD6F7309A2C99050BB8668B03085995054AA9724B661"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:dda79d1c0ae5e2ee757b1dd2a9cbca8f24c79a839fb0cd66f6c460b48fbae965",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:bfedd1e7e2ea0b5066167b57c443fdc56088e814a1bcd962260c5d7f1cb9f811",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -6101,7 +6169,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -6129,8 +6197,8 @@
           "att:45BA1802DA93AAFBB9B68DD0C0412A1F9E79A3786FD12AECCFA9E40597C02F72"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:cf8fbd1f7524ff27d58ec12bc1bdfa7850f7136360ea35494c7aecb0b7e9e9c5",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:f2f8daa5b8a004adfa9888a5ae5ce5d7cc4a42913e54cc609c053da355aaae4c",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -6324,7 +6392,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -6352,8 +6420,8 @@
           "att:E3962E6EBC6DD1037EEFCABC0C0753D0F839666B07D03F05E18A080E6757F163"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:b34c5c99eea6ec08e7a2f3d4b88730944588afba2d33c93b02d37b5b58a63625",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:192b4aea14ef3001eaf6d97dd832bee39ed3dce1912c96bd7305c5feedfcf378",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -6531,7 +6599,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -6559,8 +6627,8 @@
           "att:4A16BEBE7A061C864520682607FDB06F8D388FDE34F6462B9D4230F25C86896B"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:d72079a45f3c061dee86038cf5a37447a6310176ca81b76401aea279488de60f",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:0aead37250cb6b174872f5643202c9223775d39be335059bf48b0b58b2ae5a53",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -6738,7 +6806,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -6766,8 +6834,8 @@
           "att:409D9695720DFC0A62F9A55C25C413E8567CA63F8F9EB45EF882E8A76E9A93ED"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:20f62e803f5e74a1adc231e1f2c213da09c7f86c956777c029aae04f7688d327",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:3c0519edbcfaabbf83ad57dcf4f6d618638823c4e8093fbff2ad770a893667be",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -6877,7 +6945,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -6904,8 +6972,8 @@
           "att:AB30CE7EEC42EECD3980BE291441BFFE0157438833648624A833256680B653F4"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:427e96fb0c89a3d0f4983c71f459f1287a80ecc8f21f39bf886065644046a4e1",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:c9fb12884729fa3f80770c567c6c8ae15abbfe06670dcc6ebdf23f6f80e5804d",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -7015,7 +7083,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -7042,8 +7110,8 @@
           "att:B2EECD386AB79E5A3218D650DD6D928914FE14DCACD8FC47DA440EE0E405C751"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:a233983cd5a7a21578892ea58a7586f4a230e24f13b155b26c6cf76f0b0f488e",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:1dfde654edfd3a2e8d529e465f897ad132ec13b5b1b9bd7ddd50fc1104399e7b",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -7182,7 +7250,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -7206,8 +7274,8 @@
         ],
         "statementsUsed": ["att:0EB2B0426F346224C16FA3C012DDA5C7142EF94D863F5F2817CE38BC753E6C0D"],
         "statementsRejected": [],
-        "inputsHash": "sha256:734598cf2faef5e3e828244d87c1de5be58f19187ae271ad65e676332be6fb94",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:f231cf58d1d352634a65aeefb4c6515fb334d64bf16d2d40977ff77c9fced47f",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -7346,7 +7414,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -7370,8 +7438,8 @@
         ],
         "statementsUsed": ["att:357345A2889D9F402C1A5CCE900697B78F2364ADC6FDC711B45C065561A42BC3"],
         "statementsRejected": [],
-        "inputsHash": "sha256:0ae958b83d3e0a0c1ab913691b0449224a399803f9682655e07230c6a1882a93",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:21805c40f72ec79307c00f2f5245aef28d1719186e972f535f61d63c2a64defb",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -7527,7 +7595,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -7552,8 +7620,8 @@
         ],
         "statementsUsed": ["att:B460AD313C72ADD7AFBEBF0D0C99C854514411F71919653DBA57C7D1036677D3"],
         "statementsRejected": [],
-        "inputsHash": "sha256:015de58ed46dce11129c0706effab5b928c53d82fbadf1bbc61393afe4ee9c4b",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:81837350ae24810989c9ebc16edebca468fff6215746bb9f07c003f97399ac6f",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -7717,7 +7785,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -7742,8 +7810,8 @@
         ],
         "statementsUsed": ["att:82F8D16678293F94AF0C88BBFDCD0766FBD5839D60D1584C5F945E4919B70188"],
         "statementsRejected": [],
-        "inputsHash": "sha256:f11e9a0ee9696e31e85bbe5e03b285bfd5a44e39f22ddcf8407d293965a1374a",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:8b795bb3a8c4121d4137e62e00f90f10054aa462da86ab523fd9b5aea218f92c",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -7899,7 +7967,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -7924,8 +7992,8 @@
         ],
         "statementsUsed": ["att:828A86591784B21E06B8B34B3995DBC60EF65CE6814BD41F26D042038681BA60"],
         "statementsRejected": [],
-        "inputsHash": "sha256:b483a403d6406fae04f865cffb0de99dd3f6512b3b78dfa97baaf6cb93736cd0",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:4fabf0b7fab9bb94437abf7bf551fc76e0ec823b60e2cea85aecf1740f1d9de7",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -8081,7 +8149,7 @@
         "template": "settlement-vault/hotel@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
+          "att:945680C6D41A1AC081087D541ADBB4377608BF20778CCB694E43E8EF5D9B5101"
         ]
       },
       "expect": {
@@ -8106,8 +8174,8 @@
         ],
         "statementsUsed": ["att:0ADCFFA9D1ED93DE8FB9ACCB2CD47F80C95E55E57EFBC4093271E42C348F0BBF"],
         "statementsRejected": [],
-        "inputsHash": "sha256:066a9211c9291e7c96af4727b34ce466569a0bebbbfb9b70ada57eb0565d8d8c",
-        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
+        "inputsHash": "sha256:6a1d63a68e9753c44facaee812b4ae6e11ed97b5811c8d742fd7252b6ba2bc53",
+        "effectiveHash": "att:F1BD2BCE8D5D53EE941110F632F06AA6A3C741D1BF1B8837FC0ACC3D3932F596"
       }
     },
     {
@@ -8227,7 +8295,7 @@
         "template": "owner-wallet/shopping@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
+          "att:16DB9AD5F47D02973FD1943BF31C900C4440411BC625263B9DD243960D0D313D"
         ]
       },
       "expect": {
@@ -8258,8 +8326,8 @@
           "att:B271DDA5CEE8880DF97549DDA0BF211D7757F97937852ADA6F49415D385CA4F3"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:703e2fa01772e60f60e366806cc70a31779f94da821f0c9855887c71fbceddfa",
-        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
+        "inputsHash": "sha256:e7a7ac1c55699eaba04eb85bbc14c515b454f047e074fa7a6a6af99c07f9e5d9",
+        "effectiveHash": "att:1298E7DBC0F39B6226F71CDD8AA669425AC705DF33F0946BBCA20DE127B1352A"
       }
     },
     {
@@ -8362,7 +8430,7 @@
         "template": "owner-wallet/shopping@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
+          "att:16DB9AD5F47D02973FD1943BF31C900C4440411BC625263B9DD243960D0D313D"
         ]
       },
       "expect": {
@@ -8392,8 +8460,8 @@
           "att:2525E1226907A785446223F1835064EBB2D014D0B71FC9937D54324800C53AC3"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:749921f5245baba970ab8d00a2b7623174efdae1d3f2c44a69d07e1a0b85805b",
-        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
+        "inputsHash": "sha256:0978cf2ac49c16d8fbc2dcc5f4599c4e881a25c1f04bac37fffab1b336173f58",
+        "effectiveHash": "att:1298E7DBC0F39B6226F71CDD8AA669425AC705DF33F0946BBCA20DE127B1352A"
       }
     },
     {
@@ -8513,7 +8581,7 @@
         "template": "owner-wallet/shopping@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
+          "att:16DB9AD5F47D02973FD1943BF31C900C4440411BC625263B9DD243960D0D313D"
         ]
       },
       "expect": {
@@ -8544,8 +8612,8 @@
           "att:66E400C037E0B14D557E37F667E4A8015F2CF47BB44CF7FDB1B559D9C55FB2F7"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:a0aee3294c65a0c07d37280e8298f3e602deec99ad1c592cb74fe0592f39c5e3",
-        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
+        "inputsHash": "sha256:cbd522cc1ebe8bb83253985a130a59fd26618e58dd84bc6bc86e7d2c5cfe4de1",
+        "effectiveHash": "att:1298E7DBC0F39B6226F71CDD8AA669425AC705DF33F0946BBCA20DE127B1352A"
       }
     },
     {
@@ -8674,7 +8742,7 @@
         "template": "owner-wallet/shopping@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
+          "att:16DB9AD5F47D02973FD1943BF31C900C4440411BC625263B9DD243960D0D313D"
         ]
       },
       "expect": {
@@ -8705,8 +8773,8 @@
           "att:9E9F229FD27E4911A9B7825034EB618D6017B1051D99E61929F1755DF3C6F812"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:c1b63a23413892b5bdca20e22e78ce66e8eb367a595104246702b7154deb9f4f",
-        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
+        "inputsHash": "sha256:2e351a2d6885c9cc9d56f3cda9d5048ecf3d6249822e5da1146a148307943b29",
+        "effectiveHash": "att:1298E7DBC0F39B6226F71CDD8AA669425AC705DF33F0946BBCA20DE127B1352A"
       }
     },
     {
@@ -8835,7 +8903,7 @@
         "template": "owner-wallet/shopping@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
+          "att:16DB9AD5F47D02973FD1943BF31C900C4440411BC625263B9DD243960D0D313D"
         ]
       },
       "expect": {
@@ -8866,8 +8934,8 @@
           "att:04702A62B723182D7D8C70F64C9CCE1FDF77941CD86E8524A9927801ED000818"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:a62e0367cc0c362e7ed591b1320889715b12c694d8f79e069e1a0923b7477751",
-        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
+        "inputsHash": "sha256:4fd4e556f07442e77be4322e99eacacfd989f1f7790c6a9364023e0226ae30b7",
+        "effectiveHash": "att:1298E7DBC0F39B6226F71CDD8AA669425AC705DF33F0946BBCA20DE127B1352A"
       }
     },
     {
@@ -8987,7 +9055,7 @@
         "template": "owner-wallet/shopping@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
+          "att:16DB9AD5F47D02973FD1943BF31C900C4440411BC625263B9DD243960D0D313D"
         ]
       },
       "expect": {
@@ -9018,8 +9086,8 @@
           "att:5D64DE3EDD0623490A953CD8BFB97E74100B3305BCC000A1EC6F338AD245DFD3"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:f5dd713909b629637d87c51a8df190b22ce6c975b79a62dc494ea6e9db2ff7e2",
-        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
+        "inputsHash": "sha256:f899c13ae01033dec30b9a6c559bc8f1e8e7656171774f9549206adf365ee0fa",
+        "effectiveHash": "att:1298E7DBC0F39B6226F71CDD8AA669425AC705DF33F0946BBCA20DE127B1352A"
       }
     },
     {
@@ -9151,7 +9219,7 @@
         "template": "owner-wallet/shopping@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
+          "att:16DB9AD5F47D02973FD1943BF31C900C4440411BC625263B9DD243960D0D313D"
         ]
       },
       "expect": {
@@ -9182,8 +9250,8 @@
           "att:83F7EFE9B2BF089C7B78B336B0DB4413FEEB04083668404FDEE1C30EFEE424C8"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:9ff4ae0a9c81d3636014e9188b6e7619d1b02478f23b304c9bffb6d70d0ad786",
-        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
+        "inputsHash": "sha256:dae12b1f4b4d7caaafe1ec9228a8defbfe16ce21731e890a887bfab291f4d26a",
+        "effectiveHash": "att:1298E7DBC0F39B6226F71CDD8AA669425AC705DF33F0946BBCA20DE127B1352A"
       }
     },
     {
@@ -9315,7 +9383,7 @@
         "template": "owner-wallet/shopping@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
+          "att:16DB9AD5F47D02973FD1943BF31C900C4440411BC625263B9DD243960D0D313D"
         ]
       },
       "expect": {
@@ -9346,8 +9414,8 @@
           "att:8226252F43CB0413C5DE84A1957048F4468D9F91EC33B2349803D83A407EB6FD"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:2ea16891d0ee665e26b297e376fc9a4f2031a813aa94b8a26c82f7bc9049d6e7",
-        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
+        "inputsHash": "sha256:bbb543625cac31432950b932047dc61b08014696d750d6f7897ab387c67b2f38",
+        "effectiveHash": "att:1298E7DBC0F39B6226F71CDD8AA669425AC705DF33F0946BBCA20DE127B1352A"
       }
     },
     {
@@ -9467,7 +9535,7 @@
         "template": "owner-wallet/shopping@1",
         "layers": [
           "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
-          "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
+          "att:16DB9AD5F47D02973FD1943BF31C900C4440411BC625263B9DD243960D0D313D"
         ]
       },
       "expect": {
@@ -9498,8 +9566,8 @@
           "att:8B5A8746C542431FAE1CAC4D8A7015C389CA613B1D7DE54CB598044BEF873BC8"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:3d7b77069f0b4ea9c091acd80008f71b66a3c7aa0b8fe96fa088504e9adb7ed2",
-        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
+        "inputsHash": "sha256:00aad15b1cf625b5ab84c33de145cfd29ce13f4051610d6a2d900875ef28f216",
+        "effectiveHash": "att:1298E7DBC0F39B6226F71CDD8AA669425AC705DF33F0946BBCA20DE127B1352A"
       }
     },
     {

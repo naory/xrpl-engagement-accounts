@@ -301,6 +301,7 @@ The outcome is that an MPCP-governed machine wallet can **graduate** to an owner
 | L5 | **Enforcement declarations** agree with template weights (§9) |
 | L6 | **Layer monotonicity:** an engagement layer may add rules and tighten `constraints` (smaller `maxAmountMinor`, subset of assets/destinations, earlier `expiresAt`), never remove or loosen them |
 | L7 | Each `reason` code is unique per layer and documented |
+| L8 | **Plain English:** every rule has a short `title` and a `message` explaining what it protects, for the people deciding or reviewing a deal. Non-normative: the CEL `check` is what decides |
 
 **Testing:** every policy ships **test vectors**: `{inputs, stage, proposedTx, expected decision, expected failing rule ids}`. They include the four hotel paths, at least one negative case per rule, and the baseline B1–B10 attacks. The co-signer refuses to load a policy whose vectors don't reproduce.
 
@@ -416,7 +417,7 @@ The shipped version is [`policies/procurement@1.3.0.json`](../../policies/procur
 | §4 `cel-eng/1` environment | [`packages/policy/src/env.ts`](../../packages/policy/src/env.ts) |
 | Attestation pipeline (attestations §10) | [`packages/policy/src/pipeline.ts`](../../packages/policy/src/pipeline.ts) |
 | §8 evaluation, §12 decision record | [`packages/policy/src/decide.ts`](../../packages/policy/src/decide.ts) |
-| §11 lint (L1, L2, L3, L5, L7) | [`packages/policy/src/lint.ts`](../../packages/policy/src/lint.ts) |
+| §11 lint (L1, L2, L3, L5, L7, L8) | [`packages/policy/src/lint.ts`](../../packages/policy/src/lint.ts) |
 | §6 in-flight, §8 steps 4–11 | [`packages/cosigner/src/service.ts`](../../packages/cosigner/src/service.ts), ledger snapshot in [`snapshot.ts`](../../packages/cosigner/src/snapshot.ts) |
 | §7 baseline, template policies | [`policies/`](../../policies) |
 | §11 test vectors | [`vectors/`](../../vectors/README.md) |

@@ -38,54 +38,54 @@
       "enforcement": "ledger",
       "rules": [
         {
-          "id": "W0",
+          "id": "W0", "title": "Owner’s spending mandate is valid",
           "reason": "MANDATE_INVALID",
           "check": "has(mandate.expires) && now < timestamp(mandate.expires)",
-          "message": "A valid, unexpired mandate signed by the owner is required."
+          "message": "The agent can only spend under a mandate the owner signed, and only until it expires."
         },
         {
-          "id": "W1",
+          "id": "W1", "title": "A plain vendor payment",
           "reason": "TX_SHAPE",
           "check": "tx.matchesBlueprint('spend.payments') && tx.payouts.count() >= 1",
-          "message": "Spends are 1\u20134 payments to vendors."
+          "message": "A spend is one to four payments to vendors, and nothing else."
         },
         {
-          "id": "W2",
+          "id": "W2", "title": "Approved, verified vendor",
           "reason": "VENDOR_NOT_ALLOWED",
           "check": "tx.payouts.destinations().all(d, d in mandate.vendors && ledger.hasCredential(d, params.kybType, params.kybIssuers))",
-          "message": "Every payee must be a mandate vendor holding a KYB credential from an accepted issuer."
+          "message": "Every payee must be on the owner’s vendor list and hold a business-verification (KYB) credential from an accepted issuer."
         },
         {
-          "id": "W3",
+          "id": "W3", "title": "Within the daily cap",
           "reason": "DAILY_CAP",
           "check": "history.outflow('RLUSD', duration('24h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.dailyCap, 'RLUSD')",
-          "message": "Daily outflow cap."
+          "message": "Everything spent in the last 24 hours, including payments still settling, stays under the mandate’s daily limit."
         },
         {
-          "id": "W4",
+          "id": "W4", "title": "Within the overall budget",
           "reason": "BUDGET_EXHAUSTED",
           "check": "history.outflow('RLUSD', duration('2160h')) + inflight.outflow('RLUSD') + def.spendNow <= amt(mandate.budget, 'RLUSD')",
-          "message": "Mandate budget (90 days)."
+          "message": "Everything spent over the mandate’s 90-day period, including payments still settling, stays within its budget."
         },
         {
-          "id": "W5",
+          "id": "W5", "title": "Large payment approved",
           "reason": "APPROVAL_REQUIRED",
           "when": "def.spendNow > amt(params.approvalThreshold, 'RLUSD')",
           "check": "tx.payouts.count() == 1 && att.list('approval.payment/1', 'approver').exists(a, a.subject.intentHash == tx.intentHash() && now < timestamp(a.claim.notAfter))",
-          "message": "Payments above the threshold need a single-use approval bound to this payment intent."
+          "message": "Payments over the approval threshold need a one-time approval from the owner’s approver, tied to this exact payment."
         },
         {
-          "id": "W6",
+          "id": "W6", "title": "Matches a vendor invoice",
           "reason": "NO_MATCHING_INVOICE",
           "check": "tx.payouts.items.all(p, att.list('party.invoice/1', 'vendor').exists(i, i.attester.account == p.to && amt(i.claim.amount, 'RLUSD') == p.amount && i.claim.invoiceRef == tx.memo('eng/invoice')))",
-          "message": "Each payment must match a vendor-signed invoice (amount and invoice reference)."
+          "message": "Each payment must match an invoice the vendor signed: same amount, same invoice number."
         },
         {
-          "id": "W7",
+          "id": "W7", "title": "Matches the merchant’s payment request",
           "reason": "X402_CHALLENGE_MISMATCH",
           "when": "hasTx && att.list('payment.challenge/1', 'agent').size() > 0",
           "check": "tx.payouts.count() == 1 && def.paymentChallenge.claim.payTo in tx.payouts.destinations() && tx.payouts.to(def.paymentChallenge.claim.payTo, 'RLUSD') == amt(def.paymentChallenge.claim.amount, 'RLUSD') && tx.boundToInvoice(def.paymentChallenge.claim.invoiceId)",
-          "message": "The payment must match the x402 challenge: destination, amount and invoice binding."
+          "message": "When paying a merchant’s x402 request, the payment must go to the address, for the amount and invoice, that the merchant asked for, so it can’t be redirected or replayed."
         }
       ]
     },
@@ -93,10 +93,10 @@
       "enforcement": "advisory",
       "rules": [
         {
-          "id": "O1",
+          "id": "O1", "title": "Valid owner close",
           "reason": "TX_SHAPE",
           "check": "tx.matchesBlueprint('close.sweep')",
-          "message": "Owner close: sweep to the owner, remove the trust line, delete."
+          "message": "The owner closes the account by sweeping everything back to themselves, then deleting it."
         }
       ]
     }

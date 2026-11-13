@@ -21,35 +21,35 @@
     "confirm": {
       "enforcement": "service",
       "rules": [
-        { "id": "C1", "reason": "BAD_CONFIRMATION", "check": "att.latest('party.confirmation/1', 'counterparty') != null && att.latest('party.confirmation/1', 'counterparty').claim.mandateHash == eng.mandateId" },
-        { "id": "C2", "reason": "MANDATE_MISMATCH", "check": "att.latest('party.confirmation/1', 'counterparty').claim.city == mandate.constraints.city && att.latest('party.confirmation/1', 'counterparty').claim.checkIn == mandate.constraints.checkIn && att.latest('party.confirmation/1', 'counterparty').claim.checkOut == mandate.constraints.checkOut" },
-        { "id": "C4", "reason": "AMOUNT_MISMATCH", "check": "amt(att.latest('party.confirmation/1', 'counterparty').claim.total.value, 'RLUSD') == def.booked" }
+        { "id": "C1", "title": "Confirms the guest’s actual booking", "reason": "BAD_CONFIRMATION", "check": "att.latest('party.confirmation/1', 'counterparty') != null && att.latest('party.confirmation/1', 'counterparty').claim.mandateHash == eng.mandateId", "message": "The hotel’s confirmation must point to the guest’s own booking request." },
+        { "id": "C2", "title": "Right city and dates", "reason": "MANDATE_MISMATCH", "check": "att.latest('party.confirmation/1', 'counterparty').claim.city == mandate.constraints.city && att.latest('party.confirmation/1', 'counterparty').claim.checkIn == mandate.constraints.checkIn && att.latest('party.confirmation/1', 'counterparty').claim.checkOut == mandate.constraints.checkOut", "message": "The confirmed city and check-in/check-out dates must match what the guest asked for." },
+        { "id": "C4", "title": "Right price", "reason": "AMOUNT_MISMATCH", "check": "amt(att.latest('party.confirmation/1', 'counterparty').claim.total.value, 'RLUSD') == def.booked", "message": "The confirmed total must equal the room price the guest paid in." }
       ]
     },
     "settle": {
       "enforcement": "ledger",
       "rules": [
-        { "id": "S1", "reason": "WRONG_STATE", "check": "eng.state in ['CONFIRMED', 'AWAITING_SETTLEMENT'] && !def.disputeOpen" },
-        { "id": "S2", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.split')" },
-        { "id": "S4", "reason": "FEE_MISMATCH", "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)" },
-        { "id": "S5", "reason": "REVIEW_REQUIRED", "check": "tx.memo('eng/review') != null && att.list('party.review/1', 'principal').exists(r, r.id == tx.memo('eng/review'))" }
+        { "id": "S1", "title": "Deal is ready to settle", "reason": "WRONG_STATE", "check": "eng.state in ['CONFIRMED', 'AWAITING_SETTLEMENT'] && !def.disputeOpen", "message": "Settlement happens once the booking is confirmed or the stay is over, and never while a guest dispute is open." },
+        { "id": "S2", "title": "Valid settlement", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.split')", "message": "An agreed settlement splits the money between guest and hotel and closes the account, in one transaction." },
+        { "id": "S4", "title": "Correct service fee", "reason": "FEE_MISMATCH", "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)", "message": "The service takes 0.5% of whatever the hotel receives." },
+        { "id": "S5", "title": "Guest left a review", "reason": "REVIEW_REQUIRED", "check": "tx.memo('eng/review') != null && att.list('party.review/1', 'principal').exists(r, r.id == tx.memo('eng/review'))", "message": "A stay settles together with the guest’s review, so every completed booking leaves a reputation record." }
       ]
     },
     "default.refund": {
       "enforcement": "final-signature",
       "rules": [
-        { "id": "R1", "reason": "NOT_DUE", "check": "now >= timestamp(eng.timers.confirmBy) && eng.state == 'OPEN'" },
-        { "id": "R2", "reason": "BALANCE_CHANGED", "check": "def.balance == def.booked" },
-        { "id": "R3", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.refundAll')" }
+        { "id": "R1", "title": "Refund is due", "reason": "NOT_DUE", "check": "now >= timestamp(eng.timers.confirmBy) && eng.state == 'OPEN'", "message": "The automatic refund is only for a booking the hotel never confirmed by its deadline." },
+        { "id": "R2", "title": "Account holds just the room price", "reason": "BALANCE_CHANGED", "check": "def.balance == def.booked", "message": "This refund was signed in advance for exactly the room price. If anything else is in the account now (such as a dispute bond), it no longer fits." },
+        { "id": "R3", "title": "Valid refund", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.refundAll')", "message": "The automatic refund sends the room price back to the guest and closes the account." }
       ]
     },
     "default.release": {
       "enforcement": "final-signature",
       "rules": [
-        { "id": "L1", "reason": "NOT_DUE", "check": "now >= timestamp(eng.timers.disputeWindowEnds) && eng.state == 'AWAITING_SETTLEMENT'" },
-        { "id": "L2", "reason": "DISPUTE_OPEN", "check": "!def.disputeOpen" },
-        { "id": "L3", "reason": "BALANCE_CHANGED", "check": "def.balance == def.booked" },
-        { "id": "L4", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.releaseAll')" }
+        { "id": "L1", "title": "Release is due", "reason": "NOT_DUE", "check": "now >= timestamp(eng.timers.disputeWindowEnds) && eng.state == 'AWAITING_SETTLEMENT'", "message": "The “nobody acted” release only fires after the guest’s window to dispute has closed." },
+        { "id": "L2", "title": "No open dispute", "reason": "DISPUTE_OPEN", "check": "!def.disputeOpen", "message": "If the guest filed a dispute, the release waits for the arbiter. Silence can’t override a raised flag." },
+        { "id": "L3", "title": "Account holds just the room price", "reason": "BALANCE_CHANGED", "check": "def.balance == def.booked", "message": "The release was signed in advance for exactly the room price. If anything else is in the account, it no longer fits." },
+        { "id": "L4", "title": "Valid release", "reason": "TX_SHAPE", "check": "tx.matchesBlueprint('close.releaseAll')", "message": "The release pays the room to the hotel (less the fee) and closes the account." }
       ]
     }
   }

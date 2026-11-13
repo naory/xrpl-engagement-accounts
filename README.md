@@ -267,7 +267,7 @@ npm install
 npm test                    # 367 tests: core, policy, co-signer, agent-mcp, provisioning, conformance vectors (Node ≥ 22.12)
 npm run typecheck
 npm run validate-templates  # V1–V12 report for templates/*.json
-npm run lint-policies       # L1–L7 for policies/*.json against their templates
+npm run lint-policies       # L1–L8 for policies/*.json against their templates
 npm run vectors:build       # regenerate vectors/*.json (deterministic; review the diff)
 npm run demo:b1             # live B1 procurement demo on Testnet (see packages/cosigner/demo/README.md)
 npm run demo:x402           # live x402 engagement-account purchase on Testnet (needs x402-xrpl-settlement-adapter)

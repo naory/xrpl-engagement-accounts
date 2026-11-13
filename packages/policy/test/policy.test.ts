@@ -391,6 +391,16 @@ describe('lint', () => {
     expect(lintPolicy(policies.procurement, templates.procurement)).toEqual([])
     expect(lintPolicy(policies.hotel, templates.hotel)).toEqual([])
     expect(lintPolicy(policies.hotel2, templates.hotel2)).toEqual([])
+    expect(lintPolicy(policies.shopping, templates.shopping)).toEqual([])
+  })
+  it('L8: every rule needs a plain-English title and explanation', () => {
+    const bad: PolicyDoc = structuredClone(policies.hotel2)
+    bad.stages.settle.rules.push({ id: 'X9', reason: 'R', check: 'true' })
+    bad.stages.settle.rules.push({ id: 'X10', reason: 'R', check: 'true', title: 'Has a title only' })
+    const l8 = lintPolicy(bad, templates.hotel2).filter((f) => f.id === 'L8')
+    expect(l8.map((f) => f.where)).toEqual(['settle/X9', 'settle/X10'])
+    expect(l8[0].message).toMatch(/title/)
+    expect(l8[1].message).toMatch(/message/)
   })
   it('flags floats, unknown statement types, duplicate ids and missing stages', () => {
     const bad: PolicyDoc = structuredClone(policies.procurement)

@@ -23,6 +23,9 @@ export function lintPolicy(p: PolicyDoc, template?: Template): LintFinding[] {
       if (r.when) exprs.push({ where: `${stage}/${r.id}.when`, expr: r.when })
       exprs.push({ where: `${stage}/${r.id}.check`, expr: r.check })
       if (!r.reason) out.push({ id: 'L7', where: `${stage}/${r.id}`, message: 'missing reason code' })
+      // L8: every rule carries plain-English text (non-normative; shown to people deciding or reviewing a deal)
+      const missing = [!r.title?.trim() && 'title', !r.message?.trim() && 'message'].filter(Boolean)
+      if (missing.length) out.push({ id: 'L8', where: `${stage}/${r.id}`, message: `missing plain-English ${missing.join(' and ')}` })
     }
   }
   for (const { where, expr } of exprs) {
