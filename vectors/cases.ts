@@ -127,6 +127,12 @@ export function policyCases(): PolicyCase[] {
     proposedTx: hotel2Close([...H2_ROOM, H2_SWEEP], { tickets: true, memos: h2basis('default.release') }),
   })
   const h2Refused = h2CheckinAt('refused', '2026-11-11T15:05:00Z')
+  /** Refund sweep with the guest's receive state on the ledger (B11: a payee who cannot receive would burn the default). */
+  const h2RefundReceive = (receive: { depositAuth: boolean; lines: Record<string, { balance: string; limit: string }> }): DecideInput => {
+    const ledger = hotel2Ledger({ balance: '413', closeTime: '2026-11-01T11:00:01Z' })
+    ledger.accounts[H2.guest] = { exists: true, receive }
+    return h2({ stage: 'default.refund', proposedTx: h2RefundSweep, ledger })
+  }
   const extraObj = hotelLedger()
   extraObj.accounts[W.engHotel.address].ownerObjects!.other = 1
   const smuggle = (() => {
@@ -222,7 +228,8 @@ export function policyCases(): PolicyCase[] {
     { name: 'hotel2.default.noshow.ok', description: 'Confirmed, not checked in, after entryDisputeBy: room released to the hotel', input: h2NoShow(), expectFailing: [] },
     { name: 'hotel2.default.noshow.checked-in', description: 'Guest checked in and paid the deposit', input: h2NoShow([hotel2Confirmation(), checkin('checked_in')], hotel2Ledger({ closeTime: H2_AFTER, balance: '562' })), expectFailing: ['B7', 'B11', 'N3', 'N8'] },
     { name: 'hotel2.default.noshow.checked-in-no-deposit', description: 'Hotel posted checked_in but the guest never paid the deposit: not a stay, the no-show applies', input: h2NoShow([hotel2Confirmation(), checkin('checked_in')]), expectFailing: [] },
-    { name: 'hotel2.default.noshow.checked-in-then-refused', description: 'The latest check-in statement (refused) counts; the exact-room variant cannot take the paid deposit', input: h2NoShow([hotel2Confirmation(), checkin('checked_in'), h2CheckinAt('refused', '2026-11-11T15:05:00Z')], hotel2Ledger({ closeTime: H2_AFTER, balance: '562' })), expectFailing: ['B7', 'B11', 'N8'] },
+    { name: 'hotel2.default.noshow.checked-in-then-refused', description: 'A recorded check-in with the deposit in is final: a later refused statement does not make it a no-show', input: h2NoShow([hotel2Confirmation(), checkin('checked_in'), h2CheckinAt('refused', '2026-11-11T15:05:00Z')], hotel2Ledger({ closeTime: H2_AFTER, balance: '562' })), expectFailing: ['B7', 'B11', 'N3', 'N8'] },
+    { name: 'hotel2.default.noshow.sweep-checked-in-then-refused', description: 'The sweep no-show cannot close a checked-in stay either, even with a later refused statement', input: h2NoShowSweep([hotel2Confirmation(), checkin('checked_in'), h2Refused], '562'), expectFailing: ['N3'] },
     { name: 'hotel2.default.noshow.dispute-bonded', description: 'Guest dispute open and the bond changed the balance', input: h2NoShow([hotel2Confirmation(), dispute('entry')], hotel2Ledger({ closeTime: H2_AFTER, dispute: true, balance: '422' })), expectFailing: ['B7', 'B11', 'N4', 'N8'] },
     { name: 'hotel2.default.noshow.credential-without-attestation', description: 'Dispute Credential with no dispute attestation is ignored', input: h2NoShow([hotel2Confirmation()], hotel2Ledger({ closeTime: H2_AFTER, dispute: true, balance: '412' })), expectFailing: [] },
     { name: 'hotel2.default.noshow.no-bond', description: 'Dispute Credential and attestation but no bond posted: ignored', input: h2NoShow([hotel2Confirmation(), dispute('entry')], hotel2Ledger({ closeTime: H2_AFTER, dispute: true, balance: '412' })), expectFailing: [] },
@@ -234,6 +241,10 @@ export function policyCases(): PolicyCase[] {
     { name: 'hotel2.default.noshow.sweep-unopened-bond', description: 'A bond-sized payment with no Credential or dispute statement is just extra money: swept to the guest', input: h2NoShowSweep([hotel2Confirmation()], '422'), expectFailing: [] },
     { name: 'hotel2.default.noshow.sweep-dispute-open', description: 'An open entry dispute still blocks the sweep variant', input: h2NoShowSweep([hotel2Confirmation(), dispute('entry')], '422', true), expectFailing: ['N4'] },
     { name: 'hotel2.default.refund.stray-swept', description: 'Stray 1 RLUSD on an unconfirmed booking: refund returns room + 1 to the guest', input: h2({ stage: 'default.refund', proposedTx: h2RefundSweep, ledger: hotel2Ledger({ balance: '413', closeTime: '2026-11-01T11:00:01Z' }) }), expectFailing: [] },
+    { name: 'hotel2.default.refund.guest-can-receive', description: 'Guest has an RLUSD trust line with room and no DepositAuth: the refund sweep signs', input: h2RefundReceive({ depositAuth: false, lines: { RLUSD: { balance: '0', limit: '1000000' } } }), expectFailing: [] },
+    { name: 'hotel2.default.refund.guest-deposit-auth', description: 'Guest set DepositAuth: the payment would fail and burn the default, so it is refused', input: h2RefundReceive({ depositAuth: true, lines: { RLUSD: { balance: '0', limit: '1000000' } } }), expectFailing: ['B11'] },
+    { name: 'hotel2.default.refund.guest-no-trust-line', description: 'Guest has no RLUSD trust line: refused rather than burned', input: h2RefundReceive({ depositAuth: false, lines: {} }), expectFailing: ['B11'] },
+    { name: 'hotel2.default.refund.guest-limit-too-low', description: 'Guest trust line has less room than the refund: refused rather than burned', input: h2RefundReceive({ depositAuth: false, lines: { RLUSD: { balance: '0', limit: '400' } } }), expectFailing: ['B11'] },
     { name: 'hotel2.default.refund.exact-stranded', description: 'A fixed-amount refund would strand the stray 1 RLUSD', input: h2({ stage: 'default.refund', proposedTx: h2RefundTx, ledger: hotel2Ledger({ balance: '413', closeTime: '2026-11-01T11:00:01Z' }) }), expectFailing: ['B7', 'B11', 'R4'] },
     // default.release
     { name: 'hotel2.default.release.stray-swept', description: 'Stray 1 RLUSD after a normal stay: guest gets deposit + 1', input: h2ReleaseSweep([], '563'), expectFailing: [] },

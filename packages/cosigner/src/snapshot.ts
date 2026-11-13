@@ -3,7 +3,7 @@
 import xrpl from 'xrpl'
 import { formatAmount, Amount, type AssetDef } from '@eng/core'
 import type { HistoryEntry, LedgerAccountState, LedgerCredential, LedgerSnapshot } from '@eng/policy'
-import { LSF_ACCEPTED, LSF_DISABLE_MASTER, unhex } from './xrpl-io.ts'
+import { LSF_ACCEPTED, LSF_DEPOSIT_AUTH, LSF_DISABLE_MASTER, unhex } from './xrpl-io.ts'
 
 type Json = Record<string, unknown>
 type Client = InstanceType<typeof xrpl.Client>
@@ -17,6 +17,8 @@ export interface SnapshotRequest {
   accounts: string[]
   /** Accounts whose Credentials (as subject) are needed: payees, attesters, the engagement account. */
   credentialSubjects: string[]
+  /** Payees of the proposed transaction: whether each can receive (exists, DepositAuth, trust lines) — B11. */
+  payees?: string[]
   /** How far back to read validated payments for stateful counters. */
   historySecs: number
 }
@@ -80,6 +82,29 @@ export class XrplLedgerSource implements LedgerSource {
       const d = info.account_data
       accounts[a] = { exists: true, sequence: Number(d.Sequence), masterDisabled: (Number(d.Flags) & LSF_DISABLE_MASTER) !== 0, regularKey: (d.RegularKey as string) ?? null }
     }
+    // Payees: can each one receive? (account exists, lsfDepositAuth, trust line to each IOU asset's issuer)
+    for (const p of new Set(q.payees ?? [])) {
+      if (p === q.account) continue
+      const info = await this.tryReq<{ account_data: Json }>({ command: 'account_info', account: p, ledger_index: index })
+      if (!info) { accounts[p] = { exists: false }; continue }
+      const d = info.account_data
+      const lines: Record<string, { balance: string; limit: string }> = {}
+      for (const def of Object.values(q.assets)) {
+        if (def.kind === 'XRP' || !def.issuer || def.issuer === p) continue
+        let marker: unknown
+        do {
+          const r = await this.tryReq<{ lines: Json[]; marker?: unknown }>({ command: 'account_lines', account: p, peer: def.issuer, ledger_index: index, limit: 400, ...(marker ? { marker } : {}) })
+          const l = r?.lines.find((x) => String(x.currency).toUpperCase() === def.currency.toUpperCase() && x.account === def.issuer)
+          if (l) lines[def.code] = { balance: String(l.balance), limit: String(l.limit) }
+          marker = l ? undefined : r?.marker
+        } while (marker)
+      }
+      accounts[p] = {
+        ...(accounts[p] ?? { exists: true, sequence: Number(d.Sequence), masterDisabled: (Number(d.Flags) & LSF_DISABLE_MASTER) !== 0, regularKey: (d.RegularKey as string) ?? null }),
+        receive: { depositAuth: (Number(d.Flags) & LSF_DEPOSIT_AUTH) !== 0, lines },
+      }
+    }
+
     // Engagement-account objects (for drain / delete checks)
     const objs = accounts[q.account].exists ? await this.objects(q.account, index) : []
     if (objs) {

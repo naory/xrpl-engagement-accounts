@@ -14,6 +14,7 @@ export const ASF_DISABLE_MASTER = 4
 export const ASF_DEFAULT_RIPPLE = 8
 export const LSF_DISABLE_MASTER = 0x00100000
 export const LSF_ACCEPTED = 0x00010000 // Credential
+export const LSF_DEPOSIT_AUTH = 0x01000000 // AccountRoot: only preauthorized senders may pay it
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 export const hex = (s: string) => Buffer.from(s, 'utf8').toString('hex').toUpperCase()

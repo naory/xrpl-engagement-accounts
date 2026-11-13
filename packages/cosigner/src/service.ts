@@ -227,7 +227,9 @@ export class CosignerService {
   /**
    * Ordering rules no single statement can show (R28–R33, R38, R39): only the hotel confirms, and only once; an
    * entry dispute is filed from check-in on, and a bonded one (principal's ENG/DISPUTE Credential on the account and
-   * the bond on the ledger at this receipt) freezes the stay — the hotel can no longer record a check-in; a claim is
+   * the bond on the ledger at this receipt) freezes the stay — the hotel can no longer record a check-in; a recorded
+   * check-in is final — once the hotel's checked_in is receipted it cannot be followed by refused (or anything else),
+   * so a stay can't be turned into a no-show; a claim is
    * itemized, positive, and capped at the deposit of the (first) confirmation.
    */
   private checkSequence(st: EngagementState, s: Statement, assets: Record<string, AssetDef>, ledger: LedgerSnapshot): void {
@@ -242,6 +244,10 @@ export class CosignerService {
     if (s.type === 'party.dispute/1' && (s.claim as { phase?: unknown }).phase === 'entry') {
       const checkIn = Date.parse(st.record.timers?.checkIn ?? '')
       if (!Number.isNaN(checkIn) && Date.parse(ledger.closeTime) < checkIn) throw new Error(`TOO_EARLY: an entry dispute can be filed from checkIn (${st.record.timers!.checkIn})`)
+    }
+    if (s.type === 'party.checkin/1' && s.attester.account === parties.counterparty && (s.claim as { status?: unknown }).status !== 'checked_in') {
+      const checkedIn = posted.some((p) => p.type === 'party.checkin/1' && p.attester.account === parties.counterparty && (p.claim as { status?: unknown }).status === 'checked_in')
+      if (checkedIn) throw new Error(`CHECKIN_FINAL: the hotel already recorded the guest as checked in; a later ${String((s.claim as { status?: unknown }).status)} is not accepted`)
     }
     if (s.type === 'party.checkin/1' && (s.claim as { status?: unknown }).status === 'checked_in') {
       const entryDispute = posted.some((p) => p.type === 'party.dispute/1' && p.attester.account === parties.principal && (p.claim as { phase?: unknown }).phase === 'entry')
@@ -440,7 +446,7 @@ export class CosignerService {
     const attesters = [...statements, ...(st.mandate ? [st.mandate] : [])].map((s) => s.attester?.account).filter(Boolean) as string[]
     const payees = tx ? new TxFacts(tx, { eng: st.record, template: st.template, assets: new Assets(assets), ledger: emptyLedger(st.record.account) }).payouts.destinations() : []
     const ledger = await this.o.source.snapshot({
-      account: st.record.account, assets, accounts: attesters, credentialSubjects: [...payees, ...attesters],
+      account: st.record.account, assets, accounts: attesters, credentialSubjects: [...payees, ...attesters], payees,
       historySecs: this.o.historySecs ?? 90 * DAY,
     })
 

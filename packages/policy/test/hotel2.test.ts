@@ -110,11 +110,11 @@ describe('hotel@2 — default.noshow', () => {
   it('a hotel-only checked_in with no deposit paid does not block the no-show (R29)', () => {
     expect(failing(input([hotel2Confirmation(), checkin('checked_in')]))).toEqual([])
   })
-  it('the latest check-in statement counts: checked_in then refused is not checked in (R29)', () => {
+  it('a recorded check-in with the deposit in is final: a later refused statement does not make it a no-show (N3)', () => {
+    // The co-signer rejects such a refused at ingest (CHECKIN_FINAL); the policy holds even if one were present.
     const refused = checkinAt('refused', '2026-11-11T15:05:00Z')
     const f = failing(input([hotel2Confirmation(), checkin('checked_in'), refused], hotel2Ledger({ closeTime: after, balance: '562' })))
-    expect(f).not.toContain('N3')
-    expect(f).toContain('N8') // the deposit is in: this exact variant cannot take it (the sweep variant returns it to the guest)
+    expect(f).toContain('N3')
   })
   it('refuses while a guest dispute is open (N4; the exact variant also cannot leave the bond behind, N8)', () => {
     const f = failing(input([hotel2Confirmation(), dispute('entry')], hotel2Ledger({ closeTime: after, dispute: true, balance: '422' })))
@@ -303,8 +303,14 @@ describe('hotel@2 — automatic endings return extra money to the guest (residua
     it('partial deposit + refused check-in: the exact variant is refused (N8; it would also strand the deposit, B7/B11)', () => {
       expect(failing(at(noshowExact, '452'))).toEqual(['B7', 'B11', 'N8'])
     })
-    it('a full deposit then refused check-in: the room goes to the hotel, the whole deposit back to the guest', () => {
-      expect(failing(at(noshowSweep, '562', [hotel2Confirmation(), checkin('checked_in'), refused]))).toEqual([])
+    it('a checked-in guest with the full deposit cannot be no-showed, even with a later refused statement (N3)', () => {
+      expect(failing(at(noshowSweep, '562', [hotel2Confirmation(), checkin('checked_in'), refused]))).toEqual(['N3'])
+    })
+    it('a hotel-only checked_in with only a partial deposit is not a stay: the sweep no-show returns the partial deposit', () => {
+      expect(failing(at(noshowSweep, '452', [hotel2Confirmation(), checkin('checked_in')]))).toEqual([])
+    })
+    it('a refused check-in with no deposit at all: the exact no-show signs', () => {
+      expect(failing(at(noshowExact, '412'))).toEqual([])
     })
     it('no extra money: the exact variant signs', () => {
       expect(failing(at(noshowExact, '412', [hotel2Confirmation()]))).toEqual([])
@@ -347,5 +353,57 @@ describe('hotel@2 — automatic endings return extra money to the guest (residua
     it('a posted claim still blocks it (L5)', () => {
       expect(failing(at(releaseSweep, '563', [claim([{ kind: 'minibar', amount: '58.00' }])]))).toEqual(['L5'])
     })
+  })
+})
+
+describe('hotel@2 — B11: a pre-signed ending is refused when a payee cannot receive the token', () => {
+  // A payment the payee cannot accept fails on-ledger, failing the ALLORNOTHING Batch and burning its Tickets (F2).
+  const sweep = { to: guest, value: '0', partial: true }
+  const refund = hotel2Close([sweep], { tickets: true, memos: basis('default.refund') })
+  const release = hotel2Close([{ to: hotel, value: '409.94' }, { to: fee, value: '2.06' }, sweep], { tickets: true, memos: basis('default.release') })
+  type Receive = { depositAuth: boolean; lines: Record<string, { balance: string; limit: string }> }
+  const withPayee = (l: ReturnType<typeof hotel2Ledger>, account: string, receive: Receive | null) => {
+    l.accounts[account] = receive ? { exists: true, receive } : { exists: false }
+    return l
+  }
+  const ok: Receive = { depositAuth: false, lines: { RLUSD: { balance: '0', limit: '1000000' } } }
+  const refundAt = (receive: Receive | null) => ({ stage: 'default.refund', proposedTx: refund, ledger: withPayee(hotel2Ledger({ balance: '413', closeTime: '2026-11-01T11:00:01Z' }), guest, receive) })
+  const b11 = (i: Parameters<typeof hotel2Input>[0]) => decide(hotel2Input(i)).results.find((r) => r.id === 'B11')
+
+  it('signs when the guest can receive (trust line with room, no DepositAuth)', () => {
+    expect(failing(refundAt(ok))).toEqual([])
+  })
+  it('refuses when the guest set DepositAuth', () => {
+    expect(failing(refundAt({ ...ok, depositAuth: true }))).toEqual(['B11'])
+    expect(b11(refundAt({ ...ok, depositAuth: true }))).toMatchObject({ result: 'fail', reason: 'WOULD_FAIL' })
+  })
+  it('refuses when the guest has no RLUSD trust line', () => {
+    expect(failing(refundAt({ depositAuth: false, lines: {} }))).toEqual(['B11'])
+  })
+  it('refuses when the guest trust line has no room for the payment (balance + amount > limit)', () => {
+    expect(failing(refundAt({ depositAuth: false, lines: { RLUSD: { balance: '0', limit: '412.999999' } } }))).toEqual(['B11'])
+    expect(failing(refundAt({ depositAuth: false, lines: { RLUSD: { balance: '587', limit: '1000' } } }))).toEqual([])
+    expect(failing(refundAt({ depositAuth: false, lines: { RLUSD: { balance: '588', limit: '1000' } } }))).toEqual(['B11'])
+  })
+  it('refuses when the guest account does not exist', () => {
+    expect(failing(refundAt(null))).toEqual(['B11'])
+  })
+  it('applies to every payee: a hotel that cannot receive blocks the release', () => {
+    const l = withPayee(hotel2Ledger({ balance: '562' }), hotel, { depositAuth: true, lines: { RLUSD: { balance: '0', limit: '1000000' } } })
+    expect(failing({ stage: 'default.release', proposedTx: release, statements: [hotel2Confirmation(), checkin('checked_in')], ledger: l })).toEqual(['B11'])
+  })
+  it('a payee the snapshot says nothing about is not assumed blocked', () => {
+    expect(failing({ stage: 'default.refund', proposedTx: refund, ledger: hotel2Ledger({ balance: '413', closeTime: '2026-11-01T11:00:01Z' }) })).toEqual([])
+  })
+})
+
+describe('minorRounded (trust-line values with extra precision)', () => {
+  it('floors and ceils beyond the asset decimals, exact values unchanged', async () => {
+    const { minorRounded } = await import('../src/facts.ts')
+    expect(minorRounded('412.9999999', 6, 'floor')).toBe(412999999n)
+    expect(minorRounded('0.0000001', 6, 'ceil')).toBe(1n)
+    expect(minorRounded('1e-7', 6, 'ceil')).toBe(1n)
+    expect(minorRounded('1000', 6, 'floor')).toBe(1000000000n)
+    expect(minorRounded('9999999999999999e80', 6, 'floor') > 0n).toBe(true)
   })
 })

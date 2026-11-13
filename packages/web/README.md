@@ -38,7 +38,7 @@ policy: pay Vendor A (in policy → settles), pay Vendor B over the threshold wi
 | `POST /api/provision` | funds the cast, runs `eng.provision/1`, opens the account, registers it with an in-process co-signer |
 | `POST /api/pay` | the agent proposes + settles a payment (the co-signer co-signs only if the policy passes) |
 | `POST /api/escrow` | bonded-marketplace settlement: bond release (seller's agent + buyer + co-signer), arbiter slash (arbiter + buyer), or a blocked seller-alone attempt |
-| `POST /api/hotel` | runs one hotel-stay path (`{ path }`, one of the eight `HotelPath`s) on its own engagement account through the real co-signer; returns `HotelFlow`'s steps |
+| `POST /api/hotel` | runs one hotel-stay path (`{ path }`, one of the nine `HotelPath`s) on its own engagement account through the real co-signer; returns `HotelFlow`'s steps |
 | `GET /api/hotel` | hotel readiness: whether the pre-created accounts have aged enough to run, and which paths already ran |
 | `POST /api/x402` | an x402 metered purchase bound to a merchant challenge (buy / redirect-blocked / replay-blocked) |
 | `POST /api/propose` | propose + co-sign without broadcasting (returns the quorum blob) |

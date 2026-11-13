@@ -131,7 +131,7 @@
             "enforcement": "final-signature"
           },
           "default.noshow": {
-            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically (the account holds exactly the room price).",
+            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically, and anything else in the account goes back to the guest.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -140,7 +140,7 @@
             "enforcement": "final-signature"
           },
           "default.noshowSweep": {
-            "description": "The same no-show when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room, and everything else goes back to the guest.",
+            "description": "The same no-show, signed a second time for when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room and the extra goes back to the guest. The co-signer completes whichever version fits the money in the account.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -914,7 +914,7 @@
             "enforcement": "final-signature"
           },
           "default.noshow": {
-            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically (the account holds exactly the room price).",
+            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically, and anything else in the account goes back to the guest.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -923,7 +923,7 @@
             "enforcement": "final-signature"
           },
           "default.noshowSweep": {
-            "description": "The same no-show when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room, and everything else goes back to the guest.",
+            "description": "The same no-show, signed a second time for when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room and the extra goes back to the guest. The co-signer completes whichever version fits the money in the account.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1078,7 +1078,7 @@
             "enforcement": "final-signature"
           },
           "default.noshow": {
-            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically (the account holds exactly the room price).",
+            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically, and anything else in the account goes back to the guest.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1087,7 +1087,7 @@
             "enforcement": "final-signature"
           },
           "default.noshowSweep": {
-            "description": "The same no-show when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room, and everything else goes back to the guest.",
+            "description": "The same no-show, signed a second time for when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room and the extra goes back to the guest. The co-signer completes whichever version fits the money in the account.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1243,7 +1243,7 @@
             "enforcement": "final-signature"
           },
           "default.noshow": {
-            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically (the account holds exactly the room price).",
+            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically, and anything else in the account goes back to the guest.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1252,7 +1252,7 @@
             "enforcement": "final-signature"
           },
           "default.noshowSweep": {
-            "description": "The same no-show when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room, and everything else goes back to the guest.",
+            "description": "The same no-show, signed a second time for when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room and the extra goes back to the guest. The co-signer completes whichever version fits the money in the account.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1407,7 +1407,7 @@
             "enforcement": "final-signature"
           },
           "default.noshow": {
-            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically (the account holds exactly the room price).",
+            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically, and anything else in the account goes back to the guest.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1416,7 +1416,7 @@
             "enforcement": "final-signature"
           },
           "default.noshowSweep": {
-            "description": "The same no-show when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room, and everything else goes back to the guest.",
+            "description": "The same no-show, signed a second time for when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room and the extra goes back to the guest. The co-signer completes whichever version fits the money in the account.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],

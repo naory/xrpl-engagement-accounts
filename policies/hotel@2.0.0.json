@@ -35,7 +35,7 @@
     "deposit": "amt(def.conf.claim.deposit.value, 'RLUSD')",
     "balance": "ledger.balance(eng.account, 'RLUSD')",
     "confirmed": "def.conf != null && def.conf.claim.mandateHash == eng.mandateId && def.conf.claim.city == mandate.constraints.city && def.conf.claim.checkIn == mandate.constraints.checkIn && def.conf.claim.checkOut == mandate.constraints.checkOut && amt(def.conf.claim.total.value, 'RLUSD') == def.booked && def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
-    "checkedIn": "def.conf != null && att.latest('party.checkin/1', 'counterparty') != null && att.latest('party.checkin/1', 'counterparty').claim.status == 'checked_in' && def.balance >= def.booked + def.deposit",
+    "checkedIn": "def.conf != null && att.list('party.checkin/1', 'counterparty').exists(c, c.claim.status == 'checked_in') && def.balance >= def.booked + def.deposit",
     "disputes": "att.list('party.dispute/1', 'principal')",
     "disputeOpen": "ledger.credentialExists(eng.parties.principal, eng.account, 'ENG/DISPUTE') && size(def.disputes) > 0 && def.balance >= def.booked + (def.checkedIn ? def.deposit : zero('RLUSD')) + amt(params.minDisputeBond, 'RLUSD')",
     "entryDispute": "def.disputeOpen && def.disputes.exists(d, d.claim.phase == 'entry')",
@@ -93,7 +93,7 @@
           "title": "Guest checked in",
           "reason": "NOT_CHECKED_IN",
           "check": "def.checkedIn",
-          "message": "The hotel has recorded the guest's arrival, and the deposit is in the account."
+          "message": "The hotel has recorded the guest's arrival (once recorded, a check-in can't be taken back), and the deposit is in the account."
         },
         {
           "id": "K2",
@@ -219,7 +219,7 @@
           "title": "Guest never checked in",
           "reason": "CHECKED_IN",
           "check": "!def.checkedIn",
-          "message": "If the guest arrived and paid the deposit, it isn't a no-show."
+          "message": "If the hotel recorded the guest as checked in and the deposit is in, it isn't a no-show. A recorded check-in is final: a later 'refused' doesn't undo it."
         },
         {
           "id": "N4",

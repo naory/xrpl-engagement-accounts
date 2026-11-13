@@ -487,17 +487,31 @@ describe('co-signer closes the last silence/timing wins', () => {
     expect(r).toMatchObject({ outcome: 'default.noshow', decision: 'SIGN', failing: [] })
   })
 
-  it('R29a: once the deposit is in, checked_in then refused lets neither default take it', async () => {
-    const { svc, source } = await confirmedSetup('2026-11-11T15:01:00Z')
+  it('CHECKIN_FINAL: after a receipted checked_in, a later refused is rejected; a checked-in stay cannot be no-showed', async () => {
+    const { svc, source } = await confirmedSetup('2026-11-11T15:01:00Z', '562') // room + full deposit
     await svc.ingest(ENG, checkin('checked_in'))
-    source.snap.closeTime = '2026-11-11T15:06:00Z'
-    await svc.ingest(ENG, checkinAt('refused', '2026-11-11T15:05:00Z'))
-    source.snap = hotel2Ledger({ balance: '562', closeTime: '2026-11-17T12:00:00Z' })
-    await svc.storePresigned(ENG, 'default.release', presign(releaseTx()))
     await svc.storePresigned(ENG, 'default.noshow', presign(noshowTx()))
+    const sweep = hotel2Close([{ to: W.atlas.address, value: '409.94' }, { to: W.service.address, value: '2.06' }, { to: W.dana.address, value: '0', partial: true }], { tickets: true, memos: [memo('eng/basis', 'default.noshowSweep')] })
+    await svc.storePresigned(ENG, 'default.noshowSweep', presign(sweep))
+    source.snap.closeTime = '2026-11-11T22:59:00Z' // just before checkInBy
+    await expect(svc.ingest(ENG, checkinAt('refused', '2026-11-11T22:58:30Z'))).rejects.toThrow(/CHECKIN_FINAL/)
+    expect(svc.statements(ENG).filter((s) => s.type === 'party.checkin/1').map((s) => (s.claim as { status: string }).status)).toEqual(['checked_in'])
+    source.snap.closeTime = '2026-11-12T11:00:01Z' // past checkInBy and entryDisputeBy
     const byOutcome = Object.fromEntries((await svc.tick(ENG)).map((r) => [r.outcome, r]))
-    expect(byOutcome['default.release'].failing).toContain('L1') // latest statement is refused: not checked in
-    expect(byOutcome['default.noshow'].failing).toContain('N8') // and the exact-room no-show cannot take the deposit either
+    for (const o of ['default.noshow', 'default.noshowSweep']) {
+      expect(byOutcome[o].decision).toBe('REFUSE')
+      expect(byOutcome[o].failing).toContain('N3')
+    }
+  })
+
+  it('CHECKIN_FINAL applies even before the deposit lands; a refused with no prior checked_in is accepted', async () => {
+    const { svc, source } = await confirmedSetup('2026-11-11T15:01:00Z')
+    await svc.ingest(ENG, checkin('checked_in')) // no deposit yet
+    source.snap.closeTime = '2026-11-11T15:06:00Z'
+    await expect(svc.ingest(ENG, checkinAt('refused', '2026-11-11T15:05:00Z'))).rejects.toThrow(/CHECKIN_FINAL/)
+    const other = await confirmedSetup('2026-11-11T15:01:00Z', '452')
+    const r = await other.svc.ingest(ENG, checkinAt('refused', '2026-11-11T15:00:00Z'))
+    expect(r.statement.subject.statementType).toBe('party.checkin/1')
   })
 
   it('R29b: a checked_in after a receipted entry dispute is ENTRY_DISPUTED; the dispute keeps counting', async () => {
@@ -718,5 +732,28 @@ describe('co-signer: automatic endings sweep extra money back to the guest', () 
     const [rel] = await c.svc.tick(ENG)
     expect(rel).toMatchObject({ outcome: 'default.release', decision: 'REFUSE' })
     expect(rel.failing).toContain('L2')
+  })
+})
+
+describe('co-signer: a payee who cannot receive makes tick() refuse instead of burning the Tickets (B11)', () => {
+  it('guest with DepositAuth or no trust line: the refund sweep is refused; with a line it signs; payees reach the snapshot source', async () => {
+    const { svc, source } = setup('2026-11-01T09:31:00Z')
+    const requested: string[][] = []
+    const snap = source.snapshot.bind(source)
+    source.snapshot = async (q?: unknown) => { requested.push((q as { payees?: string[] } | undefined)?.payees ?? []); return snap() }
+    const refund = hotel2Close([{ to: W.dana.address, value: '0', partial: true }], { tickets: true, memos: [memo('eng/basis', 'default.refund')] })
+    await svc.storePresigned(ENG, 'default.refund', combine([W.dana, W.atlas].map((w) => w.sign(structuredClone(refund) as never, true).tx_blob)))
+    source.snap = hotel2Ledger({ balance: '413', closeTime: '2026-11-01T11:00:01Z' })
+    const line = { RLUSD: { balance: '0', limit: '1000000' } }
+    for (const receive of [{ depositAuth: true, lines: line }, { depositAuth: false, lines: {} }]) {
+      source.snap.accounts[W.dana.address] = { exists: true, receive }
+      const [r] = await svc.tick(ENG)
+      expect(r).toMatchObject({ outcome: 'default.refund', decision: 'REFUSE', failing: ['B11'] })
+      expect(svc.inflightFor(ENG)).toEqual([])
+    }
+    expect(requested.some((p) => p.includes(W.dana.address))).toBe(true)
+    source.snap.accounts[W.dana.address] = { exists: true, receive: { depositAuth: false, lines: line } }
+    const [ok] = await svc.tick(ENG)
+    expect(ok).toMatchObject({ decision: 'SIGN', failing: [] })
   })
 })
