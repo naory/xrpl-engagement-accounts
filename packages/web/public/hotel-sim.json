@@ -529,6 +529,79 @@
         "at": "2026-11-01T09:00:00Z"
       },
       {
+        "step": "tick default.refund",
+        "stage": "default.refund",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "R1",
+            "result": "pass"
+          },
+          {
+            "id": "R2",
+            "result": "pass"
+          },
+          {
+            "id": "R3",
+            "result": "pass"
+          }
+        ],
+        "tx": "538DA6C8DD06FE9B3219D1918E058557CEEFF2F9231E417F452D6B2803CEA013",
+        "final": "tesSUCCESS",
+        "payouts": [
+          {
+            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
+            "value": "400"
+          }
+        ],
+        "at": "2026-11-01T11:01:00Z"
+      },
+      {
         "step": "tick default.noshow",
         "stage": "default.noshow",
         "decision": "REFUSE",
@@ -612,79 +685,6 @@
           {
             "id": "N7",
             "result": "pass"
-          }
-        ],
-        "at": "2026-11-01T11:01:00Z"
-      },
-      {
-        "step": "tick default.refund",
-        "stage": "default.refund",
-        "decision": "SIGN",
-        "failing": [],
-        "rules": [
-          {
-            "id": "B1",
-            "result": "pass"
-          },
-          {
-            "id": "B2",
-            "result": "pass"
-          },
-          {
-            "id": "B3",
-            "result": "pass"
-          },
-          {
-            "id": "B4",
-            "result": "pass"
-          },
-          {
-            "id": "B5",
-            "result": "pass"
-          },
-          {
-            "id": "B6",
-            "result": "pass"
-          },
-          {
-            "id": "B7",
-            "result": "pass"
-          },
-          {
-            "id": "B8",
-            "result": "pass"
-          },
-          {
-            "id": "B9",
-            "result": "pass"
-          },
-          {
-            "id": "B10",
-            "result": "pass"
-          },
-          {
-            "id": "B11",
-            "result": "pass"
-          },
-          {
-            "id": "R1",
-            "result": "pass"
-          },
-          {
-            "id": "R2",
-            "result": "pass"
-          },
-          {
-            "id": "R3",
-            "result": "pass"
-          }
-        ],
-        "tx": "538DA6C8DD06FE9B3219D1918E058557CEEFF2F9231E417F452D6B2803CEA013",
-        "final": "tesSUCCESS",
-        "payouts": [
-          {
-            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
-            "value": "400"
           }
         ],
         "at": "2026-11-01T11:01:00Z"

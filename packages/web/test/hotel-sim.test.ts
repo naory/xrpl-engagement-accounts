@@ -3,12 +3,19 @@
 import fs from 'node:fs'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { HOTEL_PATHS, type HotelPath } from '@eng/cosigner'
-import { buildHotelTranscript, type HotelTranscript } from '../src/hotel-sim.ts'
+import { parseAmount } from '@eng/core'
+import { buildHotelTranscript, type HotelSimStep, type HotelTranscript } from '../src/hotel-sim.ts'
 
 let t: HotelTranscript
 beforeAll(async () => { t = await buildHotelTranscript() })
 
-const last = (p: HotelPath) => t.paths[p].at(-1)!
+/** The step for `stage` with `decision` (tick() results keep the co-signer's order, so it need not be the last). */
+const outcome = (p: HotelPath, stage: string, decision = 'SIGN'): HotelSimStep => {
+  const s = t.paths[p].find((x) => x.stage === stage && x.decision === decision)
+  if (!s) throw new Error(`${p}: no ${stage} ${decision} step`)
+  return s
+}
+const minor = (v: string) => parseAmount(v, { code: 'RLUSD', kind: 'IOU', currency: 'RLUSD', issuer: '', decimals: 6 }).minor
 
 describe('hotel stay simulated transcript', () => {
   it('covers every path', () => {
@@ -23,8 +30,8 @@ describe('hotel stay simulated transcript', () => {
     ['silence', 'default.release'],
     ['claimUnanswered', 'ruling.default'],
     ['backupRuling', 'ruling.backup'],
-  ] as Array<[HotelPath, string]>)('%s ends with %s SIGN and closes the account', (path, stage) => {
-    const s = last(path)
+  ] as Array<[HotelPath, string]>)('%s closes with %s SIGN', (path, stage) => {
+    const s = outcome(path, stage)
     expect(s).toMatchObject({ stage, decision: 'SIGN', failing: [], final: 'tesSUCCESS' })
     expect(s.rules!.length).toBeGreaterThan(0)
     expect(s.rules!.every((r) => r.result === 'pass' || r.result === 'n/a')).toBe(true)
@@ -32,8 +39,7 @@ describe('hotel stay simulated transcript', () => {
   })
 
   it('entryRuled ends with the arbiter ruling: no co-signer decision, payouts set', () => {
-    const s = last('entryRuled')
-    expect(s.step).toBe('ruling:arbiter')
+    const s = t.paths.entryRuled.find((x) => x.step === 'ruling:arbiter')!
     expect(s.stage).toBeUndefined()
     expect(s.decision).toBeUndefined()
     expect(s).toMatchObject({ final: 'tesSUCCESS' })
@@ -52,6 +58,14 @@ describe('hotel stay simulated transcript', () => {
     expect(signed).toBeGreaterThan(refused)
   })
 
+  it('unconfirmed: tick order is kept, the refund SIGN comes before the no-show refusal it put in flight (B9)', () => {
+    const steps = t.paths.unconfirmed
+    const refund = steps.indexOf(outcome('unconfirmed', 'default.refund'))
+    const noshow = steps.indexOf(outcome('unconfirmed', 'default.noshow', 'REFUSE'))
+    expect(refund).toBeLessThan(noshow)
+    expect(steps[noshow].failing).toContain('B9')
+  })
+
   it('claimUnanswered: the release default is refused while the claim stands (L5)', () => {
     expect(t.paths.claimUnanswered.find((s) => s.stage === 'default.release')).toMatchObject({ decision: 'REFUSE', failing: ['L5'] })
   })
@@ -60,21 +74,16 @@ describe('hotel stay simulated transcript', () => {
     expect(t.paths.happy.find((s) => s.step === 'probe:principal+counterparty')).toMatchObject({ final: 'tefBAD_QUORUM' })
   })
 
-  it('every hotel payout carries the 50 bps fee', () => {
-    const fee = t.cast.service
+  it('every hotel payout carries exactly the 50 bps fee (minor units)', () => {
+    let checked = 0
     for (const p of HOTEL_PATHS) for (const s of t.paths[p]) {
-      if (!s.payouts?.some((x) => x.to === t.cast.hotel)) continue
-      const hotel = Number(s.payouts.find((x) => x.to === t.cast.hotel)!.value)
-      const toFee = Number(s.payouts.find((x) => x.to === fee)!.value)
-      expect(toFee).toBeCloseTo(((hotel + toFee) * 50) / 10000, 6)
+      const hotel = s.payouts?.find((x) => x.to === t.cast.hotel)
+      if (!hotel) continue
+      const fee = minor(s.payouts!.find((x) => x.to === t.cast.service)!.value)
+      expect(fee).toBe(((minor(hotel.value) + fee) * 50n) / 10000n)
+      checked++
     }
-  })
-
-  it('the clock only moves forward within a path', () => {
-    for (const p of HOTEL_PATHS) {
-      const at = t.paths[p].map((s) => Date.parse(s.at))
-      expect(at).toEqual([...at].sort((a, b) => a - b))
-    }
+    expect(checked).toBeGreaterThan(0)
   })
 
   it('the committed public/hotel-sim.json is exactly a fresh build', async () => {

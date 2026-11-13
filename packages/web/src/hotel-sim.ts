@@ -4,8 +4,8 @@
 // Every decision, failing list and rule row in the transcript is the co-signer's; nothing is hand-written. The only
 // thing simulated here is the ledger: a closing Batch applies when its multisig weight reaches the quorum (7).
 //
-// Step labels and order mirror packages/cosigner/src/hotel/flow.ts so the simulated and live transcripts look alike.
-// One difference: within one tick(), refusals are listed before the SIGN that gets submitted.
+// Step labels and order mirror packages/cosigner/src/hotel/flow.ts so the simulated and live transcripts look alike;
+// a tick()'s results keep the co-signer's order, so a path's closing step is not necessarily its last.
 //
 // Clock: a three-night stay (checkIn 2026-11-11, checkOut 2026-11-14) on the stock policy's rulingWindow of 432000 s
 // (5 days). Keys are deterministic and TEST ONLY; statement nonces are counters, so the output is reproducible.
@@ -248,10 +248,9 @@ class PathSim {
     this.add({ ...(adv ? this.decided(opts.advisory!, adv) : {}), ...this.submit(combine(blobs)), step: 'ruling:arbiter' })
   }
 
-  /** tick() the co-signer and submit what it completed. Refusals are listed before the SIGN that is submitted. */
+  /** tick() the co-signer and submit every completed default, in the co-signer's result order. */
   async tickAndSubmit(): Promise<void> {
-    const results = await this.svc.tick(this.id)
-    for (const t of [...results.filter((r) => r.decision !== 'SIGN'), ...results.filter((r) => r.decision === 'SIGN')]) {
+    for (const t of await this.svc.tick(this.id)) {
       const res = this.decided(t.stage, t, `tick ${t.outcome}`)
       this.add(t.decision === 'SIGN' && t.blob ? { ...res, ...this.submit(t.blob) } : res)
     }
@@ -313,6 +312,8 @@ class PathSim {
    * The simulated ledger. A multisigned closing Batch applies when every signature verifies and the signers'
    * weights reach the quorum; otherwise tefBAD_QUORUM and nothing changes. Applying it pays the inner Payments
    * and deletes the account. Anything else the ledger would reject is a generator bug and throws.
+   * NOT simulated: AccountDelete's minimum account age, inner-step order (TrustSet removal before AccountDelete),
+   * currency/issuer matching, exact inner Sequence numbers, fee sufficiency, LastLedgerSequence expiry.
    */
   private submit(blob: string): Pick<HotelStepResult, 'tx' | 'final' | 'payouts'> {
     const hash = xrpl.hashes.hashSignedTx(blob)
