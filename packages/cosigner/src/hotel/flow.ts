@@ -5,7 +5,7 @@
 import xrpl from 'xrpl'
 import { Amount, formatAmount, newNonce, parseAmount, signStatement, type AssetDef, type Statement, type StatementBody } from '@eng/core'
 import type { EngagementRecord } from '@eng/policy'
-import type { CosignerService, DecideResponse, TickResult } from '../service.ts'
+import type { CosignerService, DecideResponse, Receipt, TickResult } from '../service.ts'
 import {
   ASF_DISABLE_MASTER, TF_ALL_OR_NOTHING, TF_SET_NO_RIPPLE,
   accountInfo, addBatchSigner, batchFee, buildCloseBatch, buildOpenBatch, combine, currentLedger, hex, inner, innerResults, iou,
@@ -28,7 +28,11 @@ export interface HotelStepResult {
   tx?: string
   final?: string
   payouts?: Array<{ to: string; value: string }>
+  /** Posting steps: the co-signer's signed cosigner.receipt/1 for the posted statement (the poster's proof). */
+  receipt?: HotelReceipt
 }
+
+export interface HotelReceipt { statementId: string; statementType: string; receivedAt: string; ledgerIndex: number }
 
 /** Seconds from open. */
 export interface HotelTimerOffsets {
@@ -205,19 +209,19 @@ export class HotelFlow {
   async confirm(): Promise<HotelStepResult> {
     const b = this.booking
     const m = this.mandate!.claim as { constraints: { city: string; checkIn: string; checkOut: string } }
-    await this.post(this.stmt(this.o.cast.hotel, 'COUNTERPARTY', 'party.confirmation/1', { bookingId: this.bookingId }, {
+    const receipt = await this.post(this.stmt(this.o.cast.hotel, 'COUNTERPARTY', 'party.confirmation/1', { bookingId: this.bookingId }, {
       mandateHash: this.mandate!.id, bookingId: this.bookingId, property: 'Casa Alfama', city: m.constraints.city, country: 'PT',
       checkIn: m.constraints.checkIn, checkOut: m.constraints.checkOut, total: this.money(b.room), deposit: this.money(b.deposit),
     }))
-    return this.decided('confirm', await this.o.svc.decide({ engagementId: this.id, stage: 'confirm' }))
+    return { ...this.decided('confirm', await this.o.svc.decide({ engagementId: this.id, stage: 'confirm' })), receipt }
   }
 
   /** Spec §5.3 order: check-in attestation → guest + hotel pre-sign default.release → stored → guest pays the deposit → `checkin`. */
   async checkIn(): Promise<HotelStepResult[]> {
     const { cast, client } = this.o
     const out: HotelStepResult[] = []
-    await this.post(this.stmt(cast.hotel, 'COUNTERPARTY', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'checked_in', room: '204', deposit: this.money(this.booking.deposit) }))
-    out.push({ step: 'checkin attestation', final: 'RECEIPTED' })
+    const receipt = await this.post(this.stmt(cast.hotel, 'COUNTERPARTY', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'checked_in', room: '204', deposit: this.money(this.booking.deposit) }))
+    out.push({ step: 'checkin attestation', final: 'RECEIPTED', receipt })
     this.presign('default.release', this.split(this.micro(this.booking.room), this.micro(this.booking.deposit)))
     out.push({ step: 'default.release pre-signed', final: 'STORED' })
     const r = await withLock(cast.guest.address, async () => this.track('deposit', await sendSimple(client, cast.guest, {
@@ -248,8 +252,8 @@ export class HotelFlow {
     this.dispute = this.stmt(g, 'PRINCIPAL', 'party.dispute/1', { bookingId: this.bookingId }, {
       phase, reason: phase === 'entry' ? 'room not as booked' : 'claim disputed', bond: this.money(this.booking.bond), evidenceHashes: [],
     })
-    await this.post(this.dispute)
-    return { step: `dispute (${phase})`, tx: r.hash, final }
+    const receipt = await this.post(this.dispute)
+    return { step: `dispute (${phase})`, tx: r.hash, final, receipt }
   }
 
   /** Hotel concedes the entry dispute: guest + hotel + co-signer refund everything to the guest (`refund.conceded`). */
@@ -266,8 +270,8 @@ export class HotelFlow {
     this.claim = this.stmt(this.o.cast.hotel, 'COUNTERPARTY', 'party.claim/1', { bookingId: this.bookingId }, {
       items: items.map((i) => ({ kind: i.kind, amount: this.money(i.amount), evidenceHashes: [] })), total: this.money(this.fmt(total)),
     })
-    await this.post(this.claim)
-    return { step: 'claim', final: 'RECEIPTED' }
+    const receipt = await this.post(this.claim)
+    return { step: 'claim', final: 'RECEIPTED', receipt }
   }
 
   /** Guest accepts the claim (if any) and reviews; guest + hotel + co-signer settle (`settle`). */
@@ -468,9 +472,10 @@ export class HotelFlow {
   }
 
   /** Post = ingest; the co-signer's receipt is the poster's proof. */
-  private async post(s: Statement): Promise<void> {
-    const r = await this.o.svc.ingest(this.id, s)
-    this.log(`${s.type} receipted at ${String((r.statement.claim as Json).receivedAt)}`)
+  private async post(s: Statement): Promise<HotelReceipt> {
+    const receipt = receiptOf(await this.o.svc.ingest(this.id, s))
+    this.log(`${s.type} receipted at ${receipt.receivedAt}`)
+    return receipt
   }
 
   private presign(outcome: keyof typeof TICKETS, payouts: Payout[]): void {
@@ -537,6 +542,13 @@ export class HotelFlow {
     }
     return { tx: r.hash, final, payouts }
   }
+}
+
+/** The fields of a co-signer receipt (cosigner.receipt/1) a step carries. */
+export function receiptOf(r: Receipt): HotelReceipt {
+  const subject = r.statement.subject as { statementId: string; statementType: string }
+  const claim = r.statement.claim as { receivedAt: string; ledgerIndex: number }
+  return { statementId: subject.statementId, statementType: subject.statementType, receivedAt: claim.receivedAt, ledgerIndex: claim.ledgerIndex }
 }
 
 export function describeStep(s: HotelStepResult): string {

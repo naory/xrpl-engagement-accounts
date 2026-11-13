@@ -20,8 +20,8 @@ import { Amount, formatAmount, localSigner, parseAmount, signStatement, type Ass
 import type { EngagementRecord, LedgerSnapshot, PolicyDoc } from '@eng/policy'
 import {
   CosignerService, DEMO_HOTEL_BOOKING, FixtureLedgerSource, HOTEL_PATHS,
-  buildCloseBatch, combine, currencyHex, memo, multisignBlob,
-  type DecideResponse, type Fees, type HotelBooking, type HotelPath, type HotelStepResult, type TickResult,
+  buildCloseBatch, combine, currencyHex, memo, multisignBlob, receiptOf,
+  type DecideResponse, type HotelReceipt, type Fees, type HotelBooking, type HotelPath, type HotelStepResult, type TickResult,
 } from '@eng/cosigner'
 
 type Json = Record<string, unknown>
@@ -177,17 +177,17 @@ class PathSim {
   }
 
   async confirm(): Promise<void> {
-    await this.post(this.stmt(W.hotel, 'COUNTERPARTY', 'party.confirmation/1', { bookingId: this.bookingId }, {
+    const receipt = await this.post(this.stmt(W.hotel, 'COUNTERPARTY', 'party.confirmation/1', { bookingId: this.bookingId }, {
       mandateHash: this.mandate!.id, bookingId: this.bookingId, property: 'Casa Alfama', city: 'Lisbon', country: 'PT',
       ...STAY, total: money(BOOKING.room), deposit: money(BOOKING.deposit),
     }))
-    this.add(this.decided('confirm', await this.svc.decide({ engagementId: this.id, stage: 'confirm' })))
+    this.add({ ...this.decided('confirm', await this.svc.decide({ engagementId: this.id, stage: 'confirm' })), receipt })
   }
 
   /** Spec §5.3 order: check-in attestation → default.release pre-signed and stored → deposit → `checkin`. */
   async checkIn(): Promise<void> {
-    await this.post(this.stmt(W.hotel, 'COUNTERPARTY', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'checked_in', room: '204', deposit: money(BOOKING.deposit) }))
-    this.add({ step: 'checkin attestation', final: 'RECEIPTED' })
+    const receipt = await this.post(this.stmt(W.hotel, 'COUNTERPARTY', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'checked_in', room: '204', deposit: money(BOOKING.deposit) }))
+    this.add({ step: 'checkin attestation', final: 'RECEIPTED', receipt })
     this.presign('default.release', split(micro(BOOKING.room), micro(BOOKING.deposit)))
     this.add({ step: 'default.release pre-signed', final: 'STORED' })
     this.balance += micro(BOOKING.deposit)
@@ -202,8 +202,8 @@ class PathSim {
     this.dispute = this.stmt(W.guest, 'PRINCIPAL', 'party.dispute/1', { bookingId: this.bookingId }, {
       phase, reason: phase === 'entry' ? 'room not as booked' : 'claim disputed', bond: money(BOOKING.bond), evidenceHashes: [],
     })
-    await this.post(this.dispute)
-    this.add({ step: `dispute (${phase})`, final: 'tesSUCCESS' })
+    const receipt = await this.post(this.dispute)
+    this.add({ step: `dispute (${phase})`, final: 'tesSUCCESS', receipt })
   }
 
   async concede(): Promise<void> {
@@ -217,8 +217,8 @@ class PathSim {
     this.claim = this.stmt(W.hotel, 'COUNTERPARTY', 'party.claim/1', { bookingId: this.bookingId }, {
       items: items.map((i) => ({ kind: i.kind, amount: money(i.amount), evidenceHashes: [] })), total: money(fmt(total)),
     })
-    await this.post(this.claim)
-    this.add({ step: 'claim', final: 'RECEIPTED' })
+    const receipt = await this.post(this.claim)
+    this.add({ step: 'claim', final: 'RECEIPTED', receipt })
   }
 
   async settleAgreed(): Promise<void> {
@@ -275,7 +275,7 @@ class PathSim {
   }
 
   /** Posted = receipted by the co-signer (ingest judges the window on the snapshot's closeTime). */
-  private async post(s: Statement): Promise<void> { await this.svc.ingest(this.id, s) }
+  private async post(s: Statement): Promise<HotelReceipt> { return receiptOf(await this.svc.ingest(this.id, s)) }
 
   private presign(outcome: keyof typeof TICKETS, payouts: Payout[]): void {
     const [a, b] = TICKETS[outcome]

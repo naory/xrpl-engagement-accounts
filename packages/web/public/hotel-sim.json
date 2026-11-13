@@ -101,11 +101,23 @@
             "result": "pass"
           }
         ],
+        "receipt": {
+          "statementId": "att:5F4E6C47795E1839543210908BB2043045BC3CFF63673E6E2100A5FF5D9FE8E1",
+          "statementType": "party.confirmation/1",
+          "receivedAt": "2026-11-01T09:30:00Z",
+          "ledgerIndex": 99000450
+        },
         "at": "2026-11-01T09:30:00Z"
       },
       {
         "step": "checkin attestation",
         "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:1F4A25B53D13C63993344222F2FF41371B0AD93F6B30CC0C08E14FD37D328918",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
         "at": "2026-11-11T15:00:00Z"
       },
       {
@@ -428,6 +440,12 @@
       {
         "step": "claim",
         "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:318CD43880364D8F89224CD14637775C04DE3C8C5A58E4434FC50A6B8A7B6C7D",
+          "statementType": "party.claim/1",
+          "receivedAt": "2026-11-14T15:00:00Z",
+          "ledgerIndex": 99286200
+        },
         "at": "2026-11-14T15:00:00Z"
       },
       {
@@ -763,6 +781,12 @@
             "result": "pass"
           }
         ],
+        "receipt": {
+          "statementId": "att:2800B4685E6F28A3A719421A38A978E58F9A93892A867B37996104DD7EE3F71C",
+          "statementType": "party.confirmation/1",
+          "receivedAt": "2026-11-01T09:30:00Z",
+          "ledgerIndex": 99000450
+        },
         "at": "2026-11-01T09:30:00Z"
       },
       {
@@ -1000,11 +1024,23 @@
             "result": "pass"
           }
         ],
+        "receipt": {
+          "statementId": "att:3BC98FDEBF83F99D5E52387F2C7B40E68D4E0D6627A710F8050924661FDE7D34",
+          "statementType": "party.confirmation/1",
+          "receivedAt": "2026-11-01T09:30:00Z",
+          "ledgerIndex": 99000450
+        },
         "at": "2026-11-01T09:30:00Z"
       },
       {
         "step": "dispute (entry)",
         "final": "tesSUCCESS",
+        "receipt": {
+          "statementId": "att:37037F42AAC1F9F0580F992F118734686CB313A27BF5E96E6E7DF8CDECD738AB",
+          "statementType": "party.dispute/1",
+          "receivedAt": "2026-11-11T20:00:00Z",
+          "ledgerIndex": 99225900
+        },
         "at": "2026-11-11T20:00:00Z"
       },
       {
@@ -1154,11 +1190,23 @@
             "result": "pass"
           }
         ],
+        "receipt": {
+          "statementId": "att:9B1DAD86A9BA84CDD4E69ED3DF2AAF1D04C370178AD92DDF386DE437E35CF720",
+          "statementType": "party.confirmation/1",
+          "receivedAt": "2026-11-01T09:30:00Z",
+          "ledgerIndex": 99000450
+        },
         "at": "2026-11-01T09:30:00Z"
       },
       {
         "step": "dispute (entry)",
         "final": "tesSUCCESS",
+        "receipt": {
+          "statementId": "att:E7AD7A5BE8B2D10A8B30054D27CE878B6903550D865D9F16204E18E5C7A04BFF",
+          "statementType": "party.dispute/1",
+          "receivedAt": "2026-11-11T20:00:00Z",
+          "ledgerIndex": 99225900
+        },
         "at": "2026-11-11T20:00:00Z"
       },
       {
@@ -1419,11 +1467,23 @@
             "result": "pass"
           }
         ],
+        "receipt": {
+          "statementId": "att:8E12529AA220951D896D2DCB5A3E8E52B505CF1438D281E51FF3F4C7160C3763",
+          "statementType": "party.confirmation/1",
+          "receivedAt": "2026-11-01T09:30:00Z",
+          "ledgerIndex": 99000450
+        },
         "at": "2026-11-01T09:30:00Z"
       },
       {
         "step": "checkin attestation",
         "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:9F09135B23F454A6F903BB64E13D77EE2091D6712EC638883D1EE4AA56CC57DE",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
         "at": "2026-11-11T15:00:00Z"
       },
       {
@@ -1828,11 +1888,23 @@
             "result": "pass"
           }
         ],
+        "receipt": {
+          "statementId": "att:547C461A020F41E9A3F3B724058ACB239EE274E1984C8AF2A968DEF96D482D49",
+          "statementType": "party.confirmation/1",
+          "receivedAt": "2026-11-01T09:30:00Z",
+          "ledgerIndex": 99000450
+        },
         "at": "2026-11-01T09:30:00Z"
       },
       {
         "step": "checkin attestation",
         "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:04030AC94080BFC3B2FACF15CC011EF8921FF0EB9F085243AF360649CF1322C6",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
         "at": "2026-11-11T15:00:00Z"
       },
       {
@@ -1909,6 +1981,12 @@
       {
         "step": "claim",
         "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:04B6D38B158EF6DA26B3C9304B5CB9FDAFFD2A4FFC5BC8282CE182A6B8583A97",
+          "statementType": "party.claim/1",
+          "receivedAt": "2026-11-14T15:00:00Z",
+          "ledgerIndex": 99286200
+        },
         "at": "2026-11-14T15:00:00Z"
       },
       {
@@ -2318,11 +2396,23 @@
             "result": "pass"
           }
         ],
+        "receipt": {
+          "statementId": "att:1040F54F4D1F5806EBDFA847D9BF3CE3A10C4C653B02074B563938502E4B7508",
+          "statementType": "party.confirmation/1",
+          "receivedAt": "2026-11-01T09:30:00Z",
+          "ledgerIndex": 99000450
+        },
         "at": "2026-11-01T09:30:00Z"
       },
       {
         "step": "checkin attestation",
         "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:E69A5E170F28C66C73FFAEDB17BEBA6CBAC434D44854E14580A1CA7C6A28AD93",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
         "at": "2026-11-11T15:00:00Z"
       },
       {
@@ -2399,11 +2489,23 @@
       {
         "step": "claim",
         "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:E59F1B5E805F5B79A1487ADED95274632C8BC8B04353D4027CAC4F7B0F098FA8",
+          "statementType": "party.claim/1",
+          "receivedAt": "2026-11-14T15:00:00Z",
+          "ledgerIndex": 99286200
+        },
         "at": "2026-11-14T15:00:00Z"
       },
       {
         "step": "dispute (settlement)",
         "final": "tesSUCCESS",
+        "receipt": {
+          "statementId": "att:CF0438A27850E7DB2D53EBCF58E282E89CB6CBFAAA2D3CC64BD97F343D6F3F2B",
+          "statementType": "party.dispute/1",
+          "receivedAt": "2026-11-15T10:00:00Z",
+          "ledgerIndex": 99303300
+        },
         "at": "2026-11-15T10:00:00Z"
       },
       {

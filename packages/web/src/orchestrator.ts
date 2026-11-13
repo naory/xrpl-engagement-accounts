@@ -16,6 +16,8 @@ import {
   accountInfo, addBatchSigner, buildOpenBatch, currencyHex, hex, iou, iouBalance, memo, sendSimple, serverFees, sleep, submit, innerResults,
   inner, batchFee, multisignBlob, combine, currentLedger, TF_ALL_OR_NOTHING, type Fees,
   PoolManager, XrplPoolLedger, LocalFileSeedStore, FilePoolStateStore, LocalKeys, type PoolConfig,
+  HotelFlow, HOTEL_PATHS, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, OPEN_SEQUENCES,
+  type HotelBooking, type HotelCast, type HotelPath, type HotelStepResult, type HotelTimerOffsets,
 } from '@eng/cosigner'
 import { EngagementAgent, XrplChain } from '@eng/agent-mcp'
 import { ProvisioningCoordinator, makeEnrolment } from '@eng/provisioning'
@@ -52,7 +54,11 @@ export interface ProvisionResult {
   openTx: string
   balance: string | null
   session: { id: string }
+  /** Hotel stay only: each path opens its own single-use engagement account when it runs. */
+  hotel?: HotelStatus & { paths: HotelPath[]; pooled: boolean; accounts: Partial<Record<HotelPath, string>>; booking: HotelBooking; timers: HotelTimerOffsets; policy: string }
 }
+/** Whether the hotel paths can run yet (unpooled: the pre-created accounts must first age past the AccountDelete window). */
+export interface HotelStatus { ready: boolean; status: string; ran: HotelPath[] }
 export interface PayResult {
   decision: string
   failing: string[]
@@ -108,6 +114,13 @@ export class DemoOrchestrator {
   private escrowBal = 0
   private lastX402Invoice = ''
   private lastX402Stmt: Statement | null = null
+  private hotelRun?: {
+    cast: HotelCast; svc: CosignerService; policyLayer: string
+    /** Unpooled: one pre-created account per path. Pooled: leased when the path runs. */
+    accounts: Partial<Record<HotelPath, Wallet>>
+    aging: Promise<void> | null
+    ready: boolean; status: string; ran: Set<HotelPath>
+  }
   // Pooled mode (ENG_USE_POOL=1): lease a pre-aged account from the warm pool instead of pre-creating one.
   private pool?: PoolManager
   private pooled = false
@@ -158,7 +171,7 @@ export class DemoOrchestrator {
 
   async provision(scenario = 'procurement'): Promise<ProvisionResult> {
     this.scenario = scenario
-    if (scenario === 'escrow') return this.provisionEscrow()
+    if (scenario === 'hotel') return this.provisionHotel()
     if (scenario === 'bond') return this.provisionBond()
     return this.pool ? this.provisionProcurementPooled() : this.provisionProcurement()
   }
@@ -369,66 +382,6 @@ export class DemoOrchestrator {
     return { closed: true, account: eng, reclaimedTo: op, sweepTx, removeTrustlineTx, accountDeleteTx, explorer: this.explorer }
   }
 
-  private async provisionEscrow(): Promise<ProvisionResult> {
-    this.engagementId = `eng_web_esc_${Date.now().toString(36)}`
-    const issuer = await this.fund('issuer')
-    const buyer = await this.fund('buyer')
-    const seller = await this.fund('seller')
-    const service = await this.fund('service')
-    const arbiter = xrpl.Wallet.generate(); this.w.arbiter = arbiter
-    const cosigner = xrpl.Wallet.generate(); this.w.cosigner = cosigner
-    const attester = xrpl.Wallet.generate(); this.w.attester = attester
-    const agent = xrpl.Wallet.generate(); this.w.agent = agent // optional AI booking agent — the principal's delegate (never funds)
-
-    must(await sendSimple(this.client, issuer, { TransactionType: 'AccountSet', Account: issuer.address, SetFlag: ASF_DEFAULT_RIPPLE }), 'DefaultRipple')
-    for (const v of [buyer, seller, service]) must(await sendSimple(this.client, v, { TransactionType: 'TrustSet', Account: v.address, LimitAmount: iou(CUR, issuer.address, '10000000') }), 'trust line')
-    must(await sendSimple(this.client, issuer, { TransactionType: 'Payment', Account: issuer.address, Destination: buyer.address, Amount: iou(CUR, issuer.address, '2000') }), 'issue to buyer')
-
-    const eng = xrpl.Wallet.generate(); this.eng = eng; this.w.engagement = eng
-    must(await sendSimple(this.client, service, { TransactionType: 'Payment', Account: service.address, Destination: eng.address, Amount: xrpl.xrpToDrops(3) }), 'create account')
-    must(await sendSimple(this.client, eng, { TransactionType: 'TrustSet', Account: eng.address, LimitAmount: iou(CUR, issuer.address, '1000000000'), Flags: TF_SET_NO_RIPPLE }), 'eng trust line')
-    must(await sendSimple(this.client, eng, { TransactionType: 'SetRegularKey', Account: eng.address, RegularKey: service.address }), 'eng RegularKey')
-    must(await sendSimple(this.client, eng, { TransactionType: 'AccountSet', Account: eng.address, SetFlag: ASF_DISABLE_MASTER }), 'eng disable master')
-
-    const expires = new Date(Date.now() + 7 * 86400_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
-    const mandate = this.stmt(buyer, 'PRINCIPAL', 'party.mandate/1', { mandateId: 'mnd_web_esc' }, { purpose: 'Lisbon booking (web demo)', total: { value: '412.00', currency: 'RLUSD' }, city: 'Lisbon', expires })
-
-    const coord = new ProvisioningCoordinator()
-    const session = coord.createSession({
-      engagementId: this.engagementId, template: 'settlement-vault/hotel@1', account: eng.address, asset: 'RLUSD', quorum: 5,
-      roles: [{ role: 'agent', weight: 2 }, { role: 'counterparty', weight: 2 }, { role: 'arbiter', weight: 3 }, { role: 'cosigner', weight: 1 }],
-      attesters: { attester: { accounts: [attester.address] }, arbiter: { accounts: [arbiter.address] } },
-      deleteTo: service.address, funder: buyer.address, fundingAmount: '412', mandate,
-    })
-    for (const [role, wal] of [['agent', agent], ['counterparty', seller], ['arbiter', arbiter], ['cosigner', cosigner]] as Array<[string, Wallet]>) coord.enrol(makeEnrolment(session, role, wal))
-    const plan = coord.plan(session.sessionId)
-
-    const seq = Number(((await accountInfo(this.client, eng.address))!.account_data as Json).Sequence)
-    const bSeq = Number(((await accountInfo(this.client, buyer.address))!.account_data as Json).Sequence)
-    const { tx } = buildOpenBatch({
-      eng: eng.address, funder: buyer.address, currency: CUR, issuer: issuer.address, amount: '412',
-      signerEntries: plan.signerEntries, quorum: 5, seq, funderSeq: bSeq, ticketCount: 0,
-      memos: [memo('eng/open', `${this.engagementId}|template=settlement-vault/hotel@1`)], fees: this.fees,
-    })
-    addBatchSigner(buyer, tx)
-    const open = await submit(this.client, service.sign(tx as never).tx_blob)
-    const innr = await innerResults(this.client, tx)
-    if (open.final !== 'tesSUCCESS' || !innr.every((i) => i.applied)) throw new Error(`open failed: ${open.final} / ${innr.map((i) => i.result).join(',')}`)
-
-    this.escrowBal = 412
-    this.provisioned = true
-
-    const asOf: Record<string, string> = { [seller.address]: 'seller', [agent.address]: "buyer's delegate" }
-    const roleOf: Record<string, string> = { [seller.address]: 'counterparty', [arbiter.address]: 'arbiter', [cosigner.address]: 'cosigner', [agent.address]: 'agent' }
-    return {
-      engagementId: this.engagementId, account: eng.address, explorer: this.explorer, quorum: 5,
-      signers: plan.signerEntries.map(([address, weight]) => ({ role: roleOf[address] ?? '?', address, weight, proofVerified: true, as: asOf[address], note: roleOf[address] === 'agent' ? 'the buyer funds the vault and delegated signing to this agent' : undefined })),
-      mandate: { purpose: 'Lisbon booking (web demo)', budget: '412.00', dailyCap: '412.00', approvalOver: '0.00', vendors: [{ label: 'Seller', address: seller.address }] },
-      accounts: { issuer: issuer.address, buyer: buyer.address, seller: seller.address, arbiter: arbiter.address, cosigner: cosigner.address, attester: attester.address, agent: agent.address, service: service.address },
-      openTx: open.hash, balance: '412.00', session: { id: session.sessionId },
-    }
-  }
-
   private async provisionBond(): Promise<ProvisionResult> {
     this.engagementId = `eng_web_bond_${Date.now().toString(36)}`
     const issuer = await this.fund('issuer')
@@ -488,6 +441,123 @@ export class DemoOrchestrator {
     }
   }
 
+  // ── Hotel stay (hotel@2, spec §7.2) ─────────────────────────────────────────
+  // Every path runs through HotelFlow and a real CosignerService with pol_hotel@2.0.0 (a copy with this run's issuer
+  // and the demo's 60 s rulingWindow, pinned as a policy layer, exactly as `npm run demo:hotel` does). The UI shows the
+  // co-signer's decision records verbatim. Each path closes with AccountDelete, so it needs its own account aged past
+  // the AccountDelete window: pre-created here and aged (~15 min), or leased pre-aged from the pool (ENG_USE_POOL=1).
+  private async provisionHotel(): Promise<ProvisionResult> {
+    const run = Date.now().toString(36)
+    this.engagementId = `eng_hotel_${run}`
+    const pooled = !!this.pool
+    const issuer = pooled ? xrpl.Wallet.fromSeed(reqEnv('ENG_DEMO_ISSUER_SEED')) : await this.fund('issuer'); this.w.issuer = issuer
+    const guest = await this.fund('guest')
+    const hotel = await this.fund('hotel')
+    const service = await this.fund('service') // pre-creates accounts; fee recipient and AccountDelete destination
+    const arbiter = xrpl.Wallet.generate(); this.w.arbiter = arbiter // signers only (never funded)
+    const backupArbiter = xrpl.Wallet.generate(); this.w.backupArbiter = backupArbiter
+    const cosigner = xrpl.Wallet.generate(); this.w.cosigner = cosigner
+
+    must(await sendSimple(this.client, issuer, { TransactionType: 'AccountSet', Account: issuer.address, SetFlag: ASF_DEFAULT_RIPPLE }), 'DefaultRipple')
+    for (const v of [guest, hotel, service]) must(await sendSimple(this.client, v, { TransactionType: 'TrustSet', Account: v.address, LimitAmount: iou(CUR, issuer.address, '10000000') }), 'trust line')
+    must(await sendSimple(this.client, issuer, { TransactionType: 'Payment', Account: issuer.address, Destination: guest.address, Amount: iou(CUR, issuer.address, '10000') }), 'issue to guest')
+
+    const baseline = this.read<PolicyDoc>('policies/baseline@1.1.0.json')
+    const policy = this.read<PolicyDoc>('policies/hotel@2.0.0.json')
+    policy.version = '2.0.0-web'
+    policy.assets!.RLUSD.issuer = issuer.address
+    policy.params!.rulingWindow = '60s'
+    this.policy = policy
+    const template = this.read<Template>('templates/hotel@2.json')
+    const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
+    const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates: [template], policies: [baseline, policy], dataDir })
+    this.svc = svc
+    const cast: HotelCast = { issuer, guest, hotel, arbiter, backupArbiter, service, currency: CUR }
+
+    // eng.provision/1: every signer proves possession of its key; the SignerList is the same for every path's account.
+    const roles: Array<[string, Wallet, number]> = [['principal', guest, 3], ['counterparty', hotel, 3], ['arbiter', arbiter, 4], ['backupArbiter', backupArbiter, 2], ['cosigner', cosigner, 2]]
+    const coord = new ProvisioningCoordinator()
+    const session = coord.createSession({
+      engagementId: this.engagementId, template: 'settlement-vault/hotel@2', account: '(one per path)', asset: 'RLUSD', quorum: 7,
+      roles: roles.map(([role, , weight]) => ({ role, weight })), deleteTo: service.address, funder: guest.address, fundingAmount: DEMO_HOTEL_BOOKING.room,
+    })
+    for (const [role, wal] of roles) coord.enrol(makeEnrolment(session, role, wal))
+    const plan = coord.plan(session.sessionId)
+
+    const h: NonNullable<DemoOrchestrator['hotelRun']> = { cast, svc, policyLayer: layerHash(policy), accounts: {}, aging: null, ready: pooled, status: pooled ? 'ready — accounts are leased pre-aged from the pool' : '', ran: new Set() }
+    this.hotelRun = h
+    if (!pooled) {
+      const flow = this.hotelFlow('happy')
+      const accounts = await flow.precreate(HOTEL_PATHS.length)
+      HOTEL_PATHS.forEach((p, i) => { h.accounts[p] = accounts[i] })
+      h.status = 'waiting for the accounts to age past the AccountDelete window (~15 min)'
+      h.aging = flow.waitUntilAged(accounts.map((a) => a.address))
+      h.aging.then(() => { h.ready = true; h.status = 'ready' }, (e: Error) => { h.status = `aging failed: ${e.message}` })
+    }
+    this.scenario = 'hotel'
+    this.provisioned = true
+
+    const roleOf = Object.fromEntries(roles.map(([role, wal]) => [wal.address, role]))
+    return {
+      engagementId: this.engagementId, account: h.accounts.happy?.address ?? '', explorer: this.explorer, quorum: plan.quorum,
+      signers: plan.signerEntries.map(([address, weight]) => ({ role: roleOf[address] ?? '?', address, weight, proofVerified: true, as: ({ principal: 'guest', counterparty: 'hotel' } as Record<string, string>)[roleOf[address]] })),
+      mandate: { purpose: 'Lisbon hotel stay (web demo)', budget: DEMO_HOTEL_BOOKING.room, dailyCap: DEMO_HOTEL_BOOKING.room, approvalOver: '0.00', vendors: [{ label: 'Hotel', address: hotel.address }] },
+      accounts: { issuer: issuer.address, guest: guest.address, hotel: hotel.address, arbiter: arbiter.address, backupArbiter: backupArbiter.address, service: service.address, cosigner: cosigner.address },
+      openTx: '', balance: null, session: { id: session.sessionId },
+      hotel: {
+        ...this.hotelStatus(), paths: HOTEL_PATHS, pooled, accounts: Object.fromEntries(Object.entries(h.accounts).map(([p, w]) => [p, w!.address])),
+        booking: DEMO_HOTEL_BOOKING, timers: DEMO_HOTEL_TIMERS, policy: `pol_hotel@${policy.version} ${h.policyLayer} (rulingWindow 60s)`,
+      },
+    }
+  }
+
+  hotelStatus(): HotelStatus {
+    const h = this.hotelRun
+    if (!h || this.scenario !== 'hotel') throw new Error('hotel not provisioned')
+    return { ready: h.ready, status: h.status, ran: [...h.ran] }
+  }
+
+  /** Run one hotel path end to end on its own engagement account; returns HotelFlow's steps (decision records verbatim). */
+  async hotel(input: { path: HotelPath }): Promise<HotelStepResult[]> {
+    const h = this.hotelRun
+    if (!this.provisioned || this.scenario !== 'hotel' || !h) throw new Error('hotel not provisioned')
+    const p = input.path
+    if (!HOTEL_PATHS.includes(p)) throw new Error(`unknown hotel path ${String(p)}`)
+    if (h.ran.has(p)) throw new Error(`path ${p} already ran: its single-use account is closed — provision again to rerun it`)
+    if (!this.pool && !h.ready) throw new Error(`not ready: ${h.status}`)
+    h.ran.add(p)
+    const flow = this.hotelFlow(p)
+    let eng = h.accounts[p]
+    if (!eng) {
+      try { eng = await this.leaseHotelAccount(flow, p) } catch (e) { h.ran.delete(p); throw e }
+    }
+    const steps = await flow.run(p, eng)
+    if (this.pool && !h.accounts[p] && (await accountInfo(this.client, eng.address)) === null) await this.pool.markClosed(eng.address)
+    return steps
+  }
+
+  private hotelFlow(p: HotelPath): HotelFlow {
+    const h = this.hotelRun!
+    return new HotelFlow({
+      client: this.client, fees: this.fees, svc: h.svc, cast: h.cast, timers: DEMO_HOTEL_TIMERS,
+      policyLayers: [h.policyLayer], rulingWindowSecs: 60, runId: `${this.engagementId.slice(-8)}_${p}`,
+      log: (m) => { console.log(`  · ${m}`); if (!h.ready) h.status = m.replace(/^\S+: /, '') },
+    })
+  }
+
+  /** Pooled: lease a pre-aged account, hand it to this run's service key, and top up its reserve for the SignerList + 15 Tickets. */
+  private async leaseHotelAccount(flow: HotelFlow, p: HotelPath): Promise<Wallet> {
+    const h = this.hotelRun!
+    const leased = await this.pool!.lease(`${this.engagementId}_${p}`)
+    if (!leased) throw new Error('pool has no ready account — run `npm run pool:topup` and let one age to ready')
+    const eng = xrpl.Wallet.fromSeed(leased.seed)
+    const service = h.cast.service
+    must(await sendSimple(this.client, this.poolService, { TransactionType: 'SetRegularKey', Account: eng.address, RegularKey: service.address }), 'hand the leased account to the service key')
+    must(await sendSimple(this.client, service, { TransactionType: 'Payment', Account: service.address, Destination: eng.address, Amount: String(this.fees.reserveBase + this.fees.inc * (2 + 15) + 1_000_000) }), 'reserve top-up')
+    await flow.waitUntilAged([eng.address], OPEN_SEQUENCES) // pool-aged; may still need the open Batch's Sequence headroom
+    return eng
+  }
+
   private payoutBatch(eng: string, issuer: string, payouts: Array<{ to: string; value: string }>, seq: number, lls: number, signatures: number, mode: string): Json {
     const raw = payouts.map((p, i) => inner({ TransactionType: 'Payment', Account: eng, Destination: p.to, Amount: iou(CUR, issuer, p.value) }, { Sequence: seq + 1 + i }))
     const tx: Json = { TransactionType: 'Batch', Account: eng, Flags: TF_ALL_OR_NOTHING, Sequence: seq, LastLedgerSequence: lls, RawTransactions: raw, SigningPubKey: '', Memos: [memo('eng/basis', 'settle'), memo('eng/mode', mode)] }
@@ -495,28 +565,20 @@ export class DemoOrchestrator {
     return tx
   }
 
-  /** Escrow settlement (no AccountDelete, to keep the demo fast). */
+  /** Bonded-marketplace settlement (no AccountDelete, to keep the demo fast). */
   async escrow(input: { path: string }): Promise<EscrowResult> {
-    if (!this.provisioned || (this.scenario !== 'escrow' && this.scenario !== 'bond')) throw new Error('vault not provisioned')
+    if (!this.provisioned || this.scenario !== 'bond') throw new Error('bond not provisioned')
     const eng = this.eng.address, issuer = this.w.issuer.address
-    const buyer = this.w.buyer, seller = this.w.seller, arbiter = this.w.arbiter, cosigner = this.w.cosigner, service = this.w.service, agent = this.w.agent
+    const buyer = this.w.buyer, seller = this.w.seller, arbiter = this.w.arbiter, cosigner = this.w.cosigner, agent = this.w.agent
     const seq = Number(((await accountInfo(this.client, eng))!.account_data as Json).Sequence)
     const lls = (await currentLedger(this.client)) + 20
     const total = this.escrowBal
 
     if (input.path === 'solo') {
-      const soloSigner = this.scenario === 'bond' ? agent : seller // bond: the seller delegated signing to its agent, so the seller-side key is the agent
+      // The seller delegated signing to its agent, so the seller-side key is the agent.
       const tx = this.payoutBatch(eng, issuer, [{ to: seller.address, value: String(total) }], seq, lls, 1, 'solo')
-      const r = await submit(this.client, combine([multisignBlob(soloSigner, tx)]), { waitLedgers: 5 })
+      const r = await submit(this.client, combine([multisignBlob(agent, tx)]), { waitLedgers: 5 })
       return { path: 'solo', settled: false, final: r.final, tx: r.hash, checks: [['One party signature attached (weight 2)', true], ['Reaches quorum of 5', false]], payouts: null }
-    }
-    if (input.path === 'agreed') {
-      const fee = Math.round(total * 0.005 * 100) / 100
-      const toSeller = Math.round((total - fee) * 100) / 100
-      const tx = this.payoutBatch(eng, issuer, [{ to: seller.address, value: toSeller.toFixed(2) }, { to: service.address, value: fee.toFixed(2) }], seq, lls, 3, 'agreed')
-      const r = await submit(this.client, combine([multisignBlob(agent, tx), multisignBlob(seller, tx), multisignBlob(cosigner, tx)]))
-      const ok = r.final === 'tesSUCCESS'; if (ok) this.escrowBal = 0
-      return { path: 'agreed', settled: ok, final: r.final, tx: r.hash, checks: [['The buyer’s agent authorized the release (weight 2 — the buyer delegated signing to it)', true], ['Seller confirmed the booking (matches the mandate)', true], ['Co-signer policy passed (agreed seller, agreed amount, delivery attested)', true], ['Agent + seller + co-signer = quorum 5', ok]], payouts: [['Seller (Atlas Stays)', toSeller.toFixed(2)], ['Service fee', fee.toFixed(2)]] }
     }
     if (input.path === 'bond_release') {
       const tx = this.payoutBatch(eng, issuer, [{ to: seller.address, value: total.toFixed(2) }], seq, lls, 3, 'bond_release')
@@ -532,12 +594,7 @@ export class DemoOrchestrator {
       const ok = r.final === 'tesSUCCESS'; if (ok) this.escrowBal = 0
       return { path: 'bond_slash', settled: ok, final: r.final, tx: r.hash, checks: [['Buyer filed a complaint (harm)', true], ['Arbiter reviewed the evidence', true], ['Slash is within the bond', true], ['Arbiter + buyer reach quorum 5', ok]], payouts: [['Buyer (compensation, 70%)', sBuyer.toFixed(2)], ['Seller (returned, 30%)', sSeller.toFixed(2)]] }
     }
-    const toSeller = Math.round(total * 0.70 * 100) / 100
-    const toBuyer = Math.round(total * 0.30 * 100) / 100
-    const tx = this.payoutBatch(eng, issuer, [{ to: seller.address, value: toSeller.toFixed(2) }, { to: buyer.address, value: toBuyer.toFixed(2) }], seq, lls, 2, 'ruling')
-    const r = await submit(this.client, combine([multisignBlob(arbiter, tx), multisignBlob(agent, tx)]))
-    const ok = r.final === 'tesSUCCESS'; if (ok) this.escrowBal = 0
-    return { path: 'ruling', settled: ok, final: r.final, tx: r.hash, checks: [['A dispute was opened (ENG/DISPUTE + bond)', true], ['Arbiter is accredited', true], ['Ruling is single-use and signed by the arbiter', true], ['Arbiter + the buyer’s agent reach quorum 5', ok]], payouts: [['Seller (70%)', toSeller.toFixed(2)], ['Buyer refund (30%)', toBuyer.toFixed(2)]] }
+    throw new Error(`unknown bond path ${input.path}`)
   }
 
   /** x402 metered purchase: the agent pays a merchant's challenge; W7 binds the co-signature to it. */

@@ -8,7 +8,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadEnv } from '@eng/cosigner'
+import { loadEnv, type HotelPath } from '@eng/cosigner'
 import { DemoOrchestrator } from './orchestrator.ts'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -52,6 +52,8 @@ const server = http.createServer(async (req, res) => {
       await ensureConnected()
       if (m === 'POST' && url.pathname === '/api/provision') return json(res, 200, await orch.provision((await readBody<{ scenario?: string }>(req)).scenario))
       if (m === 'POST' && url.pathname === '/api/escrow') return json(res, 200, await orch.escrow(await readBody<{ path: string }>(req)))
+      if (m === 'POST' && url.pathname === '/api/hotel') return json(res, 200, await orch.hotel(await readBody<{ path: HotelPath }>(req)))
+      if (m === 'GET' && url.pathname === '/api/hotel') return json(res, 200, orch.hotelStatus())
       if (m === 'POST' && url.pathname === '/api/x402') return json(res, 200, await orch.x402(await readBody<{ path: string; scheme?: string }>(req)))
       if (m === 'POST' && url.pathname === '/api/propose') return json(res, 200, await orch.propose(await readBody<PayBody>(req)))
       if (m === 'POST' && url.pathname === '/api/pay') return json(res, 200, await orch.pay(await readBody<PayBody>(req)))

@@ -213,6 +213,25 @@
   .payouts .prow{display:flex;justify-content:space-between;gap:12px;font-size:12.5px}
   .payouts .prow .mono{color:var(--fg)}
 
+  /* hotel stay timeline: every rule row is the co-signer's decision record (id · result · reason) */
+  .tl{display:flex;flex-direction:column;gap:9px}
+  .tstep{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:11px 13px;min-width:0}
+  .tstep.close{border-color:color-mix(in srgb,var(--good) 55%,transparent)}
+  .tstep .th{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13.5px}
+  .tstep .th b{font-weight:600}
+  .tstep .at{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .tstep .stg{font-family:var(--mono);font-size:11.5px;color:var(--accent)}
+  .tstep .th .tx{margin-left:auto;font-size:11.5px}
+  .pill.neutral{background:var(--panel);color:var(--muted);border:1px solid var(--line)}
+  .tstep .sub{margin-top:6px;font-size:12px;color:var(--muted);word-break:break-all}
+  .rules{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+  .rule{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:6px;border:1px solid var(--line);color:var(--faint)}
+  .rule.pass{color:var(--good);border-color:color-mix(in srgb,var(--good) 40%,transparent)}
+  .rule.fail{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 50%,transparent);background:color-mix(in srgb,var(--bad) 10%,transparent)}
+  .rule .rr{opacity:.8}
+  .hstatus{font-size:12.5px;color:var(--muted)}
+  .hstatus.wait{color:var(--warn)}
+
   .log table{width:100%;border-collapse:collapse;font-size:13px}
   .log th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:0 10px 9px;border-bottom:1px solid var(--line)}
   .log td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -276,7 +295,7 @@
     <label for="scenario">Template</label>
     <select id="scenario">
       <option value="procurement">Procurement agent — owner wallet</option>
-      <option value="escrow">Escrow with arbiter — settlement vault</option>
+      <option value="hotel">Hotel stay — escrow with arbiter (hotel@2)</option>
       <option value="bond">Bonded marketplace — collateral &amp; slashing</option>
       <option value="x402">x402 metered purchase — pay-per-use</option>
       <option value="mpp">MPP push payment — Stripe/Tempo rail</option>
@@ -391,30 +410,33 @@
         {id:"d", title:"Pay a stranger", sub:"not in the mandate", amount:"200.00", invoiceRef:"inv:X-001", dest:"stranger"}
       ]
     },
-    escrow: {
-      id:"escrow", label:"Escrow with arbiter",
-      heroTitle:'Money held in escrow — <em>released only when the rules say so</em>',
-      heroText:"A buyer’s payment sits in a neutral account that nobody controls alone. It goes to the seller only when the delivery is attested and the parties (plus the co-signer) agree — or, in a dispute, when the arbiter rules how to split it. No single party can take the funds.",
-      proves:"Money can sit in a neutral account that no single party controls, releasing only on agreement or an arbiter’s ruling. A delivery attester’s confirmation unlocks the co-signed release to the seller; in a dispute the arbiter plus one party reach quorum to split the funds — without the service operator. It’s recourse without custody: nobody can seize the money, and neither party can take it alone.",
-      mandateTitle:"The booking — what’s held in escrow",
+    hotel: {
+      id:"hotel", label:"Hotel stay",
+      heroTitle:'A hotel stay held in escrow — <em>every check is the co-signer’s</em>',
+      heroText:"The guest’s room money (and, at check-in, a damage deposit) sits in a single-use account nobody controls alone. Pick how the stay goes: each path runs through the real policy co-signer, and every check you see is a rule from its signed decision record.",
+      proves:"A booking can be held in a neutral account that pays out only on the terms of the stay. The hotel template’s policy (pol_hotel@2.0.0) is evaluated by the co-signer at each step — confirmation, check-in, claims, disputes, rulings and the pre-signed defaults that fire when someone goes silent — and each verdict is a signed decision record listing every rule it checked. Guest and hotel together are below quorum; the arbiter can rule with one party; a backup arbiter steps in only after the ruling window. The page invents no check: it shows the co-signer’s rule ids, results and reasons.",
+      mandateTitle:"The booking — what’s held",
       parties:[
-        {role:"Buyer (principal)",desc:"Funds the escrow and sets the mandate. Delegates signing to its AI booking agent — it holds no signing key in the vault itself."},
-        {role:"Booking agent",desc:"The buyer’s AI delegate (weight 2). Holds the buyer’s signing authority: proposes and co-signs the release, but can’t move funds without the seller + co-signer."},
-        {role:"Seller",desc:"The payee on delivery (weight 2). Co-signs the agreed release."},
-        {role:"Arbiter",desc:"A neutral adjudicator (weight 3). On a dispute, arbiter plus one party reach quorum to split the funds, without the service."},
-        {role:"Co-signer",desc:"The deterministic policy service (weight 1). Part of the agreed-release quorum; enforces the settlement shape and fee."},
-        {role:"Attester",desc:"A delivery oracle. Confirms delivery with a signed statement (not a quorum member); its confirmation unlocks the happy-path release."}
+        {role:"Guest (principal)",desc:"Funds the room at open and the deposit at check-in (weight 3). The only party who can open a dispute, by posting a bond."},
+        {role:"Hotel (counterparty)",desc:"Confirms the booking, attests check-in and may claim against the deposit (weight 3). Paid less the 0.5% service fee."},
+        {role:"Arbiter",desc:"Rules on disputes and unanswered claims (weight 4): arbiter plus one party reach quorum without the co-signer."},
+        {role:"Backup arbiter",desc:"Steps in only if the arbiter stays silent past the ruling window (weight 2): backup + one party + the co-signer."},
+        {role:"Co-signer",desc:"The deterministic policy service (weight 2). Signs settlements and completes the pre-signed defaults (refund, no-show, release) only when the policy says they are due."}
       ],
-      mandate:[{k:"Booking",v:"3 nights · Lisbon"},{k:"Held in escrow",v:"$412.00"},{k:"Service fee",v:"0.5%"},{k:"Arbiter",v:[ "Fairwind" ]}],
-      signers:[{role:"agent",weight:2,as:"buyer's delegate",note:"the buyer funds the vault and delegated signing to this agent"},{role:"counterparty",weight:2,as:"seller"},{role:"arbiter",weight:3},{role:"cosigner",weight:1}],
-      attester:{role:"attester",as:"delivery oracle",note:"attests delivery — not a signer"},
-      quorum:5, quorumText:"5 of 8 weight",
-      solo:"No one can move the money alone: the arbiter is weight 3, the seller 2, the co-signer 1 — all below the quorum of 5. Every ending needs a real coalition.",
-      kind:"escrow",
+      mandate:[{k:"Room",v:"$400.00"},{k:"Damage deposit (at check-in)",v:"$100.00"},{k:"Dispute bond",v:"$10.00"},{k:"Service fee",v:"0.5% of hotel payouts"}],
+      signers:[{role:"principal",weight:3,as:"guest"},{role:"counterparty",weight:3,as:"hotel"},{role:"arbiter",weight:4},{role:"backupArbiter",weight:2},{role:"cosigner",weight:2}],
+      quorum:7, quorumText:"7 of 14 weight",
+      solo:"Guest + hotel is weight 6, arbiter + backup arbiter is 6 — both below the quorum of 7. Every close needs the co-signer, or the arbiter with one party.",
+      kind:"hotel",
       actions:[
-        {id:"happy", title:"Confirm delivery &amp; release", sub:"oracle attests → agent (buyer’s delegate) + seller + co-signer", path:"agreed", settles:true},
-        {id:"dispute", title:"Raise dispute → arbiter rules 70/30", sub:"arbiter + buyer’s agent sign the split", path:"ruling", settles:true},
-        {id:"solo", title:"Seller tries to grab the funds", sub:"alone — weight 2 of 5", path:"solo", settles:false}
+        {id:"happy", title:"Happy stay", sub:"confirm → check-in + deposit → minibar claim → guest settles", path:"happy"},
+        {id:"unconfirmed", title:"Hotel never confirms", sub:"the pre-signed refund fires", path:"unconfirmed"},
+        {id:"noshow", title:"Guest never shows", sub:"the pre-signed no-show pays the hotel", path:"noshow"},
+        {id:"entryConceded", title:"No room at check-in → hotel concedes", sub:"entry dispute, guest refunded with the bond", path:"entryConceded"},
+        {id:"entryRuled", title:"Downgraded room → arbiter rules", sub:"entry dispute, partial refund (arbiter + guest)", path:"entryRuled"},
+        {id:"silence", title:"Stay, no claim, silence", sub:"the pre-signed release returns the deposit", path:"silence"},
+        {id:"claimUnanswered", title:"Claim posted, guest silent", sub:"arbiter + hotel default ruling pays the claim", path:"claimUnanswered"},
+        {id:"backupRuling", title:"Claim disputed, arbiter silent", sub:"backup arbiter rules after the ruling window", path:"backupRuling"}
       ]
     },
     bond: {
@@ -497,6 +519,12 @@
   var api = {
     provision: function(scn){
       if (LIVE) return fetch("/api/provision",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({scenario:scn.id})}).then(okJson);
+      if (scn.kind==="hotel") return hotelSim().then(function(t){
+        var c=t.cast, signers=scn.signers.map(function(s){ return {role:s.role,address:c[{principal:"guest",counterparty:"hotel"}[s.role]||s.role],weight:s.weight,proofVerified:true,as:s.as}; });
+        signers.sort(function(a,b){ return a.address<b.address?-1:a.address>b.address?1:0; });
+        return { scenario:"hotel", account:"", explorer:EXPLORER, quorum:scn.quorum, signers:signers, accounts:c, openTx:"", balance:null,
+          hotel:{ ready:true, status:"simulated · "+t.generatedBy, ran:[], paths:Object.keys(t.paths), pooled:false, accounts:{}, booking:t.booking, timers:t.timers, policy:t.policy } };
+      });
       return delay(400).then(function(){
         var accounts = {}, signers = [];
         scn.signers.forEach(function(s){ var a=randAddr(); accounts[s.role]=a; signers.push({role:s.role,address:a,weight:s.weight,proofVerified:true,as:s.as}); });
@@ -524,13 +552,6 @@
     escrow: function(req){
       if (LIVE) return fetch("/api/escrow",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(req)}).then(okJson);
       return delay(350).then(function(){
-        var total=412.00, fee=+(total*0.005).toFixed(2);
-        if (req.path==="agreed") return { path:"agreed", settled:true, tx:randHash(),
-          checks:[["The buyer’s agent authorized the release (weight 2 — the buyer delegated signing to it)",true],["Seller confirmed the booking (matches the mandate)",true],["Co-signer policy passed (agreed seller, agreed amount, delivery attested)",true],["Agent + seller + co-signer = quorum 5",true]],
-          payouts:[["Seller (Atlas Stays)",(total-fee).toFixed(2)],["Service fee",fee.toFixed(2)]] };
-        if (req.path==="ruling") return { path:"ruling", settled:true, tx:randHash(),
-          checks:[["A dispute was opened (ENG/DISPUTE + bond)",true],["Arbiter is accredited",true],["Ruling is single-use and signed by the arbiter",true],["Split sums to the escrow balance",true]],
-          payouts:[["Seller (70%)",(total*0.70).toFixed(2)],["Buyer refund (30%)",(total*0.30).toFixed(2)]] };
         if (req.path==="bond_release") return { path:"bond_release", settled:true, tx:randHash(),
           checks:[["The seller’s agent authorized the return (weight 2 — the seller delegated signing to it)",true],["Buyer confirmed the deal was delivered",true],["No open complaint",true],["Agent + buyer + co-signer = quorum 5",true]],
           payouts:[["Seller (bond returned)","1000.00"]] };
@@ -541,6 +562,16 @@
           checks:[["One party signature attached (weight 2)",true],["Reaches quorum of 5",false]], payouts:null };
       });
     },
+    // Hotel stay: live runs the path on Testnet through the real co-signer; simulated replays hotel-sim.json, a
+    // transcript the real co-signer produced over a fixture ledger. Either way the steps are HotelFlow's, verbatim.
+    hotel: function(req){
+      if (LIVE) return fetch("/api/hotel",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(req)}).then(okJson);
+      return hotelSim().then(function(t){
+        var steps=t.paths[req.path]; if(!steps) throw new Error("no simulated transcript for path "+req.path);
+        return JSON.parse(JSON.stringify(steps));
+      });
+    },
+    hotelStatus: function(){ return fetch("/api/hotel").then(okJson); },
     x402: function(req){
       if (LIVE) return fetch("/api/x402",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(req)}).then(okJson);
       return delay(350).then(function(){
@@ -554,6 +585,10 @@
       });
     }
   };
+  var hotelSimP=null;
+  function hotelSim(){
+    return hotelSimP || (hotelSimP = fetch("hotel-sim.json").then(okJson).catch(function(e){ hotelSimP=null; throw new Error("couldn’t load the simulated hotel transcript (hotel-sim.json): "+e.message); }));
+  }
   function okJson(r){ if(!r.ok) return r.json().then(function(j){ throw new Error(j.error||("HTTP "+r.status)); }); return r.json(); }
 
   // ---- state --------------------------------------------------------------
@@ -577,8 +612,8 @@
     $("#quorumText").textContent = scn.quorumText;
     $("#soloNote").innerHTML = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="var(--warn)" stroke-width="1.4"/><path d="M8 4.6v4.2M8 11.1h.01" stroke="var(--warn)" stroke-width="1.5" stroke-linecap="round"/></svg><span>'+esc(scn.solo)+'</span>';
     renderSigners(null);
-    $("#st2").textContent = scn.kind==="escrow" ? "The deal reaches an ending" : "The agent proposes payments";
-    $("#st3").textContent = scn.kind==="escrow" ? "Released, split, or blocked" : "Co-signer settles or blocks";
+    $("#st2").textContent = scn.kind==="hotel" ? "Pick how the stay goes" : scn.kind==="escrow" ? "The deal reaches an ending" : "The agent proposes payments";
+    $("#st3").textContent = scn.kind==="hotel" ? "Co-signer decides each step" : scn.kind==="escrow" ? "Released, split, or blocked" : "Co-signer settles or blocks";
   }
 
   function renderSigners(data){
@@ -614,6 +649,17 @@
   var stage = $("#stage");
   function renderCTA(){
     var escrow = S.scn.kind==="escrow";
+    if (S.scn.kind==="hotel"){
+      stage.innerHTML = '<div class="panel cta-card">' +
+        '<h3 style="font-size:19px">Set up the stay</h3>' +
+        '<p>'+(LIVE
+          ? "Guest, hotel, arbiter, backup arbiter and co-signer each generate a key and prove they hold it, and the co-signer is loaded with the hotel policy. Each path then opens its own single-use account"+(POOLED?" leased pre-aged from the pool.":" — pre-created now, and usable once it is old enough to be deleted at the close (~15 min).")
+          : "Replays a transcript the real co-signer produced for every path over a simulated ledger clock: every decision and rule row below is the co-signer’s.")+'</p>' +
+        '<div class="provsteps"><span>1 · generate keys</span><span>2 · prove possession</span><span>3 · load the hotel policy</span><span>4 · '+(LIVE&&!POOLED?"pre-create &amp; age accounts":"one account per path")+'</span></div>' +
+        '<button class="btn primary" id="provBtn">Provision the stay</button></div>';
+      $("#provBtn").addEventListener("click", runProvision);
+      return;
+    }
     stage.innerHTML = '<div class="panel cta-card">' +
       '<h3 style="font-size:19px">'+(escrow?"Open the escrow":"Provision the account")+'</h3>' +
       '<p>'+(escrow
@@ -626,6 +672,7 @@
 
   function renderAccount(){
     var scn=S.scn, d=S.data, escrow=scn.kind==="escrow";
+    if (scn.kind==="hotel") return renderHotel();
     stage.innerHTML = '<div class="panel"><div class="ptitle"><span class="n">✓</span> '+(escrow?"Escrow account — funded &amp; locked":"Engagement account — open &amp; funded")+'</div>' +
       '<div class="acct"><div><div class="bal num" id="engBal">'+fmt(S.engBal)+'<span class="u">RLUSD</span></div>' +
       '<div class="meta">account <span class="mono">'+short(d.account)+'</span></div></div>' +
@@ -671,13 +718,19 @@
       d.signers.forEach(function(s){ logEvent("prov", "enrolled "+esc(roleLabel(s))+" · weight "+s.weight+" · PoP verified · "+short(s.address)); });
       if (d.accounts && d.accounts.attester) logEvent("att", "attester (delivery oracle) registered · "+short(d.accounts.attester)+" — signs delivery, not a quorum member");
       logEvent("prov", "SignerList assembled — quorum "+d.quorum);
-      logEvent("open", "account opened "+short(d.account)+" · "+txLink(d.openTx,"tx "+short(d.openTx)));
-      logEvent("info", (S.scn.kind==="escrow"?"escrow funded ":"account funded ")+fmt(parseFloat(d.balance||"0"))+" RLUSD");
+      if (d.hotel){
+        logEvent("info", "co-signer loaded · "+esc(d.hotel.policy));
+        var pre=Object.keys(d.hotel.accounts||{}).length;
+        logEvent("open", pre ? (pre+" single-use engagement accounts pre-created (one per path) · "+esc(d.hotel.status)) : esc(d.hotel.status));
+      } else {
+        logEvent("open", "account opened "+short(d.account)+" · "+txLink(d.openTx,"tx "+short(d.openTx)));
+        logEvent("info", (S.scn.kind==="escrow"?"escrow funded ":"account funded ")+fmt(parseFloat(d.balance||"0"))+" RLUSD");
+      }
       renderSigners(d); setStep("act"); renderAccount(); setFooter();
     }).catch(function(err){
       stage.innerHTML='<div class="panel cta-card"><h3 style="color:var(--bad)">Couldn’t provision</h3><p>'+esc(err.message)+'</p><button class="btn" id="retry">Try again</button></div>';
       $("#retry").addEventListener("click", renderCTA);
-    }).finally(function(){ S.busy=false; });
+    }).finally(function(){ S.busy=false; if (S.scn.kind==="hotel" && S.data && S.data.hotel) setHotelStatus(S.data.hotel); });
   }
 
   // ---- shared resolution animation ---------------------------------------
@@ -811,24 +864,10 @@
   // ---- escrow run ---------------------------------------------------------
   function runEscrow(a){
     if (S.busy||!S.data||S.settled) return; S.busy=true; setButtons(true);
-    var sr = S.scn.id==="bond" ? "agent" : "counterparty";
-    logEvent("info", "resolve → "+({agreed:"release (buyer’s agent + seller + co-signer)",ruling:"arbiter ruling 70/30",bond_release:"return bond (seller’s agent + buyer + co-signer)",bond_slash:"arbiter slash 70%"}[a.path]||"single-party attempt"));
-    if (a.path==="agreed") logEvent("att", "delivery confirmed · party.confirmation/1 signed by the attester");
+    logEvent("info", "resolve → "+({bond_release:"return bond (seller’s agent + buyer + co-signer)",bond_slash:"arbiter slash 70%"}[a.path]||"single-party attempt"));
     api.escrow({path:a.path}).then(function(r){
       var res;
-      if (a.path==="agreed"){
-        res={ requestLine:'Resolve: <span class="mono">release to the seller</span> (happy path)',
-          leftTitle:"Release (buyer’s agent + seller + co-signer)",
-          leftRows:[["from escrow",'$'+fmt(S.engBal)],["to","seller + 0.5% fee"],["delivery",'<span style="color:var(--violet)">oracle attested ✓</span>']],
-          checkTitle:"Policy co-signer", quorum:5,
-          signNodes:[{role:"agent",weight:2},{role:"counterparty",weight:2},{role:"cosigner",weight:1}] };
-      } else if (a.path==="ruling"){
-        res={ requestLine:'Resolve: <span class="mono">arbiter rules 70 / 30</span> (dispute)',
-          leftTitle:"Arbiter ruling (arbiter + buyer’s agent)",
-          leftRows:[["dispute",'<span style="color:var(--warn)">opened ✓</span>'],["ruling","70% seller · 30% buyer"],["co-signer",'<span style="color:var(--faint)">not in this quorum</span>']],
-          checkTitle:"Arbiter authority", quorum:5,
-          signNodes:[{role:"arbiter",weight:3},{role:"agent",weight:2}] };
-      } else if (a.path==="bond_release"){
+      if (a.path==="bond_release"){
         res={ requestLine:'Resolve: <span class="mono">return the bond to the seller</span> (delivered)',
           leftTitle:"Release (seller’s agent + buyer + co-signer)",
           leftRows:[["from bond",'$'+fmt(S.engBal)],["to","seller (full bond)"],["delivery",'<span style="color:var(--good)">confirmed ✓</span>']],
@@ -841,29 +880,29 @@
           checkTitle:"Arbiter authority", quorum:5,
           signNodes:[{role:"arbiter",weight:3},{role:"buyer",weight:2}] };
       } else {
-        res={ requestLine:'Resolve: <span class="mono">'+(S.scn.id==="bond"?"seller grabs the bond back":"seller takes the funds alone")+'</span>',
+        res={ requestLine:'Resolve: <span class="mono">seller grabs the bond back</span>',
           leftTitle:"Seller signs (weight 2)",
           leftRows:[["attempt",'$'+fmt(S.engBal)+' → seller'],["signatures","seller only"],["needs","quorum 5"]],
           checkTitle:"Ledger", quorum:5,
-          signNodes:[{role:sr,weight:2,state:"withheld"}] };
+          signNodes:[{role:"agent",weight:2,state:"withheld"}] };
       }
       res.checks=r.checks; res.settled=r.settled;
-      res.verdictText=r.settled?((a.path==="ruling"||a.path==="bond_slash")?"Ruled & settled":"Released"):"Blocked";
+      res.verdictText=r.settled?(a.path==="bond_slash"?"Ruled & settled":"Released"):"Blocked";
       res.verdictClass=r.settled?"sign":"refuse";
-      res.logRequest = ({agreed:"release escrow (happy)",ruling:"arbiter ruling 70/30",bond_release:"release bond (delivered)",bond_slash:"arbiter slash 70%"}[a.path])||"seller-alone attempt";
+      res.logRequest = ({bond_release:"release bond (delivered)",bond_slash:"arbiter slash 70%"}[a.path])||"seller-alone attempt";
       res.logOutcome = r.settled?"SETTLE":"BLOCKED";
       if (r.settled){
         var po='<div class="payouts">'+r.payouts.map(function(p){ return '<div class="prow"><span>'+esc(p[0])+'</span><span class="mono">$'+esc(p[1])+'</span></div>'; }).join("")+'</div>';
-        var header=({agreed:"The escrow released to the seller.",ruling:"The arbiter’s ruling settled the escrow.",bond_release:"The bond was returned to the seller.",bond_slash:"The arbiter slashed the bond — the buyer is compensated."}[a.path])||"Settled.";
+        var header=({bond_release:"The bond was returned to the seller.",bond_slash:"The arbiter slashed the bond — the buyer is compensated."}[a.path])||"Settled.";
         res.receiptHTML='<div class="receipt ok"><span class="ri">✓</span><div><b>'+header+'</b> '+txLink(r.tx,"view on explorer")+po+'</div></div>';
         res.logDetail='settled '+(LIVE?'':'(simulated) ')+txLink(r.tx,"tx");
         S.engBal=0;
       } else {
-        var blurb = S.scn.id==="bond" ? "The seller cannot reclaim its bond alone; it needs the buyer + co-signer, or the arbiter." : "The seller cannot take the escrow alone; it needs the buyer + co-signer, or the arbiter.";
+        var blurb = "The seller cannot reclaim its bond alone; it needs the buyer + co-signer, or the arbiter.";
         res.receiptHTML='<div class="receipt no"><span class="ri">✕</span><div><b>Rejected — weight 2 is short of the quorum of 5.</b> '+blurb+'</div></div>';
         res.logDetail='<span class="mono">quorum 2 / 5</span> — a single party can’t move the funds';
       }
-      var settleLabel=({agreed:"escrow released",ruling:"arbiter ruling settled",bond_release:"bond returned to seller",bond_slash:"arbiter slashed the bond"}[a.path])||"settled";
+      var settleLabel=({bond_release:"bond returned to seller",bond_slash:"arbiter slashed the bond"}[a.path])||"settled";
       logEvent(r.settled?"settle":"refuse", r.settled ? (settleLabel+" · "+(LIVE?"":"(sim) ")+txLink(r.tx,"tx "+short(r.tx))) : "blocked · weight 2 of 5 — a single party can't move the funds");
       return animate(res).then(function(){
         if (r.settled){ S.settled=true; S.engBal=0; var be=$("#engBal"); if(be) be.innerHTML='0.00<span class="u">RLUSD</span>'; var rb=$("#resetBtn"); if(rb) rb.hidden=false; var cb2=$("#closeBtn"); if(cb2) cb2.hidden=false; setButtons(true); }
@@ -871,6 +910,116 @@
       });
     }).catch(function(err){ $("#decision").innerHTML='<div class="panel"><div class="receipt no"><span class="ri">!</span><div><b>Request error.</b> '+esc(err.message)+'</div></div></div>'; })
     .finally(function(){ S.busy=false; if(!S.settled) setButtons(false); });
+  }
+
+  // ---- hotel stay ---------------------------------------------------------
+  // Steps are HotelFlow's results verbatim (live: /api/hotel; simulated: hotel-sim.json). Every rule row is the
+  // co-signer's decision record — id · result · reason — and nothing here writes check text of its own.
+  var hotelPoll=null;
+  function stopHotelPoll(){ if(hotelPoll){ clearTimeout(hotelPoll); hotelPoll=null; } }
+  function hotelLabel(addr){
+    var a=(S.data&&S.data.accounts)||{}, names={guest:"guest",hotel:"hotel",service:"service (fee)",arbiter:"arbiter",backupArbiter:"backup arbiter",cosigner:"co-signer",issuer:"issuer"};
+    for (var k in names) if (a[k]===addr) return names[k];
+    return short(addr);
+  }
+  function renderHotel(){
+    var scn=S.scn, h=S.data.hotel;
+    var b=h.booking||{};
+    stage.innerHTML = '<div class="panel"><div class="ptitle"><span class="n">✓</span> Engagement accounts — one single-use account per path</div>' +
+      '<div class="acct"><div><div class="meta">policy <span class="mono">'+esc(h.policy)+'</span></div>' +
+      '<div class="meta">booking <span class="mono">room $'+esc(b.room)+' · deposit $'+esc(b.deposit)+' · bond $'+esc(b.bond)+' · claim $'+esc(b.claim)+'</span></div></div>' +
+      '<div class="hstatus" id="hotelStatus"></div></div></div>' +
+      '<div class="panel"><div class="actions-head"><div class="ptitle" style="margin:0"><span class="n">→</span> Pick how the stay goes</div>' +
+      '<div style="display:flex;gap:8px"><button class="btn ghost" id="resetBtn"'+(LIVE?'':' hidden')+'>New stay</button></div></div>' +
+      '<div class="actions" id="actions"></div></div>';
+    var wrap=$("#actions");
+    scn.actions.forEach(function(a){
+      var btn=document.createElement("button"); btn.className="btn"; btn.dataset.id=a.id;
+      btn.innerHTML='<span class="actcol"><b>'+a.title+'</b><span class="sub">'+a.sub+'</span></span>';
+      btn.addEventListener("click", function(){ runHotel(a); });
+      wrap.appendChild(btn);
+    });
+    $("#resetBtn").addEventListener("click", function(){ stopHotelPoll(); $("#decision").hidden=true; runProvision(); });
+    setHotelStatus(h);
+    if (LIVE && !h.ready) pollHotel();
+  }
+  function setHotelStatus(st){
+    var h=S.data.hotel; h.ready=st.ready; h.status=st.status; h.ran=st.ran||h.ran||[];
+    var el=$("#hotelStatus"); if(el){ el.className="hstatus"+(st.ready?"":" wait"); el.textContent=(st.ready?"":"⏳ ")+st.status; }
+    document.querySelectorAll("#actions .btn").forEach(function(btn){
+      if (btn.id==="resetBtn") return;
+      var ran = LIVE && h.ran.indexOf(btn.dataset.id)>=0;
+      btn.disabled = S.busy || !st.ready || ran;
+      btn.title = ran ? "already ran — its single-use account is closed; start a new stay to rerun" : "";
+    });
+  }
+  function pollHotel(){
+    stopHotelPoll();
+    hotelPoll=setTimeout(function(){
+      api.hotelStatus().then(function(st){
+        if (S.scn.kind!=="hotel" || !S.data || !S.data.hotel) return;
+        var was=S.data.hotel.ready; setHotelStatus(st);
+        if (st.ready && !was) logEvent("open","engagement accounts are old enough to be deleted at the close · paths unlocked");
+        if (!st.ready) pollHotel();
+      }).catch(function(e){ var el=$("#hotelStatus"); if(el) el.textContent="status check failed: "+e.message; pollHotel(); });
+    }, 15000);
+  }
+  function stepCard(s, closing){
+    var pill = s.decision ? '<span class="pill '+(s.decision==="SIGN"?"sign":"refuse")+'">'+esc(s.decision)+'</span>' : "";
+    var fin = s.final ? '<span class="pill '+(s.final==="tesSUCCESS"||s.final==="RECEIPTED"||s.final==="STORED"?"neutral":"refuse")+'">'+esc(s.final)+'</span>' : "";
+    var html = '<div class="tstep'+(closing?" close":"")+'"><div class="th">' +
+      (s.at ? '<span class="at">'+esc(s.at.replace("T"," ").replace("Z",""))+'</span>' : "") +
+      '<b>'+esc(s.step)+'</b>' + (s.stage && s.stage!==s.step ? '<span class="stg">'+esc(s.stage)+'</span>' : "") + pill + fin +
+      (s.tx ? '<span class="tx">'+txLink(s.tx,"tx "+short(s.tx))+'</span>' : "") + '</div>';
+    if (s.failing && s.failing.length) html += '<div class="sub">failing: <span class="mono">'+esc(s.failing.join(", "))+'</span></div>';
+    if (s.receipt) html += '<div class="sub">co-signer receipt · <span class="mono">'+esc(s.receipt.statementType)+'</span> received '+esc(s.receipt.receivedAt)+' (ledger '+esc(s.receipt.ledgerIndex)+') · <span class="mono">'+esc(s.receipt.statementId)+'</span></div>';
+    if (s.rules && s.rules.length) html += '<div class="rules">'+s.rules.map(function(r){
+      var cls = r.result==="pass"?"pass":r.result==="fail"?"fail":"";
+      return '<span class="rule '+cls+'" data-rule="'+esc(r.id)+'" data-result="'+esc(r.result)+'">'+esc(r.id)+' · <span class="rr">'+esc(r.result)+'</span>'+(r.reason?' · '+esc(r.reason):'')+'</span>';
+    }).join("")+'</div>';
+    if (s.payouts && s.payouts.length) html += '<div class="payouts">'+s.payouts.map(function(p){ return '<div class="prow"><span>'+esc(hotelLabel(p.to))+'</span><span class="mono">'+esc(p.value)+' RLUSD</span></div>'; }).join("")+'</div>';
+    return html+'</div>';
+  }
+  /** The close that applied: a successful step that paid out (tick results keep the co-signer's order, so not always the last). */
+  function closingStep(steps){ for (var i=0;i<steps.length;i++){ var s=steps[i]; if (s.final==="tesSUCCESS" && s.payouts && s.payouts.length) return s; } return null; }
+  function runHotel(a){
+    if (S.busy||!S.data||!S.data.hotel.ready) return; S.busy=true; setHotelStatus(S.data.hotel);
+    logEvent("info", "hotel path → "+esc(a.id)+(LIVE?" · running on Testnet (timers are seconds apart; a few minutes)":" · replaying the co-signer’s transcript"));
+    var dc=$("#decision"); dc.hidden=false;
+    dc.innerHTML='<div class="dc-head"><div class="req">Hotel stay · <span class="mono">'+esc(a.id)+'</span> — '+a.title+'</div><span class="verdict pending" id="verdict">'+(LIVE?"running on Testnet…":"replaying…")+'</span></div>' +
+      '<div class="tl" id="tl"></div><div id="outcome"></div>';
+    dc.scrollIntoView({behavior:REDUCE?"auto":"smooth", block:"nearest"});
+    api.hotel({path:a.path}).then(function(steps){
+      var close=closingStep(steps), tl=$("#tl"), seq=Promise.resolve();
+      steps.forEach(function(s){
+        seq=seq.then(function(){ return delay(LIVE?60:380); }).then(function(){
+          tl.insertAdjacentHTML("beforeend", stepCard(s, s===close));
+          if (s.decision) logEvent(s.decision==="SIGN"?"sign":"refuse", "co-signer "+esc(s.decision)+" · "+esc(s.stage||s.step)+(s.failing&&s.failing.length?" · failing "+esc(s.failing.join(", ")):""));
+          else if (s.receipt) logEvent("att", esc(s.receipt.statementType)+" receipted · "+esc(s.receipt.receivedAt));
+          if (s.tx) logEvent(s.final==="tesSUCCESS"?"settle":"refuse", esc(s.step)+" · "+esc(s.final||"")+" · "+txLink(s.tx,"tx "+short(s.tx)));
+        });
+      });
+      return seq.then(function(){
+        var v=$("#verdict");
+        if (close){
+          v.className="verdict sign"; v.textContent="Closed · "+(close.stage||close.step);
+          $("#outcome").innerHTML='<div class="receipt ok"><span class="ri">✓</span><div><b>Closed by '+esc(close.step)+(close.decision?' (co-signer '+esc(close.decision)+')':'')+'.</b> '+txLink(close.tx,"view on explorer")+
+            '<div class="payouts">'+close.payouts.map(function(p){ return '<div class="prow"><span>'+esc(hotelLabel(p.to))+'</span><span class="mono">'+esc(p.value)+' RLUSD</span></div>'; }).join("")+'</div></div></div>';
+          addLog('hotel · '+esc(a.id), true, close.decision||close.final, esc(close.stage||close.step)+' · '+(LIVE?'':'(simulated) ')+txLink(close.tx,"tx"));
+        } else {
+          var last=steps[steps.length-1]||{};
+          v.className="verdict refuse"; v.textContent="Not closed";
+          $("#outcome").innerHTML='<div class="receipt no"><span class="ri">✕</span><div><b>No close applied.</b> Last step: <span class="mono">'+esc(last.step||"—")+' '+esc(last.final||"")+'</span></div></div>';
+          addLog('hotel · '+esc(a.id), false, last.final||"OPEN", esc(last.step||""));
+        }
+        if (LIVE && S.data.hotel.ran.indexOf(a.id)<0) S.data.hotel.ran.push(a.id);
+        S.acted++; setStep("done");
+      });
+    }).catch(function(err){
+      var v=$("#verdict"); if(v){ v.className="verdict refuse"; v.textContent="error"; }
+      $("#outcome").innerHTML='<div class="receipt no"><span class="ri">!</span><div><b>Request error.</b> '+esc(err.message)+'</div></div>';
+      if (LIVE && S.data.hotel.ran.indexOf(a.id)<0 && /already ran|closed/.test(err.message)) S.data.hotel.ran.push(a.id);
+    }).finally(function(){ S.busy=false; setHotelStatus(S.data.hotel); });
   }
 
   // ---- close & reclaim ---------------------------------------------------
@@ -973,7 +1122,7 @@
 
   function setFooter(){
     $("#footer").innerHTML = LIVE
-      ? 'Live on XRPL Testnet. Provisioning, the signer list and every settlement are real multisigned transactions; links open the public explorer. Escrow settles without the final account-delete step (which needs a ~15-minute ledger wait) — the release and the arbiter split are the real, on-ledger moments.'
+      ? 'Live on XRPL Testnet. Provisioning, the signer list and every settlement are real multisigned transactions; links open the public explorer. The bonded marketplace settles without the final account-delete step (which needs a ~15-minute ledger wait); the hotel stay closes each path’s account for real, which is why its accounts must age first.'
       : 'Simulated for a quick walkthrough — addresses and hashes are illustrative. The same page runs live against XRPL Testnet when served by <code>npm run web</code>, with real provisioning, real multisigned settlements and explorer links.';
   }
 
@@ -999,6 +1148,7 @@
   // ---- scenario switch + boot --------------------------------------------
   $("#scenario").addEventListener("change", function(e){
     S.scn = SCENARIOS[e.target.value] || SCENARIOS.procurement;
+    stopHotelPoll();
     S.data=null; S.settled=false; S.acted=0; S.x402Bought=false; S.closed=false; logN=0;
     $("#decision").hidden=true;
     $("#logbody").innerHTML='<tr><td colspan="3" class="empty">No activity yet — provision the account, then drive it.</td></tr>';
