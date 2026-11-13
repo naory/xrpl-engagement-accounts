@@ -5,6 +5,7 @@ Both scripts run from the **repo root** on a machine that can reach XRPL Testnet
 ```bash
 npm install
 npm run demo:b1        # B1 procurement agent, ~20 min including the AccountDelete wait
+npm run demo:hotel     # hotel@2 stay escrow, every path (H1–H14), ~25 min including the AccountDelete wait
 SKIP_CLOSE=1 npm run demo:b1   # ~3 min, leaves the engagement account open
 npm run demo:x402      # x402 engagement-account purchase (needs x402-xrpl-settlement-adapter)
 npm run probe:x402     # probe a hosted facilitator for engagement-account support
@@ -29,6 +30,33 @@ An owner-wallet engagement account: the owner (treasury) has weight 2, the agent
 | D9 | Agent submits alone | `tefBAD_QUORUM` |
 | D10 | Batch hiding a `SetRegularKey` | REFUSE incl. `B2` |
 | D11 | Owner alone sweeps, removes the trust line, deletes the account (co-signer advisory only, no signature) | tesSUCCESS; account deleted |
+
+## `hotel-testnet.ts`: what it checks
+
+The hotel@2 stay escrow (spec `docs/superpowers/specs/2026-11-12-hotel-stay-escrow-design.md` §5, §7.1), driven by `HotelFlow` (`src/hotel/flow.ts`). Signers: guest 3, hotel 3, arbiter 4, backup arbiter 2, co-signer 2; quorum 7. The guest books a 400 RLUSD room with a 100 deposit; disputes carry a 10 bond; claims are a 20 minibar charge; the service fee is 50 bps of everything the hotel receives.
+
+The co-signer loads a copy of `pol_hotel@2.0.0` as version `2.0.0-demo` with `params.rulingWindow: "60s"` (and this run's RLUSD issuer), pinned in every engagement record through `policyLayers`. Timers are seconds from open, judged on validated-ledger close time: `confirmBy` 40, `checkIn` 60, `checkInBy` 90, `entryDisputeBy` 120, `deliveryBy` 150, `claimBy` 180, `disputeWindowEnds` 210.
+
+The script pre-creates all eight engagement accounts, waits until each can be deleted (`Sequence + 256 ≤ ledger index`, counting the Sequence numbers the open Batch consumes), then runs the eight paths concurrently. Each path opens its own account when it starts, because timers count from open. The open Batch reserves 15 Tickets: `default.refund` uses 0–3, `default.noshow` 4–8 (both pre-signed at open), and `default.release` 9–14 (pre-signed at check-in, before the deposit is paid).
+
+| # | Path | Expected |
+|---|---|---|
+| H1 | Happy: confirm → check-in + deposit → minibar claim → guest accepts → settle with review | `settle` SIGN, tesSUCCESS, payouts exact, account deleted |
+| H2 | Hotel never confirms | `default.refund` completed by `tick()`, guest refunded |
+| H3 | Guest never shows | `default.noshow`, hotel paid less the fee |
+| H4 | No room at check-in → entry dispute → hotel concedes | `refund.conceded`, guest gets room + bond |
+| H5 | Downgraded room → entry dispute → arbiter partial refund | arbiter + guest ruling closes |
+| H6 | Stay, no claim, silence | `default.release`, deposit back to the guest |
+| H7 | Claim posted, guest silent | arbiter + hotel default ruling pays the claim (advisory `ruling.default` recorded) |
+| H8 | Claim disputed, primary arbiter silent past `rulingDueBy` | backup + guest + co-signer ruling closes |
+| H9 | Backup ruling before `rulingDueBy` | REFUSE `U1` (`NOT_DUE`) |
+| H10 | Guest + hotel alone | `tefBAD_QUORUM` |
+| H11 | `default.release` while a claim is posted | REFUSE `L5` (`CLAIM_POSTED`) |
+| H12 | Open-time `default.refund` / `default.noshow` after the deposit | REFUSE `R2` / `N5` (`BALANCE_CHANGED`) |
+| H13 | `default.noshow` while an entry dispute is open | REFUSE `N4` (`DISPUTE_OPEN`) |
+| H14 | Arbiter + backup arbiter alone | `tefBAD_QUORUM` |
+
+Results go to `demo/results/hotel-run-*.json`: every transaction hash, each path's steps (with the rule results from the co-signer's decision records), and the checks. The signed decision log is written next to them.
 
 ## `x402/b1-x402-testnet.ts`: what it checks
 

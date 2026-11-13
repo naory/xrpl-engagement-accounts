@@ -17,6 +17,7 @@
     "vectors:build": "tsx vectors/build.ts",
     "cosigner": "tsx packages/cosigner/src/server.ts",
     "demo:b1": "tsx packages/cosigner/demo/b1-testnet.ts",
+    "demo:hotel": "tsx packages/cosigner/demo/hotel-testnet.ts",
     "vectors:check": "vitest run packages/policy/test/vectors.test.ts",
     "probe:x402": "tsx packages/cosigner/demo/x402-probe.ts",
     "probe:sponsor": "tsx packages/cosigner/demo/sponsor-probe.ts",
