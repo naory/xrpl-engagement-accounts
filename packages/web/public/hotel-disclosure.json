@@ -1,0 +1,428 @@
+{
+  "generatedBy": "npm run web:disclosure (packages/web/src/hotel-disclosure.ts)",
+  "norms": "norms/hotel@1",
+  "standard": {
+    "label": "Standard offer",
+    "offer": {
+      "room": "400.00",
+      "deposit": "100.00",
+      "arbiter": {
+        "account": "Fairwind Arbitration",
+        "accredited": true,
+        "appointedBy": "counterparty"
+      },
+      "backupArbiter": {
+        "account": "Northgate Dispute Services",
+        "accredited": true,
+        "appointedBy": "service"
+      }
+    },
+    "terms": {
+      "template": "settlement-vault/hotel@2",
+      "policy": "pol_hotel@2.0.0",
+      "money": {
+        "asset": "RLUSD",
+        "room": "400.00",
+        "deposit": "100.00",
+        "bond": "10.00",
+        "feeBps": 50
+      },
+      "deadlines": [
+        {
+          "timer": "confirmBy",
+          "seconds": 7200,
+          "from": "open",
+          "onExpire": "default.refund",
+          "description": "The hotel must confirm the booking within this time after you book."
+        },
+        {
+          "timer": "checkInBy",
+          "seconds": 32400,
+          "from": "checkIn",
+          "onExpire": "default.noshow",
+          "description": "The latest the hotel can record you as checked in, counted from the check-in time."
+        },
+        {
+          "timer": "entryDisputeBy",
+          "seconds": 75600,
+          "from": "checkIn",
+          "onExpire": "none",
+          "description": "How long you have, from the check-in time, to dispute a problem on arrival (no room, wrong room)."
+        },
+        {
+          "timer": "claimBy",
+          "seconds": 86400,
+          "from": "deliveryBy",
+          "onExpire": "none",
+          "description": "How long the hotel has after checkout to claim against your deposit."
+        },
+        {
+          "timer": "disputeWindowEnds",
+          "seconds": 259200,
+          "from": "deliveryBy",
+          "onExpire": "default.release",
+          "description": "How long you have after checkout to dispute a claim or a problem with the stay. After this, silence counts as agreement."
+        },
+        {
+          "timer": "rulingDueBy",
+          "seconds": 432000,
+          "from": "disputeOpened",
+          "onExpire": "escalate",
+          "description": "How long the arbiter has to rule once a dispute is open. After this, the backup arbiter may rule."
+        }
+      ],
+      "whoCanMoveMoney": [
+        {
+          "roles": [
+            "counterparty",
+            "arbiter"
+          ],
+          "weight": 7,
+          "includesGuest": false,
+          "includesCosigner": false,
+          "plain": "the hotel and the arbiter together"
+        },
+        {
+          "roles": [
+            "principal",
+            "arbiter"
+          ],
+          "weight": 7,
+          "includesGuest": true,
+          "includesCosigner": false,
+          "plain": "you and the arbiter together"
+        },
+        {
+          "roles": [
+            "arbiter",
+            "backupArbiter",
+            "cosigner"
+          ],
+          "weight": 8,
+          "includesGuest": false,
+          "includesCosigner": true,
+          "plain": "the arbiter, the backup arbiter and the policy co-signer together"
+        },
+        {
+          "roles": [
+            "counterparty",
+            "backupArbiter",
+            "cosigner"
+          ],
+          "weight": 7,
+          "includesGuest": false,
+          "includesCosigner": true,
+          "plain": "the hotel, the backup arbiter and the policy co-signer together"
+        },
+        {
+          "roles": [
+            "principal",
+            "backupArbiter",
+            "cosigner"
+          ],
+          "weight": 7,
+          "includesGuest": true,
+          "includesCosigner": true,
+          "plain": "you, the backup arbiter and the policy co-signer together"
+        },
+        {
+          "roles": [
+            "principal",
+            "counterparty",
+            "backupArbiter"
+          ],
+          "weight": 8,
+          "includesGuest": true,
+          "includesCosigner": false,
+          "plain": "you, the hotel and the backup arbiter together"
+        },
+        {
+          "roles": [
+            "principal",
+            "counterparty",
+            "cosigner"
+          ],
+          "weight": 8,
+          "includesGuest": true,
+          "includesCosigner": true,
+          "plain": "you, the hotel and the policy co-signer together"
+        }
+      ],
+      "silence": [
+        {
+          "timer": "confirmBy",
+          "outcome": "default.refund",
+          "description": "The hotel never confirmed in time: the guest gets the room money back automatically."
+        },
+        {
+          "timer": "checkInBy",
+          "outcome": "default.noshow",
+          "description": "The guest never checked in and never disputed: the hotel is paid the room automatically."
+        },
+        {
+          "timer": "disputeWindowEnds",
+          "outcome": "default.release",
+          "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically."
+        }
+      ],
+      "arbiters": {
+        "arbiter": {
+          "account": "Fairwind Arbitration",
+          "accredited": true,
+          "appointedBy": "counterparty"
+        },
+        "backupArbiter": {
+          "account": "Northgate Dispute Services",
+          "accredited": true,
+          "appointedBy": "service"
+        }
+      },
+      "facts": {
+        "money.feeBps": 50,
+        "depositBps": 2500,
+        "arbiter.accredited": true,
+        "arbiter.appointedBy": "counterparty",
+        "merchantWithoutGuestOrNeutral": false,
+        "guestAndHotelBypassPolicy": false,
+        "backupArbiter.accredited": true,
+        "backupArbiter.appointedBy": "service",
+        "timers.confirmBy": 7200,
+        "timers.checkInBy": 32400,
+        "timers.entryDisputeBy": 75600,
+        "timers.claimBy": 86400,
+        "timers.disputeWindowEnds": 259200,
+        "timers.rulingDueBy": 432000
+      }
+    },
+    "deviations": []
+  },
+  "unusual": {
+    "label": "Unusual offer",
+    "offer": {
+      "room": "400.00",
+      "deposit": "300.00",
+      "arbiter": {
+        "account": "Fairwind Arbitration",
+        "accredited": true,
+        "appointedBy": "counterparty"
+      },
+      "backupArbiter": {
+        "account": "Hotel Partners Mediation",
+        "accredited": true,
+        "appointedBy": "counterparty"
+      },
+      "timers": {
+        "disputeWindowEnds": 7200
+      }
+    },
+    "terms": {
+      "template": "settlement-vault/hotel@2",
+      "policy": "pol_hotel@2.0.0",
+      "money": {
+        "asset": "RLUSD",
+        "room": "400.00",
+        "deposit": "300.00",
+        "bond": "10.00",
+        "feeBps": 50
+      },
+      "deadlines": [
+        {
+          "timer": "confirmBy",
+          "seconds": 7200,
+          "from": "open",
+          "onExpire": "default.refund",
+          "description": "The hotel must confirm the booking within this time after you book."
+        },
+        {
+          "timer": "checkInBy",
+          "seconds": 32400,
+          "from": "checkIn",
+          "onExpire": "default.noshow",
+          "description": "The latest the hotel can record you as checked in, counted from the check-in time."
+        },
+        {
+          "timer": "entryDisputeBy",
+          "seconds": 75600,
+          "from": "checkIn",
+          "onExpire": "none",
+          "description": "How long you have, from the check-in time, to dispute a problem on arrival (no room, wrong room)."
+        },
+        {
+          "timer": "claimBy",
+          "seconds": 86400,
+          "from": "deliveryBy",
+          "onExpire": "none",
+          "description": "How long the hotel has after checkout to claim against your deposit."
+        },
+        {
+          "timer": "disputeWindowEnds",
+          "seconds": 7200,
+          "from": "deliveryBy",
+          "onExpire": "default.release",
+          "description": "How long you have after checkout to dispute a claim or a problem with the stay. After this, silence counts as agreement."
+        },
+        {
+          "timer": "rulingDueBy",
+          "seconds": 432000,
+          "from": "disputeOpened",
+          "onExpire": "escalate",
+          "description": "How long the arbiter has to rule once a dispute is open. After this, the backup arbiter may rule."
+        }
+      ],
+      "whoCanMoveMoney": [
+        {
+          "roles": [
+            "counterparty",
+            "arbiter"
+          ],
+          "weight": 7,
+          "includesGuest": false,
+          "includesCosigner": false,
+          "plain": "the hotel and the arbiter together"
+        },
+        {
+          "roles": [
+            "principal",
+            "arbiter"
+          ],
+          "weight": 7,
+          "includesGuest": true,
+          "includesCosigner": false,
+          "plain": "you and the arbiter together"
+        },
+        {
+          "roles": [
+            "arbiter",
+            "backupArbiter",
+            "cosigner"
+          ],
+          "weight": 8,
+          "includesGuest": false,
+          "includesCosigner": true,
+          "plain": "the arbiter, the backup arbiter and the policy co-signer together"
+        },
+        {
+          "roles": [
+            "counterparty",
+            "backupArbiter",
+            "cosigner"
+          ],
+          "weight": 7,
+          "includesGuest": false,
+          "includesCosigner": true,
+          "plain": "the hotel, the backup arbiter and the policy co-signer together"
+        },
+        {
+          "roles": [
+            "principal",
+            "backupArbiter",
+            "cosigner"
+          ],
+          "weight": 7,
+          "includesGuest": true,
+          "includesCosigner": true,
+          "plain": "you, the backup arbiter and the policy co-signer together"
+        },
+        {
+          "roles": [
+            "principal",
+            "counterparty",
+            "backupArbiter"
+          ],
+          "weight": 8,
+          "includesGuest": true,
+          "includesCosigner": false,
+          "plain": "you, the hotel and the backup arbiter together"
+        },
+        {
+          "roles": [
+            "principal",
+            "counterparty",
+            "cosigner"
+          ],
+          "weight": 8,
+          "includesGuest": true,
+          "includesCosigner": true,
+          "plain": "you, the hotel and the policy co-signer together"
+        }
+      ],
+      "silence": [
+        {
+          "timer": "confirmBy",
+          "outcome": "default.refund",
+          "description": "The hotel never confirmed in time: the guest gets the room money back automatically."
+        },
+        {
+          "timer": "checkInBy",
+          "outcome": "default.noshow",
+          "description": "The guest never checked in and never disputed: the hotel is paid the room automatically."
+        },
+        {
+          "timer": "disputeWindowEnds",
+          "outcome": "default.release",
+          "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically."
+        }
+      ],
+      "arbiters": {
+        "arbiter": {
+          "account": "Fairwind Arbitration",
+          "accredited": true,
+          "appointedBy": "counterparty"
+        },
+        "backupArbiter": {
+          "account": "Hotel Partners Mediation",
+          "accredited": true,
+          "appointedBy": "counterparty"
+        }
+      },
+      "facts": {
+        "money.feeBps": 50,
+        "depositBps": 7500,
+        "arbiter.accredited": true,
+        "arbiter.appointedBy": "counterparty",
+        "merchantWithoutGuestOrNeutral": false,
+        "guestAndHotelBypassPolicy": false,
+        "backupArbiter.accredited": true,
+        "backupArbiter.appointedBy": "counterparty",
+        "timers.confirmBy": 7200,
+        "timers.checkInBy": 32400,
+        "timers.entryDisputeBy": 75600,
+        "timers.claimBy": 86400,
+        "timers.disputeWindowEnds": 7200,
+        "timers.rulingDueBy": 432000
+      }
+    },
+    "deviations": [
+      {
+        "normId": "H1",
+        "term": "timers.disputeWindowEnds",
+        "severity": "serious",
+        "title": "Time to dispute after checkout",
+        "why": "This is how long you have to answer a deposit claim or report a problem. If it's short, your silence costs you before you even notice: an unanswered claim stands.",
+        "expected": "at least 2 days",
+        "actual": 7200,
+        "actualText": "2 hours"
+      },
+      {
+        "normId": "H6",
+        "term": "depositBps",
+        "severity": "warn",
+        "title": "Deposit size",
+        "why": "A deposit above half the room price is unusual. It's held for the whole stay and can be claimed against.",
+        "expected": "at most 50% of the room price",
+        "actual": 7500,
+        "actualText": "75% of the room price"
+      },
+      {
+        "normId": "H10",
+        "term": "backupArbiter.appointedBy",
+        "severity": "serious",
+        "title": "Backup arbiter isn't the hotel's pick",
+        "why": "If the hotel also chose the backup, a stalled or biased arbiter leaves you with another arbiter the hotel picked.",
+        "expected": "chosen by the engagement service or chosen by you",
+        "actual": "counterparty",
+        "actualText": "chosen by the hotel"
+      }
+    ]
+  }
+}

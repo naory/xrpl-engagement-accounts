@@ -33,6 +33,7 @@
     "demo": "tsx packages/web/src/demo.ts",
     "web:hotel-sim": "tsx packages/web/scripts/hotel-sim.ts",
     "web:policy-text": "tsx packages/web/scripts/policy-text.ts",
+    "web:disclosure": "tsx packages/web/scripts/disclosure.ts",
     "pool:status": "tsx packages/cosigner/src/pool-cli.ts status",
     "pool:topup": "tsx packages/cosigner/src/pool-cli.ts topup",
     "pool:ensure": "tsx packages/cosigner/src/pool-cli.ts ensure",

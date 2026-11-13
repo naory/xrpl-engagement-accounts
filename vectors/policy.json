@@ -143,18 +143,21 @@
         "quorum": 7,
         "outcomes": {
           "settle.agreed": {
+            "description": "Guest and hotel agree on how to split the money; the co-signer checks it against the policy.",
             "signers": [["principal","counterparty","cosigner"]],
             "blueprint": "close.split",
             "policyStage": "settle",
             "enforcement": "ledger"
           },
           "refund.conceded": {
+            "description": "The hotel admits a problem at check-in; everything goes back to the guest.",
             "signers": [["principal","counterparty","cosigner"]],
             "blueprint": "close.refundAll",
             "policyStage": "refund.conceded",
             "enforcement": "ledger"
           },
           "settle.ruling": {
+            "description": "The arbiter rules on a dispute and signs with one party. The co-signer is not involved.",
             "signers": [["arbiter","principal"],["arbiter","counterparty"]],
             "blueprint": "close.split",
             "policyStage": null,
@@ -162,12 +165,14 @@
             "requires": "ruling"
           },
           "ruling.backup": {
+            "description": "If the arbiter misses its deadline, the backup arbiter rules, with one party and the co-signer.",
             "signers": [["backupArbiter","principal","cosigner"],["backupArbiter","counterparty","cosigner"]],
             "blueprint": "close.split",
             "policyStage": "ruling.backup",
             "enforcement": "ledger"
           },
           "default.refund": {
+            "description": "The hotel never confirmed in time: the guest gets the room money back automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -176,6 +181,7 @@
             "enforcement": "final-signature"
           },
           "default.noshow": {
+            "description": "The guest never checked in and never disputed: the hotel is paid the room automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -184,6 +190,7 @@
             "enforcement": "final-signature"
           },
           "default.release": {
+            "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -193,12 +200,42 @@
           }
         },
         "timers": {
-          "confirmBy": {"from":"open","durationSecs":7200,"onExpire":"default.refund"},
-          "checkInBy": {"from":"checkIn","durationSecs":32400,"onExpire":"default.noshow"},
-          "entryDisputeBy": {"from":"checkIn","durationSecs":75600,"onExpire":"none"},
-          "claimBy": {"from":"deliveryBy","durationSecs":86400,"onExpire":"none"},
-          "disputeWindowEnds": {"from":"deliveryBy","durationSecs":259200,"onExpire":"default.release"},
-          "rulingDueBy": {"from":"disputeOpened","durationSecs":432000,"onExpire":"escalate"}
+          "confirmBy": {
+            "description": "The hotel must confirm the booking within this time after you book.",
+            "from": "open",
+            "durationSecs": 7200,
+            "onExpire": "default.refund"
+          },
+          "checkInBy": {
+            "description": "The latest the hotel can record you as checked in, counted from the check-in time.",
+            "from": "checkIn",
+            "durationSecs": 32400,
+            "onExpire": "default.noshow"
+          },
+          "entryDisputeBy": {
+            "description": "How long you have, from the check-in time, to dispute a problem on arrival (no room, wrong room).",
+            "from": "checkIn",
+            "durationSecs": 75600,
+            "onExpire": "none"
+          },
+          "claimBy": {
+            "description": "How long the hotel has after checkout to claim against your deposit.",
+            "from": "deliveryBy",
+            "durationSecs": 86400,
+            "onExpire": "none"
+          },
+          "disputeWindowEnds": {
+            "description": "How long you have after checkout to dispute a claim or a problem with the stay. After this, silence counts as agreement.",
+            "from": "deliveryBy",
+            "durationSecs": 259200,
+            "onExpire": "default.release"
+          },
+          "rulingDueBy": {
+            "description": "How long the arbiter has to rule once a dispute is open. After this, the backup arbiter may rule.",
+            "from": "disputeOpened",
+            "durationSecs": 432000,
+            "onExpire": "escalate"
+          }
         },
         "attestationWindows": {
           "party.confirmation/1": "confirmBy",

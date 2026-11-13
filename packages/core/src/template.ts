@@ -14,6 +14,8 @@ export interface RoleDef {
 }
 
 export interface OutcomeDef {
+  /** Plain-English summary for people and agents reviewing a deal (non-normative). */
+  description?: string
   /** Each entry is one set of roles that may jointly authorize this outcome. */
   signers: string[][]
   blueprint: string
@@ -26,6 +28,8 @@ export interface OutcomeDef {
 }
 
 export interface TimerDef {
+  /** Plain-English summary for people and agents reviewing a deal (non-normative). */
+  description?: string
   from: string
   durationSecs: number
   /** A pre-signed outcome name, "arbiter" / "escalate", or "none" (a window that only closes). */
