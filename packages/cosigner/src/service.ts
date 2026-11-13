@@ -240,13 +240,32 @@ export class CosignerService {
 
     const facts = new TxFacts(tx, { eng: st.record, template: st.template, assets: new Assets(this.assetsOf(st.layers)), ledger: emptyLedger(st.record.account) })
     if (!facts.matchesBlueprint(o.blueprint)) throw new Error(`BLUEPRINT: blob does not match ${o.blueprint}`)
-    st.presigned.set(outcome, blob)
+
+    // Store the canonical multisign form (outer SigningPubKey '', no TxnSignature) — exactly what the
+    // signatures cover — and prove now that the co-signer's signature will combine with it.
+    const canonical = xrpl.encode({ ...tx, Signers: decoded.Signers } as never)
+    try {
+      combine([canonical, xrpl.encode({ ...tx, Signers: [{ Signer: { Account: this.address, SigningPubKey: this.o.signer.publicKey, TxnSignature: 'AB'.repeat(35) } }] } as never)])
+    } catch (e) {
+      throw new Error(`BAD_BLOB: does not combine: ${(e as Error).message}`)
+    }
+    const existing = st.presigned.get(outcome)
+    if (existing === canonical) return
+    if (existing && this.signedInFlight(st, existing)) throw new Error(`IN_FLIGHT: ${outcome} has a signed transaction in flight; it cannot be replaced`)
+    st.presigned.set(outcome, canonical)
+  }
+
+  private signedInFlight(st: EngagementState, blob: string): boolean {
+    const txHash = documentHash(unsigned(xrpl.decode(blob) as Json))
+    return this.inflight.some((i) => i.engagementId === st.record.engagementId && i.proposedTxHash === txHash)
   }
 
   /**
    * Evaluate every stored pre-signed default at a pinned validated ledger (spec §5.4). On SIGN the result
    * carries the completed, submittable blob; submission is the caller's job. A default whose SIGN is still in
-   * flight returns the same result rather than being re-signed. A deleted account has nothing left to complete.
+   * flight returns the same result rather than being re-signed. A default any of whose Tickets is gone can never
+   * apply: it is retired and reported once as TICKET_CONSUMED. One outcome's failure is reported as TICK_ERROR for
+   * that outcome and does not stop the others. A deleted account has nothing left to complete.
    */
   async tick(engagementId: string): Promise<TickResult[]> {
     return this.serialized(engagementId, () => this.tickLocked(engagementId))
@@ -263,21 +282,60 @@ export class CosignerService {
     this.resolveInflight(st, ledger)
 
     const out: TickResult[] = []
+    const tickets = new Set(ledger.accounts[st.record.account]?.ownerObjects?.tickets ?? [])
     for (const [outcome, stored] of [...st.presigned]) {
-      const txHash = documentHash(unsigned(xrpl.decode(stored) as Json))
+      const stage = st.template.outcomes[outcome]?.policyStage ?? outcome
+      const tx = unsigned(xrpl.decode(stored) as Json)
+      const txHash = documentHash(tx)
       const prior = st.completed.get(txHash)
       if (prior && this.inflightFor(engagementId).some((i) => i.proposedTxHash === txHash)) { out.push(prior); continue }
       st.completed.delete(txHash)
-      const stage = st.template.outcomes[outcome].policyStage ?? outcome
-      const r = await this.decideLocked({ engagementId, stage, txBlob: stored })
-      const res: TickResult = { outcome, stage, decision: r.decision, failing: r.failing, record: r.record }
-      if (r.decision === 'SIGN' && r.signerBlob) {
-        res.blob = combine([stored, r.signerBlob])
-        st.completed.set(txHash, res)
+
+      const used = [tx, ...((tx.RawTransactions ?? []) as Array<{ RawTransaction: Json }>).map((r) => r.RawTransaction)].map((t) => Number(t.TicketSequence))
+      const gone = used.filter((t) => !tickets.has(t))
+      if (gone.length) {
+        st.presigned.delete(outcome)
+        const record = await this.refusalRecord(st, ledger, stage, txHash, { id: 'TICKET_CONSUMED', result: 'fail', reason: 'TICKET_CONSUMED', message: `Tickets ${gone.join(', ')} are no longer on the account; the pre-signed default can never apply.` })
+        out.push({ outcome, stage, decision: 'REFUSE', failing: ['TICKET_CONSUMED'], record })
+        continue
       }
-      out.push(res)
+
+      let r: DecideResponse | undefined
+      try {
+        r = await this.decideLocked({ engagementId, stage, txBlob: stored })
+        const res: TickResult = { outcome, stage, decision: r.decision, failing: r.failing, record: r.record }
+        if (r.decision === 'SIGN' && r.signerBlob) {
+          res.blob = combine([stored, r.signerBlob])
+          st.completed.set(txHash, res)
+        }
+        out.push(res)
+      } catch (e) {
+        // Never leave a signed-but-undelivered decision in flight: it would block other outcomes (B9).
+        const i = r ? this.inflight.findIndex((f) => f.engagementId === engagementId && f.decisionId === r!.record.id) : -1
+        if (i >= 0) this.inflight.splice(i, 1)
+        const message = String((e as Error)?.message ?? e)
+        const record = await this.refusalRecord(st, ledger, stage, txHash, { id: 'TICK_ERROR', result: 'error', reason: 'TICK_ERROR', message, error: message.split('\n')[0] })
+        out.push({ outcome, stage, decision: 'REFUSE', failing: ['TICK_ERROR'], record })
+      }
     }
     return out
+  }
+
+  /** A signed cosigner.decision/1 REFUSE record for a refusal the co-signer makes itself, outside policy evaluation. */
+  private async refusalRecord(st: EngagementState, ledger: LedgerSnapshot, stage: string, proposedTxHash: string, result: Omit<Decision['results'][number], 'layer'>): Promise<Statement> {
+    const layers = st.layers.map((l) => `${l.policyId}@${l.version} ${layerHash(l)}`)
+    const pinned = { index: ledger.index, hash: ledger.hash, closeTime: ledger.closeTime }
+    const d: Decision = {
+      decision: 'REFUSE', stage, engagementId: st.record.engagementId,
+      results: [{ layer: 'cosigner', ...result }], failing: [result.id],
+      statementsUsed: [], statementsRejected: [], inflightCounted: [], ledger: pinned,
+      policy: { effectiveHash: documentHash(st.layers), layers },
+      inputsHash: documentHash({ engagementId: st.record.engagementId, stage, proposedTxHash, ledger: { index: ledger.index, hash: ledger.hash }, check: result.id }),
+      costUnits: 0, proposedTxHash,
+    }
+    const record = await signStatementAsync(decisionStatementBody(d, { account: this.address, accreditation: this.o.accreditation }, newNonce()), this.o.signer)
+    this.append(record)
+    return record
   }
 
   /** Serialize work per engagement so in-flight accounting and the attestation store are race-free. */

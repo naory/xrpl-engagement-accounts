@@ -279,15 +279,84 @@ describe('co-signer pre-signed defaults and tick()', () => {
     expect(svc.decisions(ENG)).toHaveLength(decisions) // not re-decided, not re-signed
   })
 
-  it('tick re-decides once the in-flight default left the set (ticket consumed)', async () => {
+  const signRecords = (svc: CosignerService) => svc.decisions(ENG).filter((d) => d.claim.decision === 'SIGN').length
+  const burn = (source: FixtureLedgerSource, ticket: number) => {
+    const o = source.snap.accounts[W.engHotel2.address].ownerObjects!
+    o.tickets = o.tickets.filter((t) => t !== ticket)
+  }
+
+  it('retires a default whose outer ticket was consumed: TICKET_CONSUMED once, never re-signed (R22)', async () => {
     const { svc, source } = await checkedIn('2026-11-17T12:00:00Z')
     svc.storePresigned(ENG, 'default.release', presign(releaseTx()))
     const [a] = await svc.tick(ENG)
     expect(a.decision).toBe('SIGN')
-    source.snap.accounts[W.engHotel2.address].ownerObjects!.tickets = source.snap.accounts[W.engHotel2.address].ownerObjects!.tickets.filter((t) => t !== 101)
+    expect(signRecords(svc)).toBe(1)
+    burn(source, 101) // e.g. a burned ALLORNOTHING submission
     const [b] = await svc.tick(ENG)
-    expect(b.record.id).not.toBe(a.record.id)
-    expect(svc.inflightFor(ENG).filter((i) => i.decisionId === a.record.id)).toEqual([])
+    expect(b).toMatchObject({ outcome: 'default.release', stage: 'default.release', decision: 'REFUSE', failing: ['TICKET_CONSUMED'] })
+    expect(b.blob).toBeUndefined()
+    expect(verifyStatement(b.record).ok).toBe(true)
+    expect(b.record.claim.failing).toEqual(['TICKET_CONSUMED'])
+    expect(svc.inflightFor(ENG)).toEqual([])
+    expect(await svc.tick(ENG)).toEqual([])
+    expect(signRecords(svc)).toBe(1) // no new SIGN after the ticket is consumed
+  })
+
+  it('retires a default when one of its inner tickets is gone, before ever signing', async () => {
+    const { svc, source } = await checkedIn('2026-11-17T12:00:00Z')
+    svc.storePresigned(ENG, 'default.release', presign(releaseTx()))
+    burn(source, 104)
+    const [r] = await svc.tick(ENG)
+    expect(r).toMatchObject({ decision: 'REFUSE', failing: ['TICKET_CONSUMED'] })
+    expect(signRecords(svc)).toBe(0)
+    expect(svc.inflightFor(ENG)).toEqual([])
+  })
+
+  it('storePresigned refuses to overwrite an outcome with a SIGN in flight (R23)', async () => {
+    const { svc } = await checkedIn('2026-11-17T12:00:00Z')
+    const first = presign(releaseTx())
+    svc.storePresigned(ENG, 'default.release', first)
+    const [a] = await svc.tick(ENG)
+    expect(a.decision).toBe('SIGN')
+    const other = presign({ ...releaseTx(), Memos: [memo('eng/basis', 'default.release'), memo('x', 'y')] })
+    expect(() => svc.storePresigned(ENG, 'default.release', other)).toThrow(/IN_FLIGHT/)
+    svc.storePresigned(ENG, 'default.release', first) // re-storing the same blob is a no-op
+    const [b] = await svc.tick(ENG)
+    expect(b).toEqual(a)
+    expect(svc.inflightFor(ENG)).toHaveLength(1)
+  })
+
+  it('normalizes a blob with an outer SigningPubKey or TxnSignature; a later tick neither throws nor orphans (R21)', async () => {
+    for (const poison of [{ SigningPubKey: W.dana.publicKey }, { TxnSignature: 'AB'.repeat(35) }]) {
+      const { svc } = await checkedIn('2026-11-17T12:00:00Z')
+      const good = presign(releaseTx())
+      svc.storePresigned(ENG, 'default.release', xrpl.encode({ ...(xrpl.decode(good) as Json), ...poison } as never))
+      const [r] = await svc.tick(ENG)
+      expect(r.decision).toBe('SIGN')
+      const out = xrpl.decode(r.blob!) as Json
+      expect(out.SigningPubKey).toBe('')
+      expect(out.TxnSignature).toBeUndefined()
+      expect(signersOf(r.blob!)).toHaveLength(3)
+      expect(svc.inflightFor(ENG)).toHaveLength(1)
+    }
+  })
+
+  it('isolates a failing outcome in tick: error result, no orphaned in-flight entry, others still evaluated', async () => {
+    const { svc } = await checkedIn('2026-11-17T12:00:00Z')
+    svc.storePresigned(ENG, 'default.refund', presign(hotel2Close([{ to: W.dana.address, value: '562' }], { tickets: true, memos: [memo('eng/basis', 'default.refund')] })))
+    // Bypass storePresigned's normalization to plant a blob that combine() rejects after policy SIGNs.
+    const poisoned = xrpl.encode({ ...(xrpl.decode(presign(releaseTx())) as Json), SigningPubKey: W.dana.publicKey } as never)
+    ;(svc as unknown as { engagements: Map<string, { presigned: Map<string, string> }> }).engagements.get(ENG)!.presigned.set('default.release', poisoned)
+    const results = await svc.tick(ENG)
+    const byOutcome = Object.fromEntries(results.map((r) => [r.outcome, r]))
+    expect(byOutcome['default.refund'].decision).toBe('REFUSE')
+    expect(byOutcome['default.refund'].failing).not.toContain('TICK_ERROR')
+    expect(byOutcome['default.release']).toMatchObject({ decision: 'REFUSE', failing: ['TICK_ERROR'] })
+    expect(byOutcome['default.release'].blob).toBeUndefined()
+    expect(verifyStatement(byOutcome['default.release'].record).ok).toBe(true)
+    expect(svc.inflightFor(ENG)).toEqual([])
+    await expect(svc.tick(ENG)).resolves.toHaveLength(2)
+    expect(svc.inflightFor(ENG)).toEqual([])
   })
 
   it('tick on a deleted account returns []', async () => {
@@ -323,7 +392,7 @@ describe('co-signer pre-signed defaults and tick()', () => {
       tx.Signers[0].Signer.TxnSignature = (sig[0] === 'A' ? 'B' : 'A') + sig.slice(1)
       await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.release', xrpl.encode(tx as never)), /BAD_SIGNATURE/))
     })
-    it('a signature over a different transaction (amounts changed after signing)', async () => {
+    it('a signature over a different transaction (memo changed after signing)', async () => {
       const tx = xrpl.decode(presign(releaseTx())) as Json & { RawTransactions: Array<{ RawTransaction: Json }> }
       tx.Memos = [memo('eng/basis', 'other')]
       await nothingStored(rejects((svc) => svc.storePresigned(ENG, 'default.release', xrpl.encode(tx as never)), /BAD_SIGNATURE/))
