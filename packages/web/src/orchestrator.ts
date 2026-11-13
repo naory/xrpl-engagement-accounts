@@ -58,7 +58,23 @@ export interface ProvisionResult {
   hotel?: HotelStatus & { paths: HotelPath[]; pooled: boolean; accounts: Partial<Record<HotelPath, string>>; booking: HotelBooking; timers: HotelTimerOffsets; policy: string }
 }
 /** Whether the hotel paths can run yet (unpooled: the pre-created accounts must first age past the AccountDelete window). */
-export interface HotelStatus { ready: boolean; status: string; ran: HotelPath[] }
+export interface HotelStatus { ready: boolean; status: string; ran: HotelPath[]; /** Terminal: aging failed; provision again. */ failed?: boolean }
+
+/**
+ * Whether the warm pool can supply every hotel path (each path closes with AccountDelete, so each needs its own pre-aged
+ * account). Promotes aged accounts first; on any pool error the answer is no, and the caller falls back to pre-creating.
+ */
+export async function hotelPoolSupply(pool: Pick<PoolManager, 'refresh' | 'status'>, need: number): Promise<{ ok: boolean; ready: number; reason: string }> {
+  try {
+    await pool.refresh()
+    const ready = (await pool.status()).ready
+    return ready >= need
+      ? { ok: true, ready, reason: `pool has ${ready} ready accounts (need ${need})` }
+      : { ok: false, ready, reason: `pool has ${ready} ready accounts, need ${need}` }
+  } catch (e) {
+    return { ok: false, ready: 0, reason: `pool unavailable: ${(e as Error).message}` }
+  }
+}
 export interface PayResult {
   decision: string
   failing: string[]
@@ -116,10 +132,12 @@ export class DemoOrchestrator {
   private lastX402Stmt: Statement | null = null
   private hotelRun?: {
     cast: HotelCast; svc: CosignerService; policyLayer: string
+    /** Leasing pre-aged accounts from the pool (only when it can supply every path at provision time). */
+    pooled: boolean
     /** Unpooled: one pre-created account per path. Pooled: leased when the path runs. */
     accounts: Partial<Record<HotelPath, Wallet>>
     aging: Promise<void> | null
-    ready: boolean; status: string; ran: Set<HotelPath>
+    ready: boolean; status: string; ran: Set<HotelPath>; failed: boolean
   }
   // Pooled mode (ENG_USE_POOL=1): lease a pre-aged account from the warm pool instead of pre-creating one.
   private pool?: PoolManager
@@ -449,7 +467,13 @@ export class DemoOrchestrator {
   private async provisionHotel(): Promise<ProvisionResult> {
     const run = Date.now().toString(36)
     this.engagementId = `eng_hotel_${run}`
-    const pooled = !!this.pool
+    let pooled = false, fallback = ''
+    if (this.pool) {
+      const supply = await hotelPoolSupply(this.pool, HOTEL_PATHS.length)
+      pooled = supply.ok
+      if (!pooled) fallback = `pool can't supply this run (${supply.reason}); falling back to pre-created accounts`
+      console.log(`hotel: ${pooled ? `leasing from the pool — ${supply.reason}` : fallback}`)
+    }
     const issuer = pooled ? xrpl.Wallet.fromSeed(reqEnv('ENG_DEMO_ISSUER_SEED')) : await this.fund('issuer'); this.w.issuer = issuer
     const guest = await this.fund('guest')
     const hotel = await this.fund('hotel')
@@ -484,15 +508,15 @@ export class DemoOrchestrator {
     for (const [role, wal] of roles) coord.enrol(makeEnrolment(session, role, wal))
     const plan = coord.plan(session.sessionId)
 
-    const h: NonNullable<DemoOrchestrator['hotelRun']> = { cast, svc, policyLayer: layerHash(policy), accounts: {}, aging: null, ready: pooled, status: pooled ? 'ready — accounts are leased pre-aged from the pool' : '', ran: new Set() }
+    const h: NonNullable<DemoOrchestrator['hotelRun']> = { cast, svc, policyLayer: layerHash(policy), pooled, accounts: {}, aging: null, ready: pooled, status: pooled ? 'ready — accounts are leased pre-aged from the pool' : '', ran: new Set(), failed: false }
     this.hotelRun = h
     if (!pooled) {
       const flow = this.hotelFlow('happy')
       const accounts = await flow.precreate(HOTEL_PATHS.length)
       HOTEL_PATHS.forEach((p, i) => { h.accounts[p] = accounts[i] })
-      h.status = 'waiting for the accounts to age past the AccountDelete window (~15 min)'
+      h.status = `${fallback ? `${fallback} · ` : ''}waiting for the accounts to age past the AccountDelete window (~15 min)`
       h.aging = flow.waitUntilAged(accounts.map((a) => a.address))
-      h.aging.then(() => { h.ready = true; h.status = 'ready' }, (e: Error) => { h.status = `aging failed: ${e.message}` })
+      h.aging.then(() => { h.ready = true; h.status = 'ready' }, (e: Error) => { h.failed = true; h.status = `aging failed: ${e.message} — provision again` })
     }
     this.scenario = 'hotel'
     this.provisioned = true
@@ -514,7 +538,7 @@ export class DemoOrchestrator {
   hotelStatus(): HotelStatus {
     const h = this.hotelRun
     if (!h || this.scenario !== 'hotel') throw new Error('hotel not provisioned')
-    return { ready: h.ready, status: h.status, ran: [...h.ran] }
+    return { ready: h.ready, status: h.status, ran: [...h.ran], ...(h.failed ? { failed: true } : {}) }
   }
 
   /** Run one hotel path end to end on its own engagement account; returns HotelFlow's steps (decision records verbatim). */
@@ -524,7 +548,7 @@ export class DemoOrchestrator {
     const p = input.path
     if (!HOTEL_PATHS.includes(p)) throw new Error(`unknown hotel path ${String(p)}`)
     if (h.ran.has(p)) throw new Error(`path ${p} already ran: its single-use account is closed — provision again to rerun it`)
-    if (!this.pool && !h.ready) throw new Error(`not ready: ${h.status}`)
+    if (!h.pooled && !h.ready) throw new Error(`not ready: ${h.status}`)
     h.ran.add(p)
     const flow = this.hotelFlow(p)
     let eng = h.accounts[p]
@@ -532,7 +556,7 @@ export class DemoOrchestrator {
       try { eng = await this.leaseHotelAccount(flow, p) } catch (e) { h.ran.delete(p); throw e }
     }
     const steps = await flow.run(p, eng)
-    if (this.pool && !h.accounts[p] && (await accountInfo(this.client, eng.address)) === null) await this.pool.markClosed(eng.address)
+    if (h.pooled && this.pool && (await accountInfo(this.client, eng.address)) === null) await this.pool.markClosed(eng.address)
     return steps
   }
 

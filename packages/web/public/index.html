@@ -231,6 +231,7 @@
   .rule .rr{opacity:.8}
   .hstatus{font-size:12.5px;color:var(--muted)}
   .hstatus.wait{color:var(--warn)}
+  .hstatus.fail{color:var(--bad)}
 
   .log table{width:100%;border-collapse:collapse;font-size:13px}
   .log th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:0 10px 9px;border-bottom:1px solid var(--line)}
@@ -653,9 +654,9 @@
       stage.innerHTML = '<div class="panel cta-card">' +
         '<h3 style="font-size:19px">Set up the stay</h3>' +
         '<p>'+(LIVE
-          ? "Guest, hotel, arbiter, backup arbiter and co-signer each generate a key and prove they hold it, and the co-signer is loaded with the hotel policy. Each path then opens its own single-use account"+(POOLED?" leased pre-aged from the pool.":" — pre-created now, and usable once it is old enough to be deleted at the close (~15 min).")
+          ? "Guest, hotel, arbiter, backup arbiter and co-signer each generate a key and prove they hold it, and the co-signer is loaded with the hotel policy. Each path then opens its own single-use account: leased pre-aged from the pool when it has one ready for every path, otherwise pre-created now and usable once it is old enough to be deleted at the close (~15 min)."
           : "Replays a transcript the real co-signer produced for every path over a simulated ledger clock: every decision and rule row below is the co-signer’s.")+'</p>' +
-        '<div class="provsteps"><span>1 · generate keys</span><span>2 · prove possession</span><span>3 · load the hotel policy</span><span>4 · '+(LIVE&&!POOLED?"pre-create &amp; age accounts":"one account per path")+'</span></div>' +
+        '<div class="provsteps"><span>1 · generate keys</span><span>2 · prove possession</span><span>3 · load the hotel policy</span><span>4 · one account per path</span></div>' +
         '<button class="btn primary" id="provBtn">Provision the stay</button></div>';
       $("#provBtn").addEventListener("click", runProvision);
       return;
@@ -927,6 +928,7 @@
     var b=h.booking||{};
     stage.innerHTML = '<div class="panel"><div class="ptitle"><span class="n">✓</span> Engagement accounts — one single-use account per path</div>' +
       '<div class="acct"><div><div class="meta">policy <span class="mono">'+esc(h.policy)+'</span></div>' +
+      (LIVE ? '<div class="meta">accounts <span class="mono">'+(h.pooled?"leased pre-aged from the pool, one per path":"pre-created for this run, one per path (aged before use)")+'</span></div>' : '') +
       '<div class="meta">booking <span class="mono">room $'+esc(b.room)+' · deposit $'+esc(b.deposit)+' · bond $'+esc(b.bond)+' · claim $'+esc(b.claim)+'</span></div></div>' +
       '<div class="hstatus" id="hotelStatus"></div></div></div>' +
       '<div class="panel"><div class="actions-head"><div class="ptitle" style="margin:0"><span class="n">→</span> Pick how the stay goes</div>' +
@@ -941,11 +943,11 @@
     });
     $("#resetBtn").addEventListener("click", function(){ stopHotelPoll(); $("#decision").hidden=true; runProvision(); });
     setHotelStatus(h);
-    if (LIVE && !h.ready) pollHotel();
+    if (LIVE && !h.ready && !h.failed) pollHotel();
   }
   function setHotelStatus(st){
-    var h=S.data.hotel; h.ready=st.ready; h.status=st.status; h.ran=st.ran||h.ran||[];
-    var el=$("#hotelStatus"); if(el){ el.className="hstatus"+(st.ready?"":" wait"); el.textContent=(st.ready?"":"⏳ ")+st.status; }
+    var h=S.data.hotel; h.ready=st.ready; h.status=st.status; h.ran=st.ran||h.ran||[]; h.failed=!!st.failed;
+    var el=$("#hotelStatus"); if(el){ el.className="hstatus"+(st.ready?"":h.failed?" fail":" wait"); el.textContent=(st.ready?"":h.failed?"✕ ":"⏳ ")+st.status; }
     document.querySelectorAll("#actions .btn").forEach(function(btn){
       if (btn.id==="resetBtn") return;
       var ran = LIVE && h.ran.indexOf(btn.dataset.id)>=0;
@@ -960,7 +962,8 @@
         if (S.scn.kind!=="hotel" || !S.data || !S.data.hotel) return;
         var was=S.data.hotel.ready; setHotelStatus(st);
         if (st.ready && !was) logEvent("open","engagement accounts are old enough to be deleted at the close · paths unlocked");
-        if (!st.ready) pollHotel();
+        if (st.failed) logEvent("refuse", esc(st.status));
+        else if (!st.ready) pollHotel();
       }).catch(function(e){ var el=$("#hotelStatus"); if(el) el.textContent="status check failed: "+e.message; pollHotel(); });
     }, 15000);
   }
