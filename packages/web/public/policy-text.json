@@ -1,0 +1,89 @@
+{
+  "generatedBy": "npm run web:policy-text (packages/web/src/policy-text.ts)",
+  "policies": [
+    "pol_baseline@1.1.0",
+    "pol_procurement@1.3.0"
+  ],
+  "rules": {
+    "B1": {
+      "title": "Sent from the deal's own account",
+      "message": "The co-signer only signs transactions that move money out of this deal's single-use account, never anything that touches someone else's account."
+    },
+    "B2": {
+      "title": "Allowed kinds of transaction",
+      "message": "Each step may only use the transaction types it needs (payments, closing the account…). Handing control of the account to a new key is never allowed."
+    },
+    "B3": {
+      "title": "Network fee is reasonable",
+      "message": "The XRPL fee must stay under a cap, so a transaction can't quietly drain the account's XRP reserve."
+    },
+    "B4": {
+      "title": "Expires quickly if not used",
+      "message": "A live transaction must expire within a few ledgers (seconds), so a signed one can't be held back and used later. Pre-signed defaults are exempt; they're guarded by the other checks."
+    },
+    "B5": {
+      "title": "All-or-nothing",
+      "message": "When several payments go together, either all of them happen or none do. No half-paid outcome is possible."
+    },
+    "B6": {
+      "title": "Pays only people in the deal",
+      "message": "Money may only go to the guest, the hotel, the arbiters, or the service's fee account, never to an outsider."
+    },
+    "B7": {
+      "title": "Closes the account cleanly",
+      "message": "Closing the account must pay out every last cent and then delete it. If the payouts don't add up to exactly what's in the account, it would leave money stranded."
+    },
+    "B8": {
+      "title": "Says which outcome it is",
+      "message": "Every signed transaction carries a note naming the outcome it executes (agreed settlement, refund, ruling…), so the ledger history explains itself."
+    },
+    "B9": {
+      "title": "No other outcome in progress",
+      "message": "Only one ending can be in flight at a time. If one was just signed and is still settling, a second one waits, so the deal can't be paid out twice."
+    },
+    "B10": {
+      "title": "Right token issuer",
+      "message": "Every amount must be in the real RLUSD token from its official issuer, not a look-alike."
+    },
+    "B11": {
+      "title": "The ledger would accept it right now",
+      "message": "Pre-signed endings can only be tried once: a failed attempt burns them. So the co-signer only signs one when the account is in exactly the state that makes it succeed, including being old enough to be deleted."
+    },
+    "W0": {
+      "title": "Owner’s spending mandate is valid",
+      "message": "The agent can only spend under a mandate the owner signed, and only until it expires."
+    },
+    "W1": {
+      "title": "A plain vendor payment",
+      "message": "A spend is one to four payments to vendors, and nothing else."
+    },
+    "W2": {
+      "title": "Approved, verified vendor",
+      "message": "Every payee must be on the owner’s vendor list and hold a business-verification (KYB) credential from an accepted issuer."
+    },
+    "W3": {
+      "title": "Within the daily cap",
+      "message": "Everything spent in the last 24 hours, including payments still settling, stays under the mandate’s daily limit."
+    },
+    "W4": {
+      "title": "Within the overall budget",
+      "message": "Everything spent over the mandate’s 90-day period, including payments still settling, stays within its budget."
+    },
+    "W5": {
+      "title": "Large payment approved",
+      "message": "Payments over the approval threshold need a one-time approval from the owner’s approver, tied to this exact payment."
+    },
+    "W6": {
+      "title": "Matches a vendor invoice",
+      "message": "Each payment must match an invoice the vendor signed: same amount, same invoice number."
+    },
+    "W7": {
+      "title": "Matches the merchant’s payment request",
+      "message": "When paying a merchant’s x402 request, the payment must go to the address, for the amount and invoice, that the merchant asked for, so it can’t be redirected or replayed."
+    },
+    "O1": {
+      "title": "Valid owner close",
+      "message": "The owner closes the account by sweeping everything back to themselves, then deleting it."
+    }
+  }
+}

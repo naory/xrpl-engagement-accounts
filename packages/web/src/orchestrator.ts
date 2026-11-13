@@ -21,6 +21,7 @@ import {
 } from '@eng/cosigner'
 import { EngagementAgent, XrplChain } from '@eng/agent-mcp'
 import { ProvisioningCoordinator, makeEnrolment } from '@eng/provisioning'
+import { buildPolicyText } from './policy-text.ts'
 
 type Wallet = InstanceType<typeof xrpl.Wallet>
 type Json = Record<string, unknown>
@@ -106,12 +107,8 @@ export interface X402Result {
   reason?: string
 }
 
-// Human-readable reasons for the policy rule ids the co-signer reports.
-const RULE_TEXT: Record<string, string> = {
-  B6: 'payee has no accepted KYB credential', W2: 'payee is not in the mandate', W3: 'daily spend cap exceeded',
-  W5: 'approval required above the threshold', W6: 'approval missing or not bound to this payment', W7: 'payment challenge not satisfied',
-  B2: 'transaction carries a forbidden account change',
-}
+// Human-readable names for the rule ids the co-signer reports: the policies' own titles (lint L8).
+const RULE_TEXT: Record<string, { title?: string; message?: string }> = buildPolicyText().rules
 
 export class DemoOrchestrator {
   readonly url: string
@@ -679,7 +676,7 @@ export class DemoOrchestrator {
     return out
   }
 
-  private reasons(failing: string[]): string[] { return failing.map((f) => RULE_TEXT[f] ? `${f}: ${RULE_TEXT[f]}` : f) }
+  private reasons(failing: string[]): string[] { return failing.map((f) => RULE_TEXT[f]?.title ? `${f}: ${RULE_TEXT[f].title}` : f) }
 
   async pay(input: { destination: string; amount: string; invoiceRef: string; withApproval?: boolean }): Promise<PayResult> {
     if (!this.provisioned) throw new Error('not provisioned')

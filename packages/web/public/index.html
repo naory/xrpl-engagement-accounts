@@ -374,11 +374,13 @@
   var short = function(a){ return a ? a.slice(0,6) + "…" + a.slice(-4) : "—"; };
   var fmt = function(n){ return Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); };
 
-  var RULE_TEXT = {
-    B6:"payee has no accepted KYB credential", W2:"payee is not in the mandate", W3:"daily spend cap exceeded",
-    W5:"approval required above the threshold", W6:"approval missing or not bound to this payment",
-    B2:"transaction carries a forbidden account change"
-  };
+  // Check names and explanations for the procurement scenario: the policies' own plain-English text (lint L8),
+  // published by `npm run web:policy-text`. Falls back to the bare rule id if the file can't be loaded.
+  var policyTextP=null;
+  function policyText(){
+    return policyTextP || (policyTextP = fetch("policy-text.json").then(okJson).then(function(t){ return t.rules||{}; }).catch(function(){ policyTextP=null; return {}; }));
+  }
+  function ruleTitle(rules, id){ return (rules[id]&&rules[id].title) || id; }
 
   // ---- theme --------------------------------------------------------------
   try { var sv = localStorage.getItem("eng-theme"); if (sv) document.documentElement.setAttribute("data-theme", sv); } catch(e){}
@@ -789,18 +791,20 @@
   }
 
   // ---- procurement run ----------------------------------------------------
-  var CHECK_DEFS=[["Payee is KYB-verified",["B6"]],["Payee is in the mandate",["W2"]],["Within the daily cap",["W3"]],["Approval present if required",["W5","W6"]]];
+  // The procurement checks shown on each spend (rule ids; their names come from the policy text).
+  var CHECK_IDS=["B6","W2","W3","W5","W6"];
   function runSpend(a){
     if (S.busy||!S.data) return; S.busy=true; setButtons(true);
     var dest=S.data.accounts[a.dest];
     var destLabel = a.dest==="stranger"?"a stranger":(a.dest==="vendorA"?"Vendor A":"Vendor B");
     var req={destination:dest,amount:a.amount,invoiceRef:a.invoiceRef,withApproval:!!a.withApproval};
     logEvent("info", "agent → propose_payment · pay "+esc(destLabel)+" $"+a.amount+(a.withApproval?" (with approval)":""));
-    api.pay(req).then(function(r){
+    Promise.all([api.pay(req), policyText()]).then(function(both){
+      var r=both[0], rules=both[1];
       var failing=r.failing||[], signed=r.decision==="SIGN";
-      var plain=failing.map(function(f){ return RULE_TEXT[f]||f; });
+      var plain=failing.map(function(f){ return ruleTitle(rules, f); });
       logEvent(signed?"sign":"refuse", signed ? ("co-signer SIGNED · settled "+(LIVE?"":"(sim) ")+txLink(r.tx,"tx "+short(r.tx))) : ("co-signer REFUSED · "+esc(failing.join(", "))+(failing.length?" — "+esc(plain.join(" · ")):"")));
-      var checks=CHECK_DEFS.map(function(c){ return [c[0], !c[1].some(function(f){return failing.indexOf(f)>=0;})]; });
+      var checks=CHECK_IDS.map(function(id){ return [ruleTitle(rules, id), failing.indexOf(id)<0]; });
       var signNodes=[{role:"agent",weight:1,state:"on"}, {role:"cosigner",weight:1,state:signed?"on":"withheld"}];
       var res={
         requestLine:'Agent requests: pay <span class="mono">'+esc(destLabel)+'</span> — $'+a.amount,
