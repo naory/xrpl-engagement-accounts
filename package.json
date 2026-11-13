@@ -31,6 +31,7 @@
     "demo:mcp": "tsx packages/agent-mcp/demo/b1-mcp-testnet.ts",
     "web": "tsx packages/web/src/server.ts",
     "demo": "tsx packages/web/src/demo.ts",
+    "web:hotel-sim": "tsx packages/web/scripts/hotel-sim.ts",
     "pool:status": "tsx packages/cosigner/src/pool-cli.ts status",
     "pool:topup": "tsx packages/cosigner/src/pool-cli.ts topup",
     "pool:ensure": "tsx packages/cosigner/src/pool-cli.ts ensure",

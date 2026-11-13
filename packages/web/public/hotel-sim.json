@@ -1,0 +1,2590 @@
+{
+  "generatedBy": "npm run web:hotel-sim: CosignerService over FixtureLedgerSource (packages/web/src/hotel-sim.ts)",
+  "policy": "pol_hotel@2.0.0 (rulingWindow 432000s)",
+  "cast": {
+    "issuer": "rKfvVz8KPjr459Frg56dTjqnHkaYePLHv1",
+    "guest": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
+    "hotel": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
+    "arbiter": "rJpA1KgqyhwRfeGJa3x55UZG8ruwiP94RJ",
+    "backupArbiter": "rGnMqScHjKZWTq8RUshJYNvMuzVcGGkBP9",
+    "service": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
+    "cosigner": "rKVRKq2PVRgqG3UTHWR5pEc8x8c7s2Degj"
+  },
+  "booking": {
+    "room": "400",
+    "deposit": "100",
+    "bond": "10",
+    "claim": "20",
+    "maxDeposit": "200"
+  },
+  "timers": {
+    "openedAt": "2026-11-01T09:00:00Z",
+    "confirmBy": "2026-11-01T11:00:00Z",
+    "checkIn": "2026-11-11T14:00:00Z",
+    "checkInBy": "2026-11-11T23:00:00Z",
+    "entryDisputeBy": "2026-11-12T11:00:00Z",
+    "deliveryBy": "2026-11-14T11:00:00Z",
+    "claimBy": "2026-11-15T11:00:00Z",
+    "disputeWindowEnds": "2026-11-17T11:00:00Z"
+  },
+  "paths": {
+    "happy": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
+      },
+      {
+        "step": "confirm",
+        "stage": "confirm",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "C1",
+            "result": "pass"
+          },
+          {
+            "id": "C2",
+            "result": "pass"
+          },
+          {
+            "id": "C4",
+            "result": "pass"
+          },
+          {
+            "id": "C5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-01T09:30:00Z"
+      },
+      {
+        "step": "checkin attestation",
+        "final": "RECEIPTED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "default.release pre-signed",
+        "final": "STORED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "deposit",
+        "final": "tesSUCCESS",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "checkin",
+        "stage": "checkin",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "K1",
+            "result": "pass"
+          },
+          {
+            "id": "K2",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "tick default.refund",
+        "stage": "default.refund",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "R1",
+          "R2"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "R1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "R2",
+            "result": "fail",
+            "reason": "BALANCE_CHANGED"
+          },
+          {
+            "id": "R3",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "tick default.noshow",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "N1",
+          "N3",
+          "N5"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "N1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "fail",
+            "reason": "BALANCE_CHANGED"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "tick default.release",
+        "stage": "default.release",
+        "decision": "REFUSE",
+        "failing": [
+          "L1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "L1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "L2",
+            "result": "pass"
+          },
+          {
+            "id": "L3",
+            "result": "pass"
+          },
+          {
+            "id": "L4",
+            "result": "pass"
+          },
+          {
+            "id": "L5",
+            "result": "pass"
+          },
+          {
+            "id": "L6",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "claim",
+        "final": "RECEIPTED",
+        "at": "2026-11-14T15:00:00Z"
+      },
+      {
+        "step": "probe:principal+counterparty",
+        "tx": "F5971E8AE1B56871EC0F3390FCA2F594745595F246BD1851CF54ACADAD8FF7E4",
+        "final": "tefBAD_QUORUM",
+        "at": "2026-11-14T18:00:00Z"
+      },
+      {
+        "step": "settle",
+        "stage": "settle",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "S2",
+            "result": "pass"
+          },
+          {
+            "id": "S4",
+            "result": "pass"
+          },
+          {
+            "id": "S5",
+            "result": "pass"
+          },
+          {
+            "id": "S6",
+            "result": "pass"
+          }
+        ],
+        "tx": "0466F765263C2983AA925738ED577DA38A8A5C3FCA2A33B41D2060249BDBBDF4",
+        "final": "tesSUCCESS",
+        "payouts": [
+          {
+            "to": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
+            "value": "417.9"
+          },
+          {
+            "to": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
+            "value": "2.1"
+          },
+          {
+            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
+            "value": "80"
+          }
+        ],
+        "at": "2026-11-14T18:00:00Z"
+      }
+    ],
+    "unconfirmed": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
+      },
+      {
+        "step": "tick default.noshow",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "N1",
+          "N2"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "N1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "N2",
+            "result": "fail",
+            "reason": "NOT_CONFIRMED"
+          },
+          {
+            "id": "N3",
+            "result": "pass"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-01T11:01:00Z"
+      },
+      {
+        "step": "tick default.refund",
+        "stage": "default.refund",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "R1",
+            "result": "pass"
+          },
+          {
+            "id": "R2",
+            "result": "pass"
+          },
+          {
+            "id": "R3",
+            "result": "pass"
+          }
+        ],
+        "tx": "538DA6C8DD06FE9B3219D1918E058557CEEFF2F9231E417F452D6B2803CEA013",
+        "final": "tesSUCCESS",
+        "payouts": [
+          {
+            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
+            "value": "400"
+          }
+        ],
+        "at": "2026-11-01T11:01:00Z"
+      }
+    ],
+    "noshow": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
+      },
+      {
+        "step": "confirm",
+        "stage": "confirm",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "C1",
+            "result": "pass"
+          },
+          {
+            "id": "C2",
+            "result": "pass"
+          },
+          {
+            "id": "C4",
+            "result": "pass"
+          },
+          {
+            "id": "C5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-01T09:30:00Z"
+      },
+      {
+        "step": "tick default.refund",
+        "stage": "default.refund",
+        "decision": "REFUSE",
+        "failing": [
+          "R1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "R1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "R2",
+            "result": "pass"
+          },
+          {
+            "id": "R3",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      },
+      {
+        "step": "tick default.noshow",
+        "stage": "default.noshow",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "pass"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          }
+        ],
+        "tx": "FAA57CDA26C76016826925426674E5A0B726A1D8822C22074ADFBFE9D128B309",
+        "final": "tesSUCCESS",
+        "payouts": [
+          {
+            "to": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
+            "value": "398"
+          },
+          {
+            "to": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
+            "value": "2"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      }
+    ],
+    "entryConceded": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
+      },
+      {
+        "step": "confirm",
+        "stage": "confirm",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "C1",
+            "result": "pass"
+          },
+          {
+            "id": "C2",
+            "result": "pass"
+          },
+          {
+            "id": "C4",
+            "result": "pass"
+          },
+          {
+            "id": "C5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-01T09:30:00Z"
+      },
+      {
+        "step": "dispute (entry)",
+        "final": "tesSUCCESS",
+        "at": "2026-11-11T20:00:00Z"
+      },
+      {
+        "step": "refund.conceded",
+        "stage": "refund.conceded",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "F1",
+            "result": "pass"
+          },
+          {
+            "id": "F2",
+            "result": "pass"
+          },
+          {
+            "id": "F3",
+            "result": "pass"
+          }
+        ],
+        "tx": "DB2718117DBFD7993BC9800F2B0A3D121BBFDE23B12C10FF31D4536B8172A09A",
+        "final": "tesSUCCESS",
+        "payouts": [
+          {
+            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
+            "value": "410"
+          }
+        ],
+        "at": "2026-11-12T09:00:00Z"
+      }
+    ],
+    "entryRuled": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
+      },
+      {
+        "step": "confirm",
+        "stage": "confirm",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "C1",
+            "result": "pass"
+          },
+          {
+            "id": "C2",
+            "result": "pass"
+          },
+          {
+            "id": "C4",
+            "result": "pass"
+          },
+          {
+            "id": "C5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-01T09:30:00Z"
+      },
+      {
+        "step": "dispute (entry)",
+        "final": "tesSUCCESS",
+        "at": "2026-11-11T20:00:00Z"
+      },
+      {
+        "step": "tick default.refund",
+        "stage": "default.refund",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "R1",
+          "R2"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "R1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "R2",
+            "result": "fail",
+            "reason": "BALANCE_CHANGED"
+          },
+          {
+            "id": "R3",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      },
+      {
+        "step": "tick default.noshow",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "N4",
+          "N5"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "pass"
+          },
+          {
+            "id": "N4",
+            "result": "fail",
+            "reason": "DISPUTE_OPEN"
+          },
+          {
+            "id": "N5",
+            "result": "fail",
+            "reason": "BALANCE_CHANGED"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      },
+      {
+        "tx": "B8490B63B8CAA8D50EDCB478C766562D8F0CE8CAC125E857FF08956F7D6B4CC0",
+        "final": "tesSUCCESS",
+        "payouts": [
+          {
+            "to": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
+            "value": "298.5"
+          },
+          {
+            "to": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
+            "value": "1.5"
+          },
+          {
+            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
+            "value": "110"
+          }
+        ],
+        "step": "ruling:arbiter",
+        "at": "2026-11-12T15:00:00Z"
+      }
+    ],
+    "silence": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
+      },
+      {
+        "step": "confirm",
+        "stage": "confirm",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "C1",
+            "result": "pass"
+          },
+          {
+            "id": "C2",
+            "result": "pass"
+          },
+          {
+            "id": "C4",
+            "result": "pass"
+          },
+          {
+            "id": "C5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-01T09:30:00Z"
+      },
+      {
+        "step": "checkin attestation",
+        "final": "RECEIPTED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "default.release pre-signed",
+        "final": "STORED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "deposit",
+        "final": "tesSUCCESS",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "checkin",
+        "stage": "checkin",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "K1",
+            "result": "pass"
+          },
+          {
+            "id": "K2",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "tick default.refund",
+        "stage": "default.refund",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "R1",
+          "R2"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "R1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "R2",
+            "result": "fail",
+            "reason": "BALANCE_CHANGED"
+          },
+          {
+            "id": "R3",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.noshow",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "N3",
+          "N5"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "fail",
+            "reason": "BALANCE_CHANGED"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.release",
+        "stage": "default.release",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "L1",
+            "result": "pass"
+          },
+          {
+            "id": "L2",
+            "result": "pass"
+          },
+          {
+            "id": "L3",
+            "result": "pass"
+          },
+          {
+            "id": "L4",
+            "result": "pass"
+          },
+          {
+            "id": "L5",
+            "result": "pass"
+          },
+          {
+            "id": "L6",
+            "result": "pass"
+          }
+        ],
+        "tx": "14F4CCE16B8B8A1D4625A936FEB4F4B70BF0AD081C50EA2F153755EBA1078A01",
+        "final": "tesSUCCESS",
+        "payouts": [
+          {
+            "to": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
+            "value": "398"
+          },
+          {
+            "to": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
+            "value": "2"
+          },
+          {
+            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
+            "value": "100"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      }
+    ],
+    "claimUnanswered": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
+      },
+      {
+        "step": "confirm",
+        "stage": "confirm",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "C1",
+            "result": "pass"
+          },
+          {
+            "id": "C2",
+            "result": "pass"
+          },
+          {
+            "id": "C4",
+            "result": "pass"
+          },
+          {
+            "id": "C5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-01T09:30:00Z"
+      },
+      {
+        "step": "checkin attestation",
+        "final": "RECEIPTED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "default.release pre-signed",
+        "final": "STORED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "deposit",
+        "final": "tesSUCCESS",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "checkin",
+        "stage": "checkin",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "K1",
+            "result": "pass"
+          },
+          {
+            "id": "K2",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "claim",
+        "final": "RECEIPTED",
+        "at": "2026-11-14T15:00:00Z"
+      },
+      {
+        "step": "tick default.refund",
+        "stage": "default.refund",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "R1",
+          "R2"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "R1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "R2",
+            "result": "fail",
+            "reason": "BALANCE_CHANGED"
+          },
+          {
+            "id": "R3",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.noshow",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "N3",
+          "N5"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "fail",
+            "reason": "BALANCE_CHANGED"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.release",
+        "stage": "default.release",
+        "decision": "REFUSE",
+        "failing": [
+          "L5"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "L1",
+            "result": "pass"
+          },
+          {
+            "id": "L2",
+            "result": "pass"
+          },
+          {
+            "id": "L3",
+            "result": "pass"
+          },
+          {
+            "id": "L4",
+            "result": "pass"
+          },
+          {
+            "id": "L5",
+            "result": "fail",
+            "reason": "CLAIM_POSTED"
+          },
+          {
+            "id": "L6",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "ruling:arbiter",
+        "stage": "ruling.default",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "D1",
+            "result": "pass"
+          },
+          {
+            "id": "D2",
+            "result": "pass"
+          },
+          {
+            "id": "D3",
+            "result": "pass"
+          },
+          {
+            "id": "D4",
+            "result": "pass"
+          },
+          {
+            "id": "D5",
+            "result": "pass"
+          }
+        ],
+        "tx": "233021FFD1CBD1AD54C8D838C56D50FF87EB04C50B5C87C473F885147AB9DA74",
+        "final": "tesSUCCESS",
+        "payouts": [
+          {
+            "to": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
+            "value": "417.9"
+          },
+          {
+            "to": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
+            "value": "2.1"
+          },
+          {
+            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
+            "value": "80"
+          }
+        ],
+        "at": "2026-11-17T12:00:00Z"
+      }
+    ],
+    "backupRuling": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
+      },
+      {
+        "step": "confirm",
+        "stage": "confirm",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "C1",
+            "result": "pass"
+          },
+          {
+            "id": "C2",
+            "result": "pass"
+          },
+          {
+            "id": "C4",
+            "result": "pass"
+          },
+          {
+            "id": "C5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-01T09:30:00Z"
+      },
+      {
+        "step": "checkin attestation",
+        "final": "RECEIPTED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "default.release pre-signed",
+        "final": "STORED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "deposit",
+        "final": "tesSUCCESS",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "checkin",
+        "stage": "checkin",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "K1",
+            "result": "pass"
+          },
+          {
+            "id": "K2",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "claim",
+        "final": "RECEIPTED",
+        "at": "2026-11-14T15:00:00Z"
+      },
+      {
+        "step": "dispute (settlement)",
+        "final": "tesSUCCESS",
+        "at": "2026-11-15T10:00:00Z"
+      },
+      {
+        "step": "ruling:backupArbiter",
+        "stage": "ruling.backup",
+        "decision": "REFUSE",
+        "failing": [
+          "U1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "U1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "U2",
+            "result": "pass"
+          },
+          {
+            "id": "U3",
+            "result": "pass"
+          },
+          {
+            "id": "U4",
+            "result": "pass"
+          },
+          {
+            "id": "U5",
+            "result": "pass"
+          },
+          {
+            "id": "U6",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-16T10:00:00Z"
+      },
+      {
+        "step": "probe:arbiter+backupArbiter",
+        "tx": "C3AAA271C86413D5C8BC0D3A4CA601B53EC2C2BC8ABE9B8A3BCD3EE020C9DFCF",
+        "final": "tefBAD_QUORUM",
+        "at": "2026-11-16T10:00:00Z"
+      },
+      {
+        "step": "ruling:backupArbiter",
+        "stage": "ruling.backup",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "U1",
+            "result": "pass"
+          },
+          {
+            "id": "U2",
+            "result": "pass"
+          },
+          {
+            "id": "U3",
+            "result": "pass"
+          },
+          {
+            "id": "U4",
+            "result": "pass"
+          },
+          {
+            "id": "U5",
+            "result": "pass"
+          },
+          {
+            "id": "U6",
+            "result": "pass"
+          }
+        ],
+        "tx": "A2928667068D6B8FA431F15B976DFCEB6C7EED96B1D089C6B7A743E19DB6EE1C",
+        "final": "tesSUCCESS",
+        "payouts": [
+          {
+            "to": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
+            "value": "398"
+          },
+          {
+            "to": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
+            "value": "2"
+          },
+          {
+            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
+            "value": "110"
+          }
+        ],
+        "at": "2026-11-20T10:00:00Z"
+      }
+    ]
+  }
+}
