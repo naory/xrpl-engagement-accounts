@@ -1,6 +1,212 @@
 {
   "generatedBy": "npm run web:hotel-sim: CosignerService over FixtureLedgerSource (packages/web/src/hotel-sim.ts)",
   "policy": "pol_hotel@2.0.0 (rulingWindow 432000s)",
+  "explanations": {
+    "B1": {
+      "title": "Sent from the deal's own account",
+      "message": "The co-signer only signs transactions that move money out of this deal's single-use account, never anything that touches someone else's account."
+    },
+    "B2": {
+      "title": "Allowed kinds of transaction",
+      "message": "Each step may only use the transaction types it needs (payments, closing the account…). Handing control of the account to a new key is never allowed."
+    },
+    "B3": {
+      "title": "Network fee is reasonable",
+      "message": "The XRPL fee must stay under a cap, so a transaction can't quietly drain the account's XRP reserve."
+    },
+    "B4": {
+      "title": "Expires quickly if not used",
+      "message": "A live transaction must expire within a few ledgers (seconds), so a signed one can't be held back and used later. Pre-signed defaults are exempt; they're guarded by the other checks."
+    },
+    "B5": {
+      "title": "All-or-nothing",
+      "message": "When several payments go together, either all of them happen or none do. No half-paid outcome is possible."
+    },
+    "B6": {
+      "title": "Pays only people in the deal",
+      "message": "Money may only go to the guest, the hotel, the arbiters, or the service's fee account, never to an outsider."
+    },
+    "B7": {
+      "title": "Closes the account cleanly",
+      "message": "Closing the account must pay out every last cent and then delete it. If the payouts don't add up to exactly what's in the account, it would leave money stranded."
+    },
+    "B8": {
+      "title": "Says which outcome it is",
+      "message": "Every signed transaction carries a note naming the outcome it executes (agreed settlement, refund, ruling…), so the ledger history explains itself."
+    },
+    "B9": {
+      "title": "No other outcome in progress",
+      "message": "Only one ending can be in flight at a time. If one was just signed and is still settling, a second one waits, so the deal can't be paid out twice."
+    },
+    "B10": {
+      "title": "Right token issuer",
+      "message": "Every amount must be in the real RLUSD token from its official issuer, not a look-alike."
+    },
+    "B11": {
+      "title": "The ledger would accept it right now",
+      "message": "Pre-signed endings can only be tried once: a failed attempt burns them. So the co-signer only signs one when the account is in exactly the state that makes it succeed, including being old enough to be deleted."
+    },
+    "C1": {
+      "title": "Confirms the guest's actual booking",
+      "message": "The hotel's confirmation must point to the guest's own booking request."
+    },
+    "C2": {
+      "title": "Right city and dates",
+      "message": "The confirmed city and check-in/check-out dates must match what the guest asked for."
+    },
+    "C4": {
+      "title": "Right price",
+      "message": "The confirmed total must equal the room price the guest paid in."
+    },
+    "C5": {
+      "title": "Deposit within the guest's limit",
+      "message": "The security deposit the hotel asks for must not exceed the maximum the guest agreed to. Otherwise the confirmation doesn't count."
+    },
+    "K1": {
+      "title": "Guest checked in",
+      "message": "The hotel has recorded the guest's arrival, and the deposit is in the account."
+    },
+    "K2": {
+      "title": "Deposit is exactly right",
+      "message": "The account holds the room price plus exactly the confirmed deposit, no more, no less."
+    },
+    "S2": {
+      "title": "Valid settlement",
+      "message": "An agreed settlement splits the money between guest and hotel and closes the account, in one transaction."
+    },
+    "S4": {
+      "title": "Correct service fee",
+      "message": "The service takes 0.5% of whatever the hotel receives. Refunds to the guest carry no fee."
+    },
+    "S5": {
+      "title": "Guest left a review",
+      "message": "A stay that happened settles together with the guest's review, so every completed booking leaves a reputation record."
+    },
+    "S6": {
+      "title": "Pays only guest, hotel and fee",
+      "message": "A settlement can only pay the guest, the hotel, and the service fee, never the arbiters or anyone else."
+    },
+    "F1": {
+      "title": "Hotel admitted the problem",
+      "message": "There must be an open check-in dispute from the guest, and the hotel's own statement conceding it."
+    },
+    "F2": {
+      "title": "Valid refund",
+      "message": "A conceded refund sends everything to the guest and closes the account, in one transaction."
+    },
+    "F3": {
+      "title": "Full refund",
+      "message": "Everything in the account goes back to the guest, including any deposit and the dispute bond, with no fee."
+    },
+    "R1": {
+      "title": "Refund is due",
+      "message": "The automatic refund is only for a booking the hotel never confirmed by its deadline. If the hotel confirmed in time, it doesn't apply."
+    },
+    "R2": {
+      "title": "Account holds just the room price",
+      "message": "This refund was signed in advance for exactly the room price. If anything else is in the account now (a deposit, a dispute bond), it no longer fits."
+    },
+    "R3": {
+      "title": "Valid refund",
+      "message": "The automatic refund sends the room price back to the guest and closes the account."
+    },
+    "N1": {
+      "title": "No-show is due",
+      "message": "A no-show only counts after the last check-in time and after the guest's window to dispute at check-in has closed."
+    },
+    "N2": {
+      "title": "Booking was confirmed",
+      "message": "Only a confirmed booking can end in a no-show. An unconfirmed one ends in a refund instead."
+    },
+    "N3": {
+      "title": "Guest never checked in",
+      "message": "If the guest arrived and paid the deposit, it isn't a no-show."
+    },
+    "N4": {
+      "title": "No open dispute",
+      "message": "If the guest filed a dispute (with its bond), the automatic endings wait for the arbiter. Silence can't override a raised flag."
+    },
+    "N5": {
+      "title": "Account holds just the room price",
+      "message": "The no-show ending was signed in advance for exactly the room price. If anything else is in the account now, it no longer fits."
+    },
+    "N6": {
+      "title": "Valid no-show payout",
+      "message": "The no-show ending pays the room to the hotel (less the fee) and closes the account."
+    },
+    "N7": {
+      "title": "Correct service fee",
+      "message": "The service takes 0.5% of whatever the hotel receives."
+    },
+    "L1": {
+      "title": "Release is due",
+      "message": "The 'nobody acted' release only fires after the guest's window to dispute has closed, and only for a stay that happened."
+    },
+    "L2": {
+      "title": "No open dispute",
+      "message": "If the guest filed a dispute (with its bond), the release waits for the arbiter. Silence can't override a raised flag."
+    },
+    "L3": {
+      "title": "Account holds room plus deposit",
+      "message": "The release was signed in advance for the room plus the deposit. If anything else is in the account, it no longer fits."
+    },
+    "L4": {
+      "title": "Valid release",
+      "message": "The release pays the room to the hotel, returns the deposit to the guest, and closes the account."
+    },
+    "L5": {
+      "title": "No deposit claim posted",
+      "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on."
+    },
+    "L6": {
+      "title": "Deposit goes back in full",
+      "message": "The whole deposit returns to the guest; the hotel gets the room price less the fee."
+    },
+    "U1": {
+      "title": "Primary arbiter's time ran out",
+      "message": "The backup arbiter may only rule once the primary arbiter's ruling window has passed without a ruling."
+    },
+    "U2": {
+      "title": "Primary arbiter hasn't ruled",
+      "message": "If the primary arbiter already ruled, the backup steps aside."
+    },
+    "U3": {
+      "title": "Backup arbiter has ruled",
+      "message": "There must be a signed ruling from the backup arbiter."
+    },
+    "U4": {
+      "title": "Pays exactly what was ruled",
+      "message": "The transaction must pay exactly the amounts in the backup arbiter's ruling, to exactly those people."
+    },
+    "U5": {
+      "title": "Valid ruling payout",
+      "message": "A ruling splits the money and closes the account, in one transaction."
+    },
+    "U6": {
+      "title": "Correct service fee",
+      "message": "The service takes 0.5% of whatever the hotel receives."
+    },
+    "D1": {
+      "title": "Hotel posted a claim",
+      "message": "A default ruling only exists to settle a deposit claim the guest never answered."
+    },
+    "D2": {
+      "title": "Guest didn't dispute",
+      "message": "If the guest disputed the claim, the arbiter rules on the dispute instead."
+    },
+    "D3": {
+      "title": "Guest's time to answer is over",
+      "message": "The guest can dispute a claim until the dispute window closes. Only after that does an unanswered claim stand."
+    },
+    "D4": {
+      "title": "Claim within the deposit",
+      "message": "A claim can never exceed the security deposit."
+    },
+    "D5": {
+      "title": "Pays exactly the claim",
+      "message": "The hotel gets the room plus the claim (less the fee); the rest of the deposit goes back to the guest."
+    }
+  },
   "cast": {
     "issuer": "rKfvVz8KPjr459Frg56dTjqnHkaYePLHv1",
     "guest": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",

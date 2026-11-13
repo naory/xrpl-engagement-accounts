@@ -17,7 +17,7 @@ import xrpl from 'xrpl'
 import * as keypairs from 'ripple-keypairs'
 import { encodeForMultisigning } from 'ripple-binary-codec'
 import { Amount, formatAmount, localSigner, parseAmount, signStatement, type AssetDef, type Statement, type Template } from '@eng/core'
-import type { EngagementRecord, LedgerSnapshot, PolicyDoc } from '@eng/policy'
+import { ruleExplanations, type EngagementRecord, type LedgerSnapshot, type PolicyDoc } from '@eng/policy'
 import {
   CosignerService, DEMO_HOTEL_BOOKING, FixtureLedgerSource, HOTEL_PATHS,
   buildCloseBatch, combine, currencyHex, memo, multisignBlob, receiptOf,
@@ -37,6 +37,8 @@ export interface HotelTranscript {
   cast: { issuer: string; guest: string; hotel: string; arbiter: string; backupArbiter: string; service: string; cosigner: string }
   booking: HotelBooking
   timers: Record<string, string>
+  /** Human-readable rule names and explanations from the policy layers (title, message), keyed by rule id. */
+  explanations: Record<string, { title?: string; message?: string }>
   paths: Record<HotelPath, HotelSimStep[]>
 }
 
@@ -406,6 +408,7 @@ export async function buildHotelTranscript(): Promise<HotelTranscript> {
   return {
     generatedBy: 'npm run web:hotel-sim: CosignerService over FixtureLedgerSource (packages/web/src/hotel-sim.ts)',
     policy: `${lib.policy.policyId}@${lib.policy.version} (rulingWindow ${String(lib.policy.params?.rulingWindow)})`,
+    explanations: ruleExplanations(lib.policies),
     cast: {
       issuer: W.issuer.address, guest: W.guest.address, hotel: W.hotel.address, arbiter: W.arbiter.address,
       backupArbiter: W.backupArbiter.address, service: W.service.address, cosigner: W.cosigner.address,

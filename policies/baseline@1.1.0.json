@@ -2,66 +2,190 @@
   "policyId": "pol_baseline",
   "version": "1.1.0",
   "layer": "baseline",
-  "appliesTo": ["*"],
+  "appliesTo": [
+    "*"
+  ],
   "language": "cel-eng/1",
   "params": {
     "feeCapDrops": 20000,
     "maxLedgerWindow": 30,
-    "presignedStages": ["default.refund", "default.release", "default.noshow", "ladder", "release.documents"],
-    "concurrentStages": ["spend"],
+    "presignedStages": [
+      "default.refund",
+      "default.release",
+      "default.noshow",
+      "ladder",
+      "release.documents"
+    ],
+    "concurrentStages": [
+      "spend"
+    ],
     "allowedTypes": {
-      "open":            ["Batch", "Payment", "SignerListSet", "TicketCreate", "SetRegularKey"],
-      "spend":           ["Batch", "Payment"],
-      "settle":          ["Batch", "Payment", "TrustSet", "AccountDelete"],
-      "default.refund":  ["Batch", "Payment", "TrustSet", "AccountDelete"],
-      "default.release": ["Batch", "Payment", "TrustSet", "AccountDelete"],
-      "default.noshow":  ["Batch", "Payment", "TrustSet", "AccountDelete"],
-      "refund.conceded": ["Batch", "Payment", "TrustSet", "AccountDelete"],
-      "ruling.backup":   ["Batch", "Payment", "TrustSet", "AccountDelete"],
-      "ruling.default":  ["Batch", "Payment", "TrustSet", "AccountDelete"],
-      "checkin":         [],
-      "ladder":          ["Batch", "Payment", "TrustSet", "AccountDelete"],
-      "amend":           ["Batch", "Payment", "TicketCreate", "AccountSet"],
-      "close.owner":     ["Batch", "Payment", "TrustSet", "AccountDelete"]
+      "open": [
+        "Batch",
+        "Payment",
+        "SignerListSet",
+        "TicketCreate",
+        "SetRegularKey"
+      ],
+      "spend": [
+        "Batch",
+        "Payment"
+      ],
+      "settle": [
+        "Batch",
+        "Payment",
+        "TrustSet",
+        "AccountDelete"
+      ],
+      "default.refund": [
+        "Batch",
+        "Payment",
+        "TrustSet",
+        "AccountDelete"
+      ],
+      "default.release": [
+        "Batch",
+        "Payment",
+        "TrustSet",
+        "AccountDelete"
+      ],
+      "default.noshow": [
+        "Batch",
+        "Payment",
+        "TrustSet",
+        "AccountDelete"
+      ],
+      "refund.conceded": [
+        "Batch",
+        "Payment",
+        "TrustSet",
+        "AccountDelete"
+      ],
+      "ruling.backup": [
+        "Batch",
+        "Payment",
+        "TrustSet",
+        "AccountDelete"
+      ],
+      "ruling.default": [
+        "Batch",
+        "Payment",
+        "TrustSet",
+        "AccountDelete"
+      ],
+      "checkin": [],
+      "ladder": [
+        "Batch",
+        "Payment",
+        "TrustSet",
+        "AccountDelete"
+      ],
+      "amend": [
+        "Batch",
+        "Payment",
+        "TicketCreate",
+        "AccountSet"
+      ],
+      "close.owner": [
+        "Batch",
+        "Payment",
+        "TrustSet",
+        "AccountDelete"
+      ]
     }
   },
   "stages": {
     "*": {
       "enforcement": "ledger",
       "rules": [
-        { "id": "B1", "when": "hasTx", "reason": "WRONG_ACCOUNT",
+        {
+          "id": "B1",
+          "title": "Sent from the deal's own account",
+          "when": "hasTx",
+          "reason": "WRONG_ACCOUNT",
           "check": "tx.account == eng.account && tx.innerAccounts().all(a, a == eng.account || (stage == 'open' && eng.parties.exists(k, eng.parties[k] == a)))",
-          "message": "Only transactions from the engagement account (plus the funder at open) may be co-signed." },
-        { "id": "B2", "when": "hasTx", "reason": "TX_TYPE_NOT_ALLOWED",
+          "message": "The co-signer only signs transactions that move money out of this deal's single-use account, never anything that touches someone else's account."
+        },
+        {
+          "id": "B2",
+          "title": "Allowed kinds of transaction",
+          "when": "hasTx",
+          "reason": "TX_TYPE_NOT_ALLOWED",
           "check": "tx.innerTypes().all(t, t in params.allowedTypes[stage]) && !tx.setsRegularKey()",
-          "message": "Transaction types allowed in this stage are limited; installing a RegularKey is never allowed." },
-        { "id": "B3", "when": "hasTx", "reason": "FEE_TOO_HIGH",
+          "message": "Each step may only use the transaction types it needs (payments, closing the account…). Handing control of the account to a new key is never allowed."
+        },
+        {
+          "id": "B3",
+          "title": "Network fee is reasonable",
+          "when": "hasTx",
+          "reason": "FEE_TOO_HIGH",
           "check": "tx.fee <= params.feeCapDrops + (tx.closes() ? ledger.reserveIncrement() : 0)",
-          "message": "Fee above the cap would drain the account's XRP." },
-        { "id": "B4", "when": "hasTx", "reason": "NO_EXPIRY",
+          "message": "The XRPL fee must stay under a cap, so a transaction can't quietly drain the account's XRP reserve."
+        },
+        {
+          "id": "B4",
+          "title": "Expires quickly if not used",
+          "when": "hasTx",
+          "reason": "NO_EXPIRY",
           "check": "stage in params.presignedStages || (tx.hasLastLedgerSequence && tx.lastLedgerSequence <= ledgerIndex + params.maxLedgerWindow)",
-          "message": "Live transactions need a short LastLedgerSequence." },
-        { "id": "B5", "when": "hasTx", "reason": "NOT_ALL_OR_NOTHING",
+          "message": "A live transaction must expire within a few ledgers (seconds), so a signed one can't be held back and used later. Pre-signed defaults are exempt; they're guarded by the other checks."
+        },
+        {
+          "id": "B5",
+          "title": "All-or-nothing",
+          "when": "hasTx",
+          "reason": "NOT_ALL_OR_NOTHING",
           "check": "!tx.isBatch || tx.isAllOrNothing()",
-          "message": "Batches must be ALLORNOTHING." },
-        { "id": "B6", "when": "hasTx", "reason": "UNAUTHORIZED_DESTINATION",
+          "message": "When several payments go together, either all of them happen or none do. No half-paid outcome is possible."
+        },
+        {
+          "id": "B6",
+          "title": "Pays only people in the deal",
+          "when": "hasTx",
+          "reason": "UNAUTHORIZED_DESTINATION",
           "check": "tx.payouts.destinations().all(d, d in eng.allowedDestinations)",
-          "message": "Payouts may only go to engagement parties, the fee account, child engagements, or mandate vendors." },
-        { "id": "B7", "when": "hasTx", "reason": "UNCLEAN_CLOSE",
+          "message": "Money may only go to the guest, the hotel, the arbiters, or the service's fee account, never to an outsider."
+        },
+        {
+          "id": "B7",
+          "title": "Closes the account cleanly",
+          "when": "hasTx",
+          "reason": "UNCLEAN_CLOSE",
           "check": "!tx.closes() || (tx.drainsExactly() && tx.deleteDestinationValid())",
-          "message": "A closing Batch must drain the asset exactly, remove the trust line, and delete to the service/sponsor." },
-        { "id": "B8", "when": "hasTx", "reason": "NO_BASIS_MEMO",
+          "message": "Closing the account must pay out every last cent and then delete it. If the payouts don't add up to exactly what's in the account, it would leave money stranded."
+        },
+        {
+          "id": "B8",
+          "title": "Says which outcome it is",
+          "when": "hasTx",
+          "reason": "NO_BASIS_MEMO",
           "check": "tx.memo('eng/basis') != null",
-          "message": "Every co-signed transaction records its basis (eng/basis memo)." },
-        { "id": "B9", "when": "hasTx", "reason": "OUTCOME_IN_FLIGHT",
+          "message": "Every signed transaction carries a note naming the outcome it executes (agreed settlement, refund, ruling…), so the ledger history explains itself."
+        },
+        {
+          "id": "B9",
+          "title": "No other outcome in progress",
+          "when": "hasTx",
+          "reason": "OUTCOME_IN_FLIGHT",
           "check": "inflight.count() == 0 || stage in params.concurrentStages",
-          "message": "Another co-signed outcome for this engagement is still in flight." },
-        { "id": "B10", "when": "hasTx", "reason": "WRONG_ISSUER",
+          "message": "Only one ending can be in flight at a time. If one was just signed and is still settling, a second one waits, so the deal can't be paid out twice."
+        },
+        {
+          "id": "B10",
+          "title": "Right token issuer",
+          "when": "hasTx",
+          "reason": "WRONG_ISSUER",
           "check": "tx.issuersValid()",
-          "message": "Every amount must use the policy's declared issuer." },
-        { "id": "B11", "when": "hasTx && stage in params.presignedStages", "reason": "WOULD_FAIL",
+          "message": "Every amount must be in the real RLUSD token from its official issuer, not a look-alike."
+        },
+        {
+          "id": "B11",
+          "title": "The ledger would accept it right now",
+          "when": "hasTx && stage in params.presignedStages",
+          "reason": "WOULD_FAIL",
           "check": "tx.wouldSucceed()",
-          "message": "Pre-signed outcomes are single-shot: complete only when the ledger state makes them succeed exactly." }
+          "message": "Pre-signed endings can only be tried once: a failed attempt burns them. So the co-signer only signs one when the account is in exactly the state that makes it succeed, including being old enough to be deleted."
+        }
       ]
     }
   }

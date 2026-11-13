@@ -9,7 +9,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
 import { parseAmount, signStatement, newNonce, localSigner, type Statement, type StatementBody, type Template } from '@eng/core'
-import { intentHashOf, layerHash, type EngagementRecord, type PolicyDoc } from '@eng/policy'
+import { intentHashOf, layerHash, ruleExplanations, type EngagementRecord, type PolicyDoc } from '@eng/policy'
 import {
   CosignerService, XrplLedgerSource,
   ASF_DEFAULT_RIPPLE, ASF_DISABLE_MASTER, LSF_DISABLE_MASTER, TF_SET_NO_RIPPLE,
@@ -55,7 +55,7 @@ export interface ProvisionResult {
   balance: string | null
   session: { id: string }
   /** Hotel stay only: each path opens its own single-use engagement account when it runs. */
-  hotel?: HotelStatus & { paths: HotelPath[]; pooled: boolean; accounts: Partial<Record<HotelPath, string>>; booking: HotelBooking; timers: HotelTimerOffsets; policy: string }
+  hotel?: HotelStatus & { paths: HotelPath[]; pooled: boolean; accounts: Partial<Record<HotelPath, string>>; booking: HotelBooking; timers: HotelTimerOffsets; policy: string; explanations: Record<string, { title?: string; message?: string }> }
 }
 /** Whether the hotel paths can run yet (unpooled: the pre-created accounts must first age past the AccountDelete window). */
 export interface HotelStatus { ready: boolean; status: string; ran: HotelPath[]; /** Terminal: aging failed; provision again. */ failed?: boolean }
@@ -531,6 +531,7 @@ export class DemoOrchestrator {
       hotel: {
         ...this.hotelStatus(), paths: HOTEL_PATHS, pooled, accounts: Object.fromEntries(Object.entries(h.accounts).map(([p, w]) => [p, w!.address])),
         booking: DEMO_HOTEL_BOOKING, timers: DEMO_HOTEL_TIMERS, policy: `pol_hotel@${policy.version} ${h.policyLayer} (rulingWindow 60s)`,
+        explanations: ruleExplanations([baseline, policy]),
       },
     }
   }

@@ -4,6 +4,8 @@ export type Enforcement = 'service' | 'ledger' | 'final-signature' | 'advisory' 
 
 export interface Rule {
   id: string
+  /** Short human-readable name (shown in UIs; not normative). */
+  title?: string
   when?: string
   check: string
   reason: string

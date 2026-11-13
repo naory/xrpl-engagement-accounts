@@ -226,7 +226,7 @@
       }
     },
     "layers": {
-      "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40": {
+      "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82": {
         "policyId": "pol_baseline",
         "version": "1.1.0",
         "layer": "baseline",
@@ -259,80 +259,91 @@
             "rules": [
               {
                 "id": "B1",
+                "title": "Sent from the deal's own account",
                 "when": "hasTx",
                 "reason": "WRONG_ACCOUNT",
                 "check": "tx.account == eng.account && tx.innerAccounts().all(a, a == eng.account || (stage == 'open' && eng.parties.exists(k, eng.parties[k] == a)))",
-                "message": "Only transactions from the engagement account (plus the funder at open) may be co-signed."
+                "message": "The co-signer only signs transactions that move money out of this deal's single-use account, never anything that touches someone else's account."
               },
               {
                 "id": "B2",
+                "title": "Allowed kinds of transaction",
                 "when": "hasTx",
                 "reason": "TX_TYPE_NOT_ALLOWED",
                 "check": "tx.innerTypes().all(t, t in params.allowedTypes[stage]) && !tx.setsRegularKey()",
-                "message": "Transaction types allowed in this stage are limited; installing a RegularKey is never allowed."
+                "message": "Each step may only use the transaction types it needs (payments, closing the account…). Handing control of the account to a new key is never allowed."
               },
               {
                 "id": "B3",
+                "title": "Network fee is reasonable",
                 "when": "hasTx",
                 "reason": "FEE_TOO_HIGH",
                 "check": "tx.fee <= params.feeCapDrops + (tx.closes() ? ledger.reserveIncrement() : 0)",
-                "message": "Fee above the cap would drain the account's XRP."
+                "message": "The XRPL fee must stay under a cap, so a transaction can't quietly drain the account's XRP reserve."
               },
               {
                 "id": "B4",
+                "title": "Expires quickly if not used",
                 "when": "hasTx",
                 "reason": "NO_EXPIRY",
                 "check": "stage in params.presignedStages || (tx.hasLastLedgerSequence && tx.lastLedgerSequence <= ledgerIndex + params.maxLedgerWindow)",
-                "message": "Live transactions need a short LastLedgerSequence."
+                "message": "A live transaction must expire within a few ledgers (seconds), so a signed one can't be held back and used later. Pre-signed defaults are exempt; they're guarded by the other checks."
               },
               {
                 "id": "B5",
+                "title": "All-or-nothing",
                 "when": "hasTx",
                 "reason": "NOT_ALL_OR_NOTHING",
                 "check": "!tx.isBatch || tx.isAllOrNothing()",
-                "message": "Batches must be ALLORNOTHING."
+                "message": "When several payments go together, either all of them happen or none do. No half-paid outcome is possible."
               },
               {
                 "id": "B6",
+                "title": "Pays only people in the deal",
                 "when": "hasTx",
                 "reason": "UNAUTHORIZED_DESTINATION",
                 "check": "tx.payouts.destinations().all(d, d in eng.allowedDestinations)",
-                "message": "Payouts may only go to engagement parties, the fee account, child engagements, or mandate vendors."
+                "message": "Money may only go to the guest, the hotel, the arbiters, or the service's fee account, never to an outsider."
               },
               {
                 "id": "B7",
+                "title": "Closes the account cleanly",
                 "when": "hasTx",
                 "reason": "UNCLEAN_CLOSE",
                 "check": "!tx.closes() || (tx.drainsExactly() && tx.deleteDestinationValid())",
-                "message": "A closing Batch must drain the asset exactly, remove the trust line, and delete to the service/sponsor."
+                "message": "Closing the account must pay out every last cent and then delete it. If the payouts don't add up to exactly what's in the account, it would leave money stranded."
               },
               {
                 "id": "B8",
+                "title": "Says which outcome it is",
                 "when": "hasTx",
                 "reason": "NO_BASIS_MEMO",
                 "check": "tx.memo('eng/basis') != null",
-                "message": "Every co-signed transaction records its basis (eng/basis memo)."
+                "message": "Every signed transaction carries a note naming the outcome it executes (agreed settlement, refund, ruling…), so the ledger history explains itself."
               },
               {
                 "id": "B9",
+                "title": "No other outcome in progress",
                 "when": "hasTx",
                 "reason": "OUTCOME_IN_FLIGHT",
                 "check": "inflight.count() == 0 || stage in params.concurrentStages",
-                "message": "Another co-signed outcome for this engagement is still in flight."
+                "message": "Only one ending can be in flight at a time. If one was just signed and is still settling, a second one waits, so the deal can't be paid out twice."
               },
               {
                 "id": "B10",
+                "title": "Right token issuer",
                 "when": "hasTx",
                 "reason": "WRONG_ISSUER",
                 "check": "tx.issuersValid()",
-                "message": "Every amount must use the policy's declared issuer."
+                "message": "Every amount must be in the real RLUSD token from its official issuer, not a look-alike."
               },
               {
                 "id": "B11",
+                "title": "The ledger would accept it right now",
                 "when": "hasTx && stage in params.presignedStages",
                 "reason": "WOULD_FAIL",
                 "check": "tx.wouldSucceed()",
-                "message": "Pre-signed outcomes are single-shot: complete only when the ledger state makes them succeed exactly."
+                "message": "Pre-signed endings can only be tried once: a failed attempt burns them. So the co-signer only signs one when the account is in exactly the state that makes it succeed, including being old enough to be deleted."
               }
             ]
           }
@@ -599,7 +610,7 @@
           }
         }
       },
-      "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0": {
+      "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D": {
         "policyId": "pol_hotel",
         "version": "2.0.0",
         "layer": "template",
@@ -645,27 +656,31 @@
             "rules": [
               {
                 "id": "C1",
+                "title": "Confirms the guest's actual booking",
                 "reason": "BAD_CONFIRMATION",
                 "check": "def.conf != null && def.conf.claim.mandateHash == eng.mandateId",
-                "message": "The hotel's confirmation must reference the guest's mandate."
+                "message": "The hotel's confirmation must point to the guest's own booking request."
               },
               {
                 "id": "C2",
+                "title": "Right city and dates",
                 "reason": "MANDATE_MISMATCH",
                 "check": "def.conf.claim.city == mandate.constraints.city && def.conf.claim.checkIn == mandate.constraints.checkIn && def.conf.claim.checkOut == mandate.constraints.checkOut",
-                "message": "City and dates must match the mandate."
+                "message": "The confirmed city and check-in/check-out dates must match what the guest asked for."
               },
               {
                 "id": "C4",
+                "title": "Right price",
                 "reason": "AMOUNT_MISMATCH",
                 "check": "amt(def.conf.claim.total.value, 'RLUSD') == def.booked",
-                "message": "The confirmed total must equal the booked amount."
+                "message": "The confirmed total must equal the room price the guest paid in."
               },
               {
                 "id": "C5",
+                "title": "Deposit within the guest's limit",
                 "reason": "DEPOSIT_OVER_CAP",
                 "check": "def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
-                "message": "The deposit may not exceed the mandate's maxDeposit."
+                "message": "The security deposit the hotel asks for must not exceed the maximum the guest agreed to. Otherwise the confirmation doesn't count."
               }
             ]
           },
@@ -674,15 +689,17 @@
             "rules": [
               {
                 "id": "K1",
+                "title": "Guest checked in",
                 "reason": "NOT_CHECKED_IN",
                 "check": "def.checkedIn",
-                "message": "The hotel must record the guest as checked in."
+                "message": "The hotel has recorded the guest's arrival, and the deposit is in the account."
               },
               {
                 "id": "K2",
+                "title": "Deposit is exactly right",
                 "reason": "DEPOSIT_MISMATCH",
                 "check": "def.balance == def.booked + def.deposit",
-                "message": "The account must hold the room plus exactly the confirmed deposit."
+                "message": "The account holds the room price plus exactly the confirmed deposit, no more, no less."
               }
             ]
           },
@@ -691,28 +708,32 @@
             "rules": [
               {
                 "id": "S2",
+                "title": "Valid settlement",
                 "reason": "TX_SHAPE",
                 "check": "tx.matchesBlueprint('close.split')",
-                "message": "An agreed settlement is a close.split Batch."
+                "message": "An agreed settlement splits the money between guest and hotel and closes the account, in one transaction."
               },
               {
                 "id": "S4",
+                "title": "Correct service fee",
                 "reason": "FEE_MISMATCH",
                 "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
-                "message": "The service fee is 50 bps of everything the hotel receives."
+                "message": "The service takes 0.5% of whatever the hotel receives. Refunds to the guest carry no fee."
               },
               {
                 "id": "S5",
+                "title": "Guest left a review",
                 "reason": "REVIEW_REQUIRED",
                 "when": "def.checkedIn",
                 "check": "tx.memo('eng/review') != null && att.list('party.review/1', 'principal').exists(r, r.id == tx.memo('eng/review'))",
-                "message": "A stay that happened settles with the guest's review."
+                "message": "A stay that happened settles together with the guest's review, so every completed booking leaves a reputation record."
               },
               {
                 "id": "S6",
+                "title": "Pays only guest, hotel and fee",
                 "reason": "BAD_PAYEE",
                 "check": "tx.payouts.destinations().all(d, d in [eng.parties.principal, eng.parties.counterparty, eng.fee.to])",
-                "message": "Settlement pays only the guest, the hotel and the fee account."
+                "message": "A settlement can only pay the guest, the hotel, and the service fee, never the arbiters or anyone else."
               }
             ]
           },
@@ -721,21 +742,24 @@
             "rules": [
               {
                 "id": "F1",
+                "title": "Hotel admitted the problem",
                 "reason": "NOT_CONCEDED",
                 "check": "def.conceded",
-                "message": "Needs an open entry dispute and the hotel's concession referencing it."
+                "message": "There must be an open check-in dispute from the guest, and the hotel's own statement conceding it."
               },
               {
                 "id": "F2",
+                "title": "Valid refund",
                 "reason": "TX_SHAPE",
                 "check": "tx.matchesBlueprint('close.refundAll')",
-                "message": "A conceded refund is a close.refundAll Batch."
+                "message": "A conceded refund sends everything to the guest and closes the account, in one transaction."
               },
               {
                 "id": "F3",
+                "title": "Full refund",
                 "reason": "NOT_FULL_REFUND",
                 "check": "def.toGuest == def.balance",
-                "message": "Everything in the account goes to the guest, with no fee."
+                "message": "Everything in the account goes back to the guest, including any deposit and the dispute bond, with no fee."
               }
             ]
           },
@@ -744,21 +768,24 @@
             "rules": [
               {
                 "id": "R1",
+                "title": "Refund is due",
                 "reason": "NOT_DUE",
                 "check": "now > timestamp(eng.timers.confirmBy) && !def.confirmed",
-                "message": "Refund only after confirmBy when the booking was never confirmed."
+                "message": "The automatic refund is only for a booking the hotel never confirmed by its deadline. If the hotel confirmed in time, it doesn't apply."
               },
               {
                 "id": "R2",
+                "title": "Account holds just the room price",
                 "reason": "BALANCE_CHANGED",
                 "check": "def.balance == def.booked",
-                "message": "The account must hold exactly the room amount."
+                "message": "This refund was signed in advance for exactly the room price. If anything else is in the account now (a deposit, a dispute bond), it no longer fits."
               },
               {
                 "id": "R3",
+                "title": "Valid refund",
                 "reason": "TX_SHAPE",
                 "check": "tx.matchesBlueprint('close.refundAll')",
-                "message": "The refund default is a close.refundAll Batch."
+                "message": "The automatic refund sends the room price back to the guest and closes the account."
               }
             ]
           },
@@ -767,45 +794,52 @@
             "rules": [
               {
                 "id": "N1",
+                "title": "No-show is due",
                 "reason": "NOT_DUE",
                 "check": "now > timestamp(eng.timers.checkInBy) && now > timestamp(eng.timers.entryDisputeBy)",
-                "message": "No-show only after both checkInBy and entryDisputeBy."
+                "message": "A no-show only counts after the last check-in time and after the guest's window to dispute at check-in has closed."
               },
               {
                 "id": "N2",
+                "title": "Booking was confirmed",
                 "reason": "NOT_CONFIRMED",
                 "check": "def.confirmed",
-                "message": "Only a confirmed booking can be a no-show."
+                "message": "Only a confirmed booking can end in a no-show. An unconfirmed one ends in a refund instead."
               },
               {
                 "id": "N3",
+                "title": "Guest never checked in",
                 "reason": "CHECKED_IN",
                 "check": "!def.checkedIn",
-                "message": "The guest was recorded as checked in."
+                "message": "If the guest arrived and paid the deposit, it isn't a no-show."
               },
               {
                 "id": "N4",
+                "title": "No open dispute",
                 "reason": "DISPUTE_OPEN",
                 "check": "!def.disputeOpen",
-                "message": "A guest dispute is open."
+                "message": "If the guest filed a dispute (with its bond), the automatic endings wait for the arbiter. Silence can't override a raised flag."
               },
               {
                 "id": "N5",
+                "title": "Account holds just the room price",
                 "reason": "BALANCE_CHANGED",
                 "check": "def.balance == def.booked",
-                "message": "The account must hold exactly the room amount."
+                "message": "The no-show ending was signed in advance for exactly the room price. If anything else is in the account now, it no longer fits."
               },
               {
                 "id": "N6",
+                "title": "Valid no-show payout",
                 "reason": "TX_SHAPE",
                 "check": "tx.matchesBlueprint('close.releaseAll')",
-                "message": "The no-show default is a close.releaseAll Batch."
+                "message": "The no-show ending pays the room to the hotel (less the fee) and closes the account."
               },
               {
                 "id": "N7",
+                "title": "Correct service fee",
                 "reason": "FEE_MISMATCH",
                 "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
-                "message": "The service fee is 50 bps of everything the hotel receives."
+                "message": "The service takes 0.5% of whatever the hotel receives."
               }
             ]
           },
@@ -814,39 +848,45 @@
             "rules": [
               {
                 "id": "L1",
+                "title": "Release is due",
                 "reason": "NOT_DUE",
                 "check": "now > timestamp(eng.timers.disputeWindowEnds) && def.checkedIn",
-                "message": "Release only after the dispute window, for a stay that happened."
+                "message": "The 'nobody acted' release only fires after the guest's window to dispute has closed, and only for a stay that happened."
               },
               {
                 "id": "L2",
+                "title": "No open dispute",
                 "reason": "DISPUTE_OPEN",
                 "check": "!def.disputeOpen",
-                "message": "A guest dispute is open."
+                "message": "If the guest filed a dispute (with its bond), the release waits for the arbiter. Silence can't override a raised flag."
               },
               {
                 "id": "L3",
+                "title": "Account holds room plus deposit",
                 "reason": "BALANCE_CHANGED",
                 "check": "def.balance == def.booked + def.deposit",
-                "message": "The account must hold exactly the room plus the deposit."
+                "message": "The release was signed in advance for the room plus the deposit. If anything else is in the account, it no longer fits."
               },
               {
                 "id": "L4",
+                "title": "Valid release",
                 "reason": "TX_SHAPE",
                 "check": "tx.matchesBlueprint('close.releaseWithDeposit')",
-                "message": "The release default is a close.releaseWithDeposit Batch."
+                "message": "The release pays the room to the hotel, returns the deposit to the guest, and closes the account."
               },
               {
                 "id": "L5",
+                "title": "No deposit claim posted",
                 "reason": "CLAIM_POSTED",
                 "check": "def.claim == null",
-                "message": "The hotel posted a deposit claim; it goes to settlement or a ruling."
+                "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on."
               },
               {
                 "id": "L6",
+                "title": "Deposit goes back in full",
                 "reason": "PAYOUT_MISMATCH",
                 "check": "def.toGuest == def.deposit && def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
-                "message": "The deposit returns to the guest; the room goes to the hotel less the fee."
+                "message": "The whole deposit returns to the guest; the hotel gets the room price less the fee."
               }
             ]
           },
@@ -855,39 +895,45 @@
             "rules": [
               {
                 "id": "U1",
+                "title": "Primary arbiter's time ran out",
                 "reason": "NOT_DUE",
                 "check": "(def.disputeOpen && now > def.disputeOpenedAt + duration(params.rulingWindow)) || (def.claim != null && !def.disputeOpen && now > timestamp(eng.timers.disputeWindowEnds) + duration(params.rulingWindow))",
-                "message": "The backup arbiter may rule only after the primary's ruling window."
+                "message": "The backup arbiter may only rule once the primary arbiter's ruling window has passed without a ruling."
               },
               {
                 "id": "U2",
+                "title": "Primary arbiter hasn't ruled",
                 "reason": "PRIMARY_RULED",
                 "check": "def.primaryRuling == null",
-                "message": "The primary arbiter has ruled."
+                "message": "If the primary arbiter already ruled, the backup steps aside."
               },
               {
                 "id": "U3",
+                "title": "Backup arbiter has ruled",
                 "reason": "NO_RULING",
                 "check": "def.backupRuling != null",
-                "message": "Needs a ruling from the backup arbiter."
+                "message": "There must be a signed ruling from the backup arbiter."
               },
               {
                 "id": "U4",
+                "title": "Pays exactly what was ruled",
                 "reason": "RULING_MISMATCH",
                 "check": "size(def.backupRuling.claim.payouts) == tx.payouts.count() && def.backupRuling.claim.payouts.all(p, def.backupRuling.claim.payouts.filter(q, q.to == p.to).size() == 1 && tx.payouts.to(p.to, 'RLUSD') == amt(p.value, 'RLUSD')) && tx.payouts.destinations().all(d, def.backupRuling.claim.payouts.exists(p, p.to == d))",
-                "message": "The transaction must pay exactly the backup ruling's payouts."
+                "message": "The transaction must pay exactly the amounts in the backup arbiter's ruling, to exactly those people."
               },
               {
                 "id": "U5",
+                "title": "Valid ruling payout",
                 "reason": "TX_SHAPE",
                 "check": "tx.matchesBlueprint('close.split')",
-                "message": "A ruling is a close.split Batch."
+                "message": "A ruling splits the money and closes the account, in one transaction."
               },
               {
                 "id": "U6",
+                "title": "Correct service fee",
                 "reason": "FEE_MISMATCH",
                 "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
-                "message": "The service fee is 50 bps of everything the hotel receives."
+                "message": "The service takes 0.5% of whatever the hotel receives."
               }
             ]
           },
@@ -896,33 +942,38 @@
             "rules": [
               {
                 "id": "D1",
+                "title": "Hotel posted a claim",
                 "reason": "NO_CLAIM",
                 "check": "def.claim != null",
-                "message": "A default ruling needs a posted claim."
+                "message": "A default ruling only exists to settle a deposit claim the guest never answered."
               },
               {
                 "id": "D2",
+                "title": "Guest didn't dispute",
                 "reason": "DISPUTE_OPEN",
                 "check": "!def.disputeOpen",
-                "message": "The guest disputed; the arbiter rules on the dispute instead."
+                "message": "If the guest disputed the claim, the arbiter rules on the dispute instead."
               },
               {
                 "id": "D3",
+                "title": "Guest's time to answer is over",
                 "reason": "NOT_DUE",
                 "check": "now > timestamp(eng.timers.disputeWindowEnds)",
-                "message": "The guest may answer the claim until disputeWindowEnds."
+                "message": "The guest can dispute a claim until the dispute window closes. Only after that does an unanswered claim stand."
               },
               {
                 "id": "D4",
+                "title": "Claim within the deposit",
                 "reason": "CLAIM_OVER_DEPOSIT",
                 "check": "def.claimTotal <= def.deposit",
-                "message": "Claims are capped at the deposit."
+                "message": "A claim can never exceed the security deposit."
               },
               {
                 "id": "D5",
+                "title": "Pays exactly the claim",
                 "reason": "PAYOUT_MISMATCH",
                 "check": "def.toMerchant + def.toFee == def.booked + def.claimTotal && def.toGuest == def.deposit - def.claimTotal && def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
-                "message": "Room plus claim to the hotel (less fee), the deposit remainder to the guest."
+                "message": "The hotel gets the room plus the claim (less the fee); the rest of the deposit goes back to the guest."
               }
             ]
           }
@@ -1050,7 +1101,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1083,8 +1134,8 @@
           "att:EEC1175E4F7E88555919CD5F7685754836F2A913CDA4EAB10B757C31A692F073"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:8eb65217e7dcee91bcd14f30efee79ce073115709218a279904bed7ee572aa3d",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:3aff58f3081f1814e15210b509633394895bdb2e990dd4d60c4eccd8191f4c83",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -1230,7 +1281,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1264,8 +1315,8 @@
           "att:5E7FC764AE7CB7E071FF76B17BB9A0C055698A1A02496B26F97083F61A7DFCB2"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:0bd17801ed038dd9e111b145195841accc08fa10eaf01693b5760185dde2efbb",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:15d17505608d890072fa43e5f80c04e7cd9681319e9d19a883e752285ee4ad47",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -1411,7 +1462,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1445,8 +1496,8 @@
           "att:444E7A9F1E8E205AB8200D486B7F1AB680242139EBF4E7DFC570F68C046D4120"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:9aa5c45b6fc40f0ae79498968d4117d370ce825015c39de1fd7ae300c6cb4a11",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:faf3369dadf44f422ee60f899695449e021d754be99f3db80ef5c44e7123d6ed",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -1592,7 +1643,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1626,8 +1677,8 @@
           "att:2EDBD81BB77F0EDE4FA6DBD970FB8F04F1F9F736F49235CB166B62C08405745B"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:fc9d19c8be4496df4fc3ec38297015d7d45be623ffd0cd7c224a83e48d91d0b7",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:26dd2b8813ba271f5075dc6804d9def6441c8679800fddd96cf3f4d32dbeec23",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -1758,7 +1809,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1791,8 +1842,8 @@
           "att:D6AA06FB2D241F5D8027CF72F3DBCFF571854839B2354D9B3C0917029CD786CC"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:8934aea284524ccd47e3d333e6ce51bf5fc4d65a0e6653b463ec3512ae5a15b6",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:9dbfc8e5643770730eae985e971e7b39d3081d0a064ee3bcf1f6d670d804f12e",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -1929,7 +1980,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -1962,8 +2013,8 @@
           "att:0E9DD851C22C433A53C1D62F58D74D9C9AA091418BEEEE63FA25FD5C17DDB8F9"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:c9b7c424876556223562679f95d891c76162af99eec01328c4ba4006c5734f34",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:0774845f0fdc04a0f5148d4a33cbf005fc97529014c911970bbb35e570f3fe4c",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -2091,7 +2142,7 @@
         ],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -2124,8 +2175,8 @@
           "att:EE1B30140FDA7EDD5F261A55243F14CA42D2BD7CC693353A44DE365C193C7537"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:96c13a477b1d03bf7a7986259bff6548682c9aded73df644825cff3aa25b832a",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:49e1ec8009fc1286546a3b897b43fea6653523492e4adbb5744a434d2497f2e6",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -2247,7 +2298,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -2280,8 +2331,8 @@
           "att:C13431928D8DD1C83D9FD0266A07BBC3530B400B0B5B19427048D41294470030"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:e0020f7eb5eea3c060a8d1734e3c6ab3efe5c026a88dbac3b55069af24bf6b08",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:f6c5bc5fe5e00cd034df34292134805dfe4089970c81cb359f31ea3db24a7f35",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -2420,7 +2471,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -2454,8 +2505,8 @@
           "att:ABAE742F934DFD4AF365CA8C287C3B1C4C5A50B64AFDD9609FEDE0A09B0701AC"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:cd8c9253af9c4847b64a413976db20a2e8c400aaf1f75b516c22b4be3b7e4718",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:8a5e1346ed89fcc20eef1e2ef9d15bae7e6e46aa48d1022ec320e60628f085f3",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -2594,7 +2645,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -2628,8 +2679,8 @@
           "att:FA09543A1D9504542C379A96D4F680FC205D272B559EDD10FE42785A5B659CBB"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:7841ebf23e17a3c73b2c234b9ab61dd638403a2740f1e19dbc991d5dd75fbe33",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:e0948433a327a225677127e44cbe709e149f4a5c2aed8be466e67a6b179b68a9",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -2768,7 +2819,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -2802,8 +2853,8 @@
           "att:06F1FFF5BEBA81E68BD013B1446DD47E10803182D101DECA9FC736279328BF5A"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:a9f5cf26d2e3bbe25af0d62c78f5cc4a9c507a56dfca3e1a81fd1836ca6f60a5",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:a202e8c1576a8ee1a7ef6f5a8da6a82a262aa74dec5465b33a87e058e6858b49",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -2942,7 +2993,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -2981,8 +3032,8 @@
             "code": "ATTESTER_NOT_IN_TERMS"
           }
         ],
-        "inputsHash": "sha256:5399842ae9e48abae25483a3a5d62f69949933bf04d656c2593afdd3470cd82a",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:579fe34b500968e0b53dbfef3c2d4324461d0f8d492473b43c2e7a78889314aa",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -3121,7 +3172,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3160,8 +3211,8 @@
             "code": "STALE"
           }
         ],
-        "inputsHash": "sha256:0d0b4640e69dd427a9bf02b4cce695c672b492a34ea4069d231fb4e1e9536902",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:ee8c0ef141c2502c89bd859fcf36524a17fd31aa8a58d7e4e6758240d9cd7765",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -3300,7 +3351,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3339,8 +3390,8 @@
             "code": "CONSUMED"
           }
         ],
-        "inputsHash": "sha256:5cdbd3c7fc76bb9b9c03fd3867ff1dc12113b592cd6b8e961b032c53fce12e64",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:35d48ad0ae6ba2f194ac2dd863867b8fa078a0f9e04da33576a03c3ea7864769",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -3462,7 +3513,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3495,8 +3546,8 @@
           "att:3615313D0B4D8945A3C4613C2BF67B164DC3BE668F1A20317F30DF96CF1B0A84"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:2037ecfa336c96ff1a270e8383a54e51e65a1ea6fd8fe3cce78d238feaa2d8cc",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:f1256fdceade32e73a8e5e0d21a3f3f39c6bc8c9f1551a567fc55a26efd972d3",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -3611,7 +3662,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3644,8 +3695,8 @@
           "att:FCB3C74ED032E37BFB6973CA7CB5B59334EEDACA78F0DF48AE693D211B12D1C5"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:5acdcaa4df1ef85627ad59e204aeaaab70c057b131b476dc79e93064e1345702",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:dccc19b97ad2d4b37f1a048b805d74fe8dcba96eacf473d208d7984f73ef9212",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -3760,7 +3811,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3793,8 +3844,8 @@
           "att:AE92AFF6E0A888A3DC1881D0205EED9C7FACA4D1FC33C4DA6415FF550B2BD400"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:314de51a7db079611bc3bc13095daa923129eb2bea8ed9b1613d0c0d8ff058f2",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:18b1c4ae3f1ec975925d11c2bbc6df3b2925c9ff75ed72c1e02ac515bce2ed71",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -3916,7 +3967,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -3949,8 +4000,8 @@
           "att:E4DD493211EC840FA1FACB22168E0118A8CDD0763B2698B37AF09BBE4E096B5A"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:02e42fba759d273eda9e56303d10d69773fffee41fb43ee45dbabe1f8682befe",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:b49b5bf1461bc24fea312958490b0d85bf90af2961f431e9dba9dc4b7b369361",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -4072,7 +4123,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -4105,8 +4156,8 @@
           "att:09EB7E6764133B05F301791DAD9F8A3B312AF7B19BFED460CB1D2A44DAB3DE21"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:56fb0575f29eb60288caeac1763f564fe23ed2591f7ff1a5dd2acacb84a95c63",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:10e02925a625dcdedcd7030b8222be1ac5f48b8d1e52df494d46c3cbf3a65f0f",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -4228,7 +4279,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -4261,8 +4312,8 @@
           "att:BF2C3DCE84296E3983BA7126B23C8E4CB1035BE71683F5C99743D8A9B4B33186"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:c8a819da823ff7ab633b43ff86c3fb11af3f148e3457fc971eca041a4e4ad8be",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:8ac1be09ea0897a48fd32121e785cae8bbf37d5854ad493cf21b91aad7110e86",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -4407,7 +4458,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -4440,8 +4491,8 @@
           "att:A4BC340AE71793BF8D881A622F3BEB109C0EB935DE758757361D9CD1D0821B1D"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:08060d5b608b7dd362192079a870ae24c40eec9a2863ce02d760d6c2ca462e83",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:5181fd3e04bc80467f16a12bc224615cf5853e31de490831dd074e744e7f2573",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -4563,7 +4614,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -4596,8 +4647,8 @@
           "att:C90C12ACFEC7E532859D7893C6D37356C57EC35012728B88E39FA31878E54C2B"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:fe86025bd9fcc3a0eeaeae7e37fda14da2ae49fae4f4f88a9cf96c8337aad2b8",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:91acbc0c6d5fcf22b3e710f1357b8fc972225a96cb5993c5ee8e52346166743c",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -4718,7 +4769,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -4751,8 +4802,8 @@
           "att:78B8D1AF2D6C3E3DE355D83FA549CBD758B09FCFB0FFD0CC67D5B5BAE80BA36E"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:fd240ed6c47787f8dc459f395fe99967d3380656164310a78a0d86543b76547f",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:f9e8c4fadc0f8b61c43660f9436b0352eecb27e5c008cb130971efbb1b49c847",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -4874,7 +4925,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -4907,8 +4958,8 @@
           "att:8B3EB6D72E96589F3D67B2A67C97048FD7EDC3575CC293020ED731D662E0D0BE"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:98af6acde05cd899ddbda587fae897839513e962bf1aa8c06e82b9633645e402",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:ebd8c29714ca5dad1944fe79606ab72bf5809d70ba2561390632eda8bf489de5",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -5030,7 +5081,7 @@
         "inflight": [],
         "template": "owner-wallet/procurement@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:CBE7773F0A2AC5D144C7F7BADA91941A96FCD1BFCA98940766F2F59F6099AD36"
         ]
       },
@@ -5056,8 +5107,8 @@
           "att:BCA7E72C6B916B592D7371ADC6025D047C9E86A901517CB68B0F0CF2B79E1680"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:1d72a7704fbd6d321288ebd0a972fbe7c6d1ae9dd9b5c44ba482a0a37ab97f66",
-        "effectiveHash": "att:2DD348FF8F418BB9C9579C3C2CB4583DA07EADCE804C369D10CFBAD101ADD985"
+        "inputsHash": "sha256:00367b77ea6389ced66a336cb4f61383bc05d13512f1ee5817e3aef2ed4ff46e",
+        "effectiveHash": "att:942527F06B2AB938DCC72E1E4D9ED488649782E7949BF56E790705D64651899D"
       }
     },
     {
@@ -5234,7 +5285,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -5263,8 +5314,8 @@
           "att:B500BA0E74E3B1A96E3395A4C913CEE5610808C1C6D18AAEA495047DE79E8427"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:f37ed844913b18d9b3c4f481ba428d63f3052bc5a170cdad12b03bce41c42fc7",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:78c30e0b6b3d929ef869be830a6dc749f3b5363bf40652715e3e87b2c134958b",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -5423,7 +5474,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -5449,8 +5500,8 @@
         ],
         "statementsUsed": ["att:EE9C47AD18E7F7EE60369FF2FCEE006FCB18BCA71DB0CAD8CD51FDFE53A9D7D1"],
         "statementsRejected": [],
-        "inputsHash": "sha256:7121e2f3a844171f91921cf4f69f0d77d0eaeb8682d02b23d9a3e5502edc604e",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:a74f4a6a53c0551c16e977ace3a16d262a0a1d080cd93268794d35701b1edb73",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -5635,7 +5686,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -5664,8 +5715,8 @@
           "att:EA0D214FCCB76DD731371315F2C1CE7F58E750B713C151671F33E087E59A4422"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:7e9b31b157dac1e1b59f763f7e5a4c95029a1b0b32ee801f14c8fa49b2734db0",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:d0c4116b158edd2f9d14f97efc65a9e5f9c84e73e638b8f813d8b820e426d5b7",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -5842,7 +5893,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -5871,8 +5922,8 @@
           "att:DB93FBBE57F59C13D694BD6F7309A2C99050BB8668B03085995054AA9724B661"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:9c3e71478dff51e06f4371eb31c819b7d24000179d4c5b7bda6c7264f059b989",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:dda79d1c0ae5e2ee757b1dd2a9cbca8f24c79a839fb0cd66f6c460b48fbae965",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -6049,7 +6100,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6078,8 +6129,8 @@
           "att:45BA1802DA93AAFBB9B68DD0C0412A1F9E79A3786FD12AECCFA9E40597C02F72"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:05a2444fe2a131f181585795de1584e2b4523bfe8e66fbaef8a4dca5ee45035d",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:cf8fbd1f7524ff27d58ec12bc1bdfa7850f7136360ea35494c7aecb0b7e9e9c5",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -6272,7 +6323,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6301,8 +6352,8 @@
           "att:E3962E6EBC6DD1037EEFCABC0C0753D0F839666B07D03F05E18A080E6757F163"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:31f38877d9ec47db2a67ebaec3ca3e5acc662c80ac0c6fb9c0539541a8f877fb",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:b34c5c99eea6ec08e7a2f3d4b88730944588afba2d33c93b02d37b5b58a63625",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -6479,7 +6530,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6508,8 +6559,8 @@
           "att:4A16BEBE7A061C864520682607FDB06F8D388FDE34F6462B9D4230F25C86896B"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:ce598c15972df88e37640446906a40ab84264c466661a2ebb9900297c15ba416",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:d72079a45f3c061dee86038cf5a37447a6310176ca81b76401aea279488de60f",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -6686,7 +6737,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6715,8 +6766,8 @@
           "att:409D9695720DFC0A62F9A55C25C413E8567CA63F8F9EB45EF882E8A76E9A93ED"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:1fecf2492f75bff25c9b2d0d96ee3796b443646de40a0f3f294274ea328acba1",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:20f62e803f5e74a1adc231e1f2c213da09c7f86c956777c029aae04f7688d327",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -6825,7 +6876,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6853,8 +6904,8 @@
           "att:AB30CE7EEC42EECD3980BE291441BFFE0157438833648624A833256680B653F4"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:a939edcf783e5dff609cd5ef38d581d83350a969cace9192cce5b6bcc6d22100",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:427e96fb0c89a3d0f4983c71f459f1287a80ecc8f21f39bf886065644046a4e1",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -6963,7 +7014,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -6991,8 +7042,8 @@
           "att:B2EECD386AB79E5A3218D650DD6D928914FE14DCACD8FC47DA440EE0E405C751"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:5b6d791185bf6909433377e49c0b3b96a5f722b2caafabe7e7ebf7cffed089db",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:a233983cd5a7a21578892ea58a7586f4a230e24f13b155b26c6cf76f0b0f488e",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -7130,7 +7181,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -7155,8 +7206,8 @@
         ],
         "statementsUsed": ["att:0EB2B0426F346224C16FA3C012DDA5C7142EF94D863F5F2817CE38BC753E6C0D"],
         "statementsRejected": [],
-        "inputsHash": "sha256:5a13eb95c9803cc79766162bb61199af81e49888a70feb4f1e17acfe3458c933",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:734598cf2faef5e3e828244d87c1de5be58f19187ae271ad65e676332be6fb94",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -7294,7 +7345,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -7319,8 +7370,8 @@
         ],
         "statementsUsed": ["att:357345A2889D9F402C1A5CCE900697B78F2364ADC6FDC711B45C065561A42BC3"],
         "statementsRejected": [],
-        "inputsHash": "sha256:98c994f5a7c23d568b9c7cbd2044ca54fe2023dada227fe5fd07a40c97ccb9eb",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:0ae958b83d3e0a0c1ab913691b0449224a399803f9682655e07230c6a1882a93",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -7475,7 +7526,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -7501,8 +7552,8 @@
         ],
         "statementsUsed": ["att:B460AD313C72ADD7AFBEBF0D0C99C854514411F71919653DBA57C7D1036677D3"],
         "statementsRejected": [],
-        "inputsHash": "sha256:b674761a1807abe94c3882a8c5fa4bff2199043616ee5449ca03dd09674aa9d6",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:015de58ed46dce11129c0706effab5b928c53d82fbadf1bbc61393afe4ee9c4b",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -7665,7 +7716,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -7691,8 +7742,8 @@
         ],
         "statementsUsed": ["att:82F8D16678293F94AF0C88BBFDCD0766FBD5839D60D1584C5F945E4919B70188"],
         "statementsRejected": [],
-        "inputsHash": "sha256:bcf66a812000e1ffd11440088f0f1122028f0a71ea9a2ecf84feb473abc20762",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:f11e9a0ee9696e31e85bbe5e03b285bfd5a44e39f22ddcf8407d293965a1374a",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -7847,7 +7898,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -7873,8 +7924,8 @@
         ],
         "statementsUsed": ["att:828A86591784B21E06B8B34B3995DBC60EF65CE6814BD41F26D042038681BA60"],
         "statementsRejected": [],
-        "inputsHash": "sha256:29a375fc81e84206267144b5f5d8634136c7f8a92a41edbf5acc92b9bfe2c486",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:b483a403d6406fae04f865cffb0de99dd3f6512b3b78dfa97baaf6cb93736cd0",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -8029,7 +8080,7 @@
         "inflight": [],
         "template": "settlement-vault/hotel@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:D368E94FAAF020EE2F25BD62500BFE3DF09B1F631B61FDA0525EEBA5739878CC"
         ]
       },
@@ -8055,8 +8106,8 @@
         ],
         "statementsUsed": ["att:0ADCFFA9D1ED93DE8FB9ACCB2CD47F80C95E55E57EFBC4093271E42C348F0BBF"],
         "statementsRejected": [],
-        "inputsHash": "sha256:d375f39578d30cbbb8f332e9388bf47f1220776f533d031b553d0e3f285ac4a9",
-        "effectiveHash": "att:353ABC6D9F8929A416BEC981868D0CC17EAE3CAA980066EA5F13FEAD7412E5AF"
+        "inputsHash": "sha256:066a9211c9291e7c96af4727b34ce466569a0bebbbfb9b70ada57eb0565d8d8c",
+        "effectiveHash": "att:E781C182C4C0EA91321B55EB8D09BB7657D4A197DB88697AA8503BFF4B23BC1D"
       }
     },
     {
@@ -8175,7 +8226,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8207,8 +8258,8 @@
           "att:B271DDA5CEE8880DF97549DDA0BF211D7757F97937852ADA6F49415D385CA4F3"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:25679caa21b4fa01a838a3d48b92e5d3b276fd3367b8b7d61313efc7a9c35ed9",
-        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
+        "inputsHash": "sha256:703e2fa01772e60f60e366806cc70a31779f94da821f0c9855887c71fbceddfa",
+        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
       }
     },
     {
@@ -8310,7 +8361,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8341,8 +8392,8 @@
           "att:2525E1226907A785446223F1835064EBB2D014D0B71FC9937D54324800C53AC3"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:fcbb2acadeb49adb4119c175007a85faa8b4338dc315551a9f714798d5f50bc9",
-        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
+        "inputsHash": "sha256:749921f5245baba970ab8d00a2b7623174efdae1d3f2c44a69d07e1a0b85805b",
+        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
       }
     },
     {
@@ -8461,7 +8512,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8493,8 +8544,8 @@
           "att:66E400C037E0B14D557E37F667E4A8015F2CF47BB44CF7FDB1B559D9C55FB2F7"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:4b1e808c81df7568fea40de9265c9be6c9ec3ce581a04b07202d96d70d70f5a7",
-        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
+        "inputsHash": "sha256:a0aee3294c65a0c07d37280e8298f3e602deec99ad1c592cb74fe0592f39c5e3",
+        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
       }
     },
     {
@@ -8622,7 +8673,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8654,8 +8705,8 @@
           "att:9E9F229FD27E4911A9B7825034EB618D6017B1051D99E61929F1755DF3C6F812"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:480a9c1c1993f9beb10493d3c1fab32b1fb60f6e65ed807d5ca1867585b4e010",
-        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
+        "inputsHash": "sha256:c1b63a23413892b5bdca20e22e78ce66e8eb367a595104246702b7154deb9f4f",
+        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
       }
     },
     {
@@ -8783,7 +8834,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8815,8 +8866,8 @@
           "att:04702A62B723182D7D8C70F64C9CCE1FDF77941CD86E8524A9927801ED000818"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:8234bb61ebab8cde4c0f400c7981ebfca3d66d8b5dbde3b9121acb95d141ff68",
-        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
+        "inputsHash": "sha256:a62e0367cc0c362e7ed591b1320889715b12c694d8f79e069e1a0923b7477751",
+        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
       }
     },
     {
@@ -8935,7 +8986,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -8967,8 +9018,8 @@
           "att:5D64DE3EDD0623490A953CD8BFB97E74100B3305BCC000A1EC6F338AD245DFD3"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:18138a7705dbe19cb13c24ee23ad6e04911ea62000270045638b93dc4d978445",
-        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
+        "inputsHash": "sha256:f5dd713909b629637d87c51a8df190b22ce6c975b79a62dc494ea6e9db2ff7e2",
+        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
       }
     },
     {
@@ -9099,7 +9150,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -9131,8 +9182,8 @@
           "att:83F7EFE9B2BF089C7B78B336B0DB4413FEEB04083668404FDEE1C30EFEE424C8"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:b1f5dba1cb944b7ab3604abf24fceccafca23daf031e3093769fd330896b04d9",
-        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
+        "inputsHash": "sha256:9ff4ae0a9c81d3636014e9188b6e7619d1b02478f23b304c9bffb6d70d0ad786",
+        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
       }
     },
     {
@@ -9263,7 +9314,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -9295,8 +9346,8 @@
           "att:8226252F43CB0413C5DE84A1957048F4468D9F91EC33B2349803D83A407EB6FD"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:edebe7e6ad56ba2becfb9fdc52faae675c8fe0b8cc2b6de5923b29d20744a9d6",
-        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
+        "inputsHash": "sha256:2ea16891d0ee665e26b297e376fc9a4f2031a813aa94b8a26c82f7bc9049d6e7",
+        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
       }
     },
     {
@@ -9415,7 +9466,7 @@
         "inflight": [],
         "template": "owner-wallet/shopping@1",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
           "att:5DFD86121AB94E0BA80761FB288787DCCE1FA0B0A8BC9EC966D49BD51B9EAEA9"
         ]
       },
@@ -9447,8 +9498,8 @@
           "att:8B5A8746C542431FAE1CAC4D8A7015C389CA613B1D7DE54CB598044BEF873BC8"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:1953891f0cd7362593f9bb9bfc1a8d05441d6441dca6b984ca5ce9ac70cd220a",
-        "effectiveHash": "att:AAB01D3D6FE4D6D538914F44A53DA14E0200FD228AE6CAD9EC49EDF7ABBADA61"
+        "inputsHash": "sha256:3d7b77069f0b4ea9c091acd80008f71b66a3c7aa0b8fe96fa088504e9adb7ed2",
+        "effectiveHash": "att:13F630CEC5478C94AE97A1A5258DB645E5F29B51AADB85AFC44072C027EE7355"
       }
     },
     {
@@ -9569,8 +9620,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -9598,8 +9649,8 @@
           "att:DBCD4E0FD689004AF669BC8CF2BAC404E662847DD06065A2C3E0C775CFD53B3D"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:777b55e6aaf2895be2ec807cb4e2b17f2ec16be2a1e7d7969e1115594c35750d",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:127f7332339234b5096cf619a087b499d79f21c9cd7d3ba8087a56fd7886dbb6",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -9720,8 +9771,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -9749,8 +9800,8 @@
           "att:99022BEC85BE35CCADE2CD17CB7A7C53FE5D58B44FF7F39821AA93B2190B5C74"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:58d498a0ce9512e84798e69ecce415f6ebb5f20c4e009fce0a6fa1ac958fabcf",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:1122dbfc2477d7af74ca9d362996b0320fc94ceb8677564ba05e47f39b3d0bc6",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -9888,8 +9939,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -9916,8 +9967,8 @@
           "att:7439B600AA4071613E967C6DADF5D7820E4CD9914DEF50BB6E42335A55D5A95D"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:c7c0f78954aa41687e6272f964e3de2304e3c1c8661403bc56e359d000532a8b",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:43890ec8ab9fff8db02cdb619289639730c3249739c025ae4586172e1d22349b",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -10055,8 +10106,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -10083,8 +10134,8 @@
           "att:4723517AEBD8BEE500FF18A34DA9C89A5381DF272F4E8149F4693FD98BEEAE48"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:94ef903180cd12891ffb0e14958b7ddb1d08c475db3b9222dddb1b45b282d3a2",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:ab639bd72c5ffc61679f4b6daa55d5f85dca5ec5a600c4a5f4de2355926da7d9",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -10352,8 +10403,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -10384,8 +10435,8 @@
           "att:B4471FB9D177B9E31507FD888DDBABD92BD5981E3D7515EABABBFF962C9AF317"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:dbf68a1aebecb712123b72de75bbba3f6bb5acc1fe95b0147df901baaaaad7ac",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:ce838729997bb58749a0ee7314df24984a7d257584444feb28b4c46723fca579",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -10669,8 +10720,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -10701,8 +10752,8 @@
           "att:DB718AAEAC28FD1EE68856BE295D765A9793236F7033B780B69E90F6220CE594"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:08f078afa8f1ba7d807d7d2e88d6e81294410fe751004389077a9df55f11dfef",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:669e012e7cf8c82659d75bb5dc6a8509149dc5e6ae0354c6c28ab073a8d17fdc",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -10923,8 +10974,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -10953,8 +11004,8 @@
           "att:6F73F1377D76E04BA9FFD19AB9C13187AFB6EDB6766E8242A27CC40C8B44C7DE"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:be89f5ddccd4725a87d17e6736183c51ed5bb12ee1c00f2b385df3d5080be58b",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:834e8bfbee1ecbf8b8ff01dd39631c5ef357281d2411fd6fccd6c020eb29a027",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -11158,8 +11209,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -11187,8 +11238,8 @@
           "att:88F226B7E79F3291B9457ADE48BB53B7C8B1AEF4343F3CE209E579B1A324CFCF"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:58037b87671688d5e4490daa5c12de463d57d240fa9c309f146e3b2bf99183f4",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:815e7d68557246ed43c578bf73c50aca5954b8e1798acb93df57609baa91dc36",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -11409,8 +11460,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -11439,8 +11490,8 @@
           "att:4CBAC2A4235354C38686CA089B143A61D3005C9AB361ACE403486B77767FF726"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:c6dc5e4aff9c0e29e0fac25145069c536c0c4bf1c6ab835e8fa78c5611d7a4f2",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:ecbee87c9dc7ed739c73b962df55308c2859102842a82fd2701644e8ccc184eb",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -11661,8 +11712,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -11691,8 +11742,8 @@
           "att:DB0256AF23C953E54B4978F012F91B01241C3ABAA3FA5DCBA035E2F224AEFF20"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:c01b6b5ca8f0e8a24028106ceee88a3432a27fab2c72b0f2c60e599750854c5e",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:f9fd8c861659b284fa8a1eb331a2c30529e93660b8cf273ab2fe992331bb0db4",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -11841,8 +11892,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -11866,8 +11917,8 @@
         ],
         "statementsUsed": ["att:86EA05641A391C24EED0BDD0C985F26F31747A47EE7F7804F86C685959EFF4BA"],
         "statementsRejected": [],
-        "inputsHash": "sha256:53560c01be195cff02188cafcad5e7aa39b05e39dff779d5fa31678683513626",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:7adadc47887e38b0a117881de3b0208e4f1d9816a6a3fc9ddc3b5a90709fc730",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -12044,8 +12095,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -12072,8 +12123,8 @@
           "att:D7F01DBD1CF74DCF50B87FC55635CFA9A3704CE3BA4DE92BDD2A06E1A94DD5CC"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:620f5308da3a8ac4ed63d2e893b8192c65570d168e1395be4fd85c1a4a63628c",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:8d77738b1009997a49d90d82cfa2fb4856841706cc80c3ac3efed1852ad38682",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -12250,8 +12301,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -12278,8 +12329,8 @@
           "att:FA1223844998A8387EC92ABBF1128216AE9813B89FA6AFD732845F4521444F1C"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:08bf3ff2459b2ffd38221f410faa1e79a8f05825da96a65afe059556be1ca382",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:aa9f71a83b1b429d725373c23c4a06168528ae5d79ac14d931320f76a3c93841",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -12473,8 +12524,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -12505,8 +12556,8 @@
           "att:D02189B877215EFD67CE20B0E96CC30F4C7023975E506085BDEDAEA3A7CD6FC4"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:8d1a453eed2ef9d60f2e1afb7ca47a060b5561429fd72aa20da72eedbc314a2d",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:7cd1a92993677fc373f3c25c11c39bf7e63ec5baef1378236f9956be65f3be1d",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -12717,8 +12768,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -12750,8 +12801,8 @@
           "att:0453BB819056607F9D2A2807DC03CAFC72450E199F3E5A18888F33993F937A77"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:6672b9592ce78c166035ad7b2c8fc1dcceb8b32edafed23d0e8c343f878f95d8",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:f87ef52aaac6984838992f164d6d0d751942a90387226293206d0d566683ad43",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -12962,8 +13013,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -12995,8 +13046,8 @@
           "att:E16432A10732945E34793B20383A7E8112CABBA120889BC2503534CE360A34AB"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:b60eec2c40e1f1380c45273dbc2f42b5ad8285b57d0003e02bcf608a80dcffdb",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:32ea365f128ae275ea6251cbdb3a0bd8639a492b58f17e6dd5b27f88bb9f0364",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -13224,8 +13275,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -13258,8 +13309,8 @@
           "att:A91172A03E377B3B147FE52EB2763F4FED4DEF17176956EA4255EC57AEFC4681"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:84c619f581464a878a0d873b037e712a12efa5b22d9b332ba76ddbe9ae71b362",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:faaa82eaa092f49d72c4affb1ffb21931ad2cc26119d973c58c93b804b253c60",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -13483,8 +13534,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -13516,8 +13567,8 @@
           "att:8D7C84CDBEB4BA3A3B1CEF5DFBE3F9BDF91AFB9E85A441762FDE6083981211FA"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:c017fb05ecc02034cb8a1cce8df4ed88e4e77ca570da9a92a8d9bbdb5f4c9d69",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:e0ae54de1810362c12e6c15eb26d8273cb5d1edc9fe3fd946a9e0dfb0caa6d59",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -13719,8 +13770,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -13751,8 +13802,8 @@
           "att:D27E588418404F776E8291DD117C7663DD7D93923A70C9563AA3C955B8FF5E15"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:1733c3652dda21a2226e0d5b197944ae8b4d9dbe66d1fea56eb2d27f0789a81b",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:ae81ccbb3587bc01529ccff5d9e9e019f2ff737a64f33d1aa5a797041382ff45",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -13976,8 +14027,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -14009,8 +14060,8 @@
           "att:12D25743BD7BF015B9D7EEAF55E02B0CC455AA52C01CEE4D89783FC6D3263DD4"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:dc7e685e3878288f69cfbc92649844ba4211baa98e4b137db9e1f6662225a98e",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:2553bf616ba3ca68df44f5917d0170cd49756a31bbd52a0a242dd92f9f13a9c2",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -14204,8 +14255,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -14236,8 +14287,8 @@
           "att:A6DAF739F335E744F95A4A4E0F35F1BCCC426AE969BDD9182A9EF10A5954798A"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:c17dfc9258d0042189bb6ae67661bf4270aeec36ceb4204ff6a7c9fd9f276c63",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:cf77447af14b822fa90135e44e435db8b6d1b16da5af4c33968e6f260a39e338",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -14431,8 +14482,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -14463,8 +14514,8 @@
           "att:DC2AA79EE1F5477D5633B07C244A2800B8706084510BC9705598C04C0C6A4DA3"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:dc0b8763b7ae634618c37c4ebae7f5ea69bed36b9ad764370607224d67e0fb58",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:e8c1509955cbc5555aa051d8149f71b3fff62440dc1d3d159e7640152f6212d5",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -14692,8 +14743,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -14724,8 +14775,8 @@
           "att:A085BB67C07B03D0813E8DE6BE009342EC738A01B71431A0211FEEC6EB1F5A8B"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:366e199ef121f88a0de8134d70f622b98cfecac1a3848a5fb29f0281a2480a26",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:ed0a3114e73fed84cb53d435eb4fe7f18764652fdcd06520aa38456b1c722db1",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -14973,8 +15024,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -15006,8 +15057,8 @@
           "att:F3946DC66CAD52ACA9D023408E8A4B9AB9746B2E648CD80C54E6EF4275E21B78"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:6fea70a6c308fbaca042d416a4181f6afd5021e54d4242fc8b8e9b570c939e99",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:b4618d3ec4168a54b7fdf87ac8d405a2fba0aa832faa7a64212cfb1f16c0c9f6",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -15235,8 +15286,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -15267,8 +15318,8 @@
           "att:E9D81CB26B0A3EF09202ADA7D809F541BBBB4F02F401E25C7DD2833D71095A71"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:543d812e8e3a79e8921de8381753c04d3e44407b1d3afec669665505fc2c07fc",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:7f36f548001e762c004286aa7081354734e052efa4b61c4e52a31f83ab595a42",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -15526,8 +15577,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -15559,8 +15610,8 @@
           "att:6C712A30B6F41EA824685DC9AD1F65721A843739DFAB2B084DEE6543E76B0C10"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:12b06e3f4886899aac025519648a71973fade87f81a4f43757a0f89019c1ef97",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:191a210552f238c61ed1478a9f6ff95d3a4a2f61d335c582c4367bf2a4287a48",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -15815,8 +15866,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -15848,8 +15899,8 @@
           "att:62E701F8C8D49A7DAC2636E89AEB49425955C032BF8BE0B1638DCB6B3C09134B"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:14888bb0df2a0de846252c5a5a89c8e3d3043cea6abd14978fbe33a61a469b08",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:bab81d081576e090fbdee97a048a9cbe06751d875e92a040a98f0b637a7a8fca",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -16104,8 +16155,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -16137,8 +16188,8 @@
           "att:62E701F8C8D49A7DAC2636E89AEB49425955C032BF8BE0B1638DCB6B3C09134B"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:2af8a676534b4d4eb3e872c142b5dc28d815cef3f3154b85ab8752d6b18073ea",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:b7d6a63928453120fe3f55597f83bd315c7bafb956cdeb1ffea987bf52d37e75",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -16366,8 +16417,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -16398,8 +16449,8 @@
           "att:3CF6E74AEBE8A215FF5805CF8CB82ECA16FAE97A26113DDF7DF7044041CFF214"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:b60330b3afbc6b0797c28894ad0378d23558cd9a5653fbeaf213bd541a706a8e",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:ad46174f1d6477711083d4f0a6e8a7c5b51a6e116f3e8f94b8fa67e1a6774640",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -16627,8 +16678,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -16659,8 +16710,8 @@
           "att:C562DF3A475B3B6C26D44C8D57181C6B1A0D72E325A1A4F858A04094BFEECC4A"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:9b0ac60492158837385eedd00f7fe2f60ff1668ffbef1d1116fb511c944c6ab5",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:2d1e02db91a5a4796db278337eae6b560662d4920dc6e40188034b845f2fd736",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -16957,8 +17008,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -16992,8 +17043,8 @@
           "att:F20BEC630140DA4D18FBF4BD5432D576A00C7542CADAFBC9CA75B41116F0ADFA"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:c4485ac6d46598feae86a0ec455ff6f581555d16f6ca81800c4f0f64f8c5e96e",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:6c6a0709aae9cea25be2671466e6a0601d91f947ae273ffb928b34a59fe66260",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -17290,8 +17341,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -17325,8 +17376,8 @@
           "att:1DB34547B8DC601BC0CDFF8B7690F4894E293EB8B3DAA1E5266127FE41CB1672"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:873a7aeeb4af99765eb31871c63ded4e85ca1e78b2c75f297987d84dd80662d5",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:fd16ac6bf99f453962548e40bb94cf22713a5b67e7ceaf095f1cd21ecf572d1b",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -17623,8 +17674,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -17658,8 +17709,8 @@
           "att:B3B268B073373E2848510EC7FBDAF580F92048668A8A73BF586F97B789286398"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:93ed3e4e9f834530ce0832799326beb0b59bcf22a8ebea5e323bf30fc70a4d38",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:a2fb7205104dc7080f93879241953867fc4087908de5691b766d38da6b3658e5",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -17980,8 +18031,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -18016,8 +18067,8 @@
           "att:FA6E2614E18DF49A721EC716BDC3CC63CA1E73E691129FC1E5EA3F06A767DC64"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:469c4c4eac18013693b221d4b784db8bfad1f8634d7bb18c51b20bc1a0e6485b",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:27743900189950506ce860f6d8b86408f3376fa612dc07a9992da1b1bb63f67b",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -18314,8 +18365,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -18349,8 +18400,8 @@
           "att:AC5B2493A4F47E26BCE1449B2A15EF69015E400AF9BA883B7C0F0A39D7CA7C50"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:94946790938e116bc5a6145d0c547bea76e6b695c71795050e0ff4980f695a60",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:9332a1029b91addf35fc51c4e7dfda48e5b3ad4543a24f6bf7606caf666c2871",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -18669,8 +18720,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -18705,8 +18756,8 @@
           "att:6074D181DF6703F81086A1F095A40153DB88A389996DD7B62DDA1EBA048E73CC"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:becdebbeb0e0482d0b40a08179737a695b028bebbacea621e9aac3fb8a295a32",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:8cd8902c36f63a92c7f2134bb22eb9a4b0d274171c1ad8ed8915055c76336d66",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -19019,8 +19070,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -19054,8 +19105,8 @@
           "att:15F94B05F68D6254DD929739D3FBB24AE7186390CD6C0DBEE8CC430A998AF2CA"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:f8e953d87f48d62f92329364159f3834eff84c6568b4ddcc07549b5c41c16887",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:e6acff105a6189bd90e26efd0af01a088a82977068ba8ce50704b24f17ae491a",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -19352,8 +19403,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -19387,8 +19438,8 @@
           "att:70B0C0747CC989EF77B0075269F704659FF39A36F735A76FDB82F60D251E1A36"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:e3a5b8b931edcdedc3e8902c17da2f913f2baa7cedd20308e6003899cf8e73db",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:6ddff26a803b8a827006e4c7574ad6af02ad2e6910bb1c60b7e58b92338124da",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -19668,8 +19719,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -19703,8 +19754,8 @@
           "att:9E8EF4AF35CE67124FA06A6BF1B390D4AF9A7EE527C1F9AB5929AFD482417EE3"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:5996811b3b4fadd1cd2e60ef54b5f62c59f2d6a291ed8e650ba40384750d34df",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:4db281d1415d5710dbae11ceda1dc977352b1dd13b825d6112ab43d65e6a9a06",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -19945,8 +19996,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -19979,8 +20030,8 @@
           "att:D5FEE644653108BE8061FDCC63FCA019EA8D367A4828039A4193C0A94C39D52E"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:12470d1a02950ae78eb0bcc984d73414201d6cbd29aba6f3b35dce8ba0d17ec7",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:11eebcf749d88ffc392f2ee1d3236c2861a6a2553f4d0109fe9fd9bd7edfc2af",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -20218,8 +20269,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -20249,8 +20300,8 @@
           "att:B749BC3D4CE622779752ED7693E565583DE0AB7E26FDDC82BB373EC86155AD23"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:4ea56aad6e2eba6840ae98382a851d23da41615653873f29df79dcfe790ee18f",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:e3fa53c9dd70e3c11319350255b9bfd8965465dc2ac5c419e43ea4144b1c909d",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -20517,8 +20568,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -20551,8 +20602,8 @@
           "att:92F6BBE1071020AF7AD9E3732D235A3D9D8750A3601615FE9FC51136EDDB562C"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:ce2f655c358c708eb6fd3c4f83ed3969f44c3d3c12552b22f163379e159a5e62",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:ea35d77acfaba1e3d937e22e2174577ccfe7f4946e38c3186f3052b488a4212d",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -20819,8 +20870,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -20853,8 +20904,8 @@
           "att:AB835362A66EFF2C67F823B2E2716601886660C1411E6567C259A186FBC9E7C3"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:965174462c7ab224bde40397d4895bddabbbb79c51977853049d19acdb7e8a32",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:2abe0af866788839ed1af05cdc0cc6fe541fd34135b7a8899aa0efdeee375356",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -21097,8 +21148,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -21129,8 +21180,8 @@
           "att:6A22F82CAF134359AD02354C05002F7C4876BA7693D095BD8A8FCE86257E50B6"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:ef10ea9ba4f7698de9b92848ebcbb407359a966eb23b172429110891843ac4db",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:22ca86b7cdf6f22a0f094a900a6d8641166284d261c5b4e9f75245881cfdabf5",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -21373,8 +21424,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -21405,8 +21456,8 @@
           "att:E222833B7297696BC5BB0519ACF6734F06F8C72525EBEC82A91330B7C2DDBC62"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:ed7e96230b351863d6fdb67290644dc599ab7b622b37b36209d0e2a50f3806ac",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:617ca6ea00dde169ec1515bf7ef5c802404dfe1816270bc3956864ebfeca55d7",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     },
     {
@@ -21649,8 +21700,8 @@
         "inflight": [],
         "template": "settlement-vault/hotel@2",
         "layers": [
-          "att:BD95C8D98BB5BEEFE1317E6C07030C79BD21F68A904EE51C4563672077A76C40",
-          "att:2DB24FC0BBECF189FD743B49A370BAC3761F4587A46402FEBA793E87B59232A0"
+          "att:BBFE73356A320886EEE2452FDEE41F8D7BC39C32D61868C4FA5F8C80B709DF82",
+          "att:95448E50485ED9292BCCB3C118D9D4B6EE9F1AA6F7B7252FFB8FC2BAA03B357D"
         ]
       },
       "expect": {
@@ -21681,8 +21732,8 @@
           "att:F7C7D6ED159516A9417EBB526C02C9FEEA285659CB2E2DF31A8F4DB26BAE0767"
         ],
         "statementsRejected": [],
-        "inputsHash": "sha256:257f2fb8da752be66ede241a51ab927774b6bd3e1c53fdc273683e2d4226bc79",
-        "effectiveHash": "att:89AB0EDE7AFC2C6523961DACA7A7B060EBFEB4564B27815EC815362368B2FA89"
+        "inputsHash": "sha256:ab6a4da46379777f31ff0f31759ef73fc72360b1e7f7740cb0d2cb66a423d7dc",
+        "effectiveHash": "att:205CD73310AA990EA969443A1AC4050A52A2F2B6DC0FAB8D26D28CA31EDF108E"
       }
     }
   ]

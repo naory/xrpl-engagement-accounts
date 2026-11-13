@@ -54,3 +54,12 @@ export function lintPolicy(p: PolicyDoc, template?: Template): LintFinding[] {
   }
   return out
 }
+
+/** Human-readable rule names and explanations (`title`, `message`) keyed by rule id, for UIs. Not normative. */
+export function ruleExplanations(layers: PolicyDoc[]): Record<string, { title?: string; message?: string }> {
+  const out: Record<string, { title?: string; message?: string }> = {}
+  for (const l of layers) for (const st of Object.values(l.stages)) for (const r of st.rules) {
+    if (r.title || r.message) out[r.id] = { ...(r.title ? { title: r.title } : {}), ...(r.message ? { message: r.message } : {}) }
+  }
+  return out
+}

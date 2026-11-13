@@ -224,11 +224,20 @@
   .tstep .th .tx{margin-left:auto;font-size:11.5px}
   .pill.neutral{background:var(--panel);color:var(--muted);border:1px solid var(--line)}
   .tstep .sub{margin-top:6px;font-size:12px;color:var(--muted);word-break:break-all}
-  .rules{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
-  .rule{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:6px;border:1px solid var(--line);color:var(--faint)}
-  .rule.pass{color:var(--good);border-color:color-mix(in srgb,var(--good) 40%,transparent)}
-  .rule.fail{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 50%,transparent);background:color-mix(in srgb,var(--bad) 10%,transparent)}
-  .rule .rr{opacity:.8}
+  .tstep .why{margin-top:6px;font-size:13px;line-height:1.45;color:var(--fg)}
+  .hshows{font-size:13px;line-height:1.45;color:var(--muted);margin:2px 0 10px}
+  .hshows .hint{display:block;margin-top:3px;font-size:12px;color:var(--faint)}
+  .rules{display:flex;flex-direction:column;gap:1px;margin-top:8px}
+  .rule{display:flex;align-items:baseline;gap:8px;width:100%;min-width:0;padding:3px 6px;border:0;border-radius:6px;background:none;font:inherit;font-size:12.5px;text-align:left;color:var(--muted);cursor:pointer}
+  .rule:hover,.rule:focus-visible{background:var(--panel)}
+  .rule .rid{flex:none;min-width:30px;font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .rule .rt{min-width:0}
+  .rule.pass .rt{color:var(--good)}
+  .rule.fail{background:color-mix(in srgb,var(--bad) 8%,transparent)}
+  .rule.fail .rt{color:var(--bad)}
+  .rule .rc{margin-left:auto;flex:none;font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+  .rexp{margin:0 0 4px 44px;padding:6px 9px;border-radius:6px;background:var(--panel);font-size:12px;line-height:1.45;color:var(--muted)}
+  @media (max-width:520px){ .rule .rc{display:none} .rexp{margin-left:6px} }
   .hstatus{font-size:12.5px;color:var(--muted)}
   .hstatus.wait{color:var(--warn)}
   .hstatus.fail{color:var(--bad)}
@@ -430,14 +439,14 @@
       solo:"Guest + hotel is weight 6, arbiter + backup arbiter is 6 — both below the quorum of 7. Every close needs the co-signer, or the arbiter with one party.",
       kind:"hotel",
       actions:[
-        {id:"happy", title:"Happy stay", sub:"confirm → check-in + deposit → minibar claim → guest settles", path:"happy"},
-        {id:"unconfirmed", title:"Hotel never confirms", sub:"the pre-signed refund fires", path:"unconfirmed"},
-        {id:"noshow", title:"Guest never shows", sub:"the pre-signed no-show pays the hotel", path:"noshow"},
-        {id:"entryConceded", title:"No room at check-in → hotel concedes", sub:"entry dispute, guest refunded with the bond", path:"entryConceded"},
-        {id:"entryRuled", title:"Downgraded room → arbiter rules", sub:"entry dispute, partial refund (arbiter + guest)", path:"entryRuled"},
-        {id:"silence", title:"Stay, no claim, silence", sub:"the pre-signed release returns the deposit", path:"silence"},
-        {id:"claimUnanswered", title:"Claim posted, guest silent", sub:"arbiter + hotel default ruling pays the claim", path:"claimUnanswered"},
-        {id:"backupRuling", title:"Claim disputed, arbiter silent", sub:"backup arbiter rules after the ruling window", path:"backupRuling"}
+        {id:"happy", title:"Happy stay", sub:"confirm → check-in + deposit → minibar claim → guest settles", path:"happy", shows:"Everything goes to plan. After checkout the hotel claims for the minibar from the deposit; the guest accepts and leaves a review, so guest, hotel and co-signer settle together."},
+        {id:"unconfirmed", title:"Hotel never confirms", sub:"the pre-signed refund fires", path:"unconfirmed", shows:"The hotel never confirms the booking in time. Nobody has to do anything: the guest’s money comes back automatically."},
+        {id:"noshow", title:"Guest never shows", sub:"the pre-signed no-show pays the hotel", path:"noshow", shows:"The hotel confirms, but the guest never arrives and never disputes. The hotel is paid automatically."},
+        {id:"entryConceded", title:"No room at check-in → hotel concedes", sub:"entry dispute, guest refunded with the bond", path:"entryConceded", shows:"The guest arrives and there’s no room. The guest disputes on the spot, the hotel admits it, and the guest gets everything back."},
+        {id:"entryRuled", title:"Downgraded room → arbiter rules", sub:"entry dispute, partial refund (arbiter + guest)", path:"entryRuled", shows:"The guest gets a worse room than booked and disputes at check-in. The arbiter reviews it and orders a partial refund."},
+        {id:"silence", title:"Stay, no claim, silence", sub:"the pre-signed release returns the deposit", path:"silence", shows:"The stay happens, the hotel claims nothing, and nobody does anything. The hotel gets the room price and the deposit comes back to the guest automatically."},
+        {id:"claimUnanswered", title:"Claim posted, guest silent", sub:"arbiter + hotel default ruling pays the claim", path:"claimUnanswered", shows:"The hotel claims against the deposit and the guest never answers. The claim stands: the arbiter confirms it and the hotel is paid."},
+        {id:"backupRuling", title:"Claim disputed, arbiter silent", sub:"backup arbiter rules after the ruling window", path:"backupRuling", shows:"The guest disputes the hotel’s claim, but the arbiter never rules. Once its time runs out, a backup arbiter steps in."}
       ]
     },
     bond: {
@@ -524,7 +533,7 @@
         var c=t.cast, signers=scn.signers.map(function(s){ return {role:s.role,address:c[{principal:"guest",counterparty:"hotel"}[s.role]||s.role],weight:s.weight,proofVerified:true,as:s.as}; });
         signers.sort(function(a,b){ return a.address<b.address?-1:a.address>b.address?1:0; });
         return { scenario:"hotel", account:"", explorer:EXPLORER, quorum:scn.quorum, signers:signers, accounts:c, openTx:"", balance:null,
-          hotel:{ ready:true, status:"simulated · "+t.generatedBy, ran:[], paths:Object.keys(t.paths), pooled:false, accounts:{}, booking:t.booking, timers:t.timers, policy:t.policy } };
+          hotel:{ ready:true, status:"simulated · "+t.generatedBy, ran:[], paths:Object.keys(t.paths), pooled:false, accounts:{}, booking:t.booking, timers:t.timers, policy:t.policy, explanations:t.explanations||{} } };
       });
       return delay(400).then(function(){
         var accounts = {}, signers = [];
@@ -967,19 +976,64 @@
       }).catch(function(e){ var el=$("#hotelStatus"); if(el) el.textContent="status check failed: "+e.message; pollHotel(); });
     }, 15000);
   }
-  function stepCard(s, closing){
+  // Plain-language narration of each step (descriptive only; every pass/fail below still comes from the co-signer's decision record).
+  var STEP_WHY={
+    "open|tesSUCCESS":"A fresh single-use account opens. The guest pays the room price into it, and from now on only the signer list (guest, hotel, arbiter, backup arbiter, co-signer) controls it.",
+    "confirm|SIGN":"The hotel confirms the booking. The co-signer checks it against what the guest asked for: city, dates, price and the deposit limit.",
+    "checkin attestation|RECEIPTED":"The hotel records the guest’s arrival. The co-signer stamps it with a signed receipt, proof it was posted on time.",
+    "default.release pre-signed|STORED":"Guest and hotel sign the “nobody acts” ending in advance: room to the hotel, deposit back to the guest. The co-signer keeps it until it is due.",
+    "deposit|tesSUCCESS":"Only now does the guest pay the security deposit into the account.",
+    "checkin|SIGN":"The co-signer confirms the guest is checked in and the deposit is in the account.",
+    "claim|RECEIPTED":"After checkout the hotel posts an itemized claim against the deposit. The co-signer receipts it; the guest can accept or dispute it.",
+    "probe:principal+counterparty|tefBAD_QUORUM":"Test: guest and hotel try to move the money on their own. The XRP Ledger itself rejects it: together they are below the signing threshold.",
+    "probe:arbiter+backupArbiter|tefBAD_QUORUM":"Test: the two arbiters try to move the money without either party. The XRP Ledger rejects it.",
+    "settle|SIGN":"Guest and hotel agree on the split: the guest accepts the claim and leaves a review. The co-signer checks the split and signs, and the account closes.",
+    "dispute (entry)|tesSUCCESS":"At check-in the room isn’t what was booked. The guest files a dispute on the ledger and pays the dispute bond, which freezes the automatic endings.",
+    "dispute (settlement)|tesSUCCESS":"The guest disputes the hotel’s claim, filing it on the ledger with a bond.",
+    "refund.conceded|SIGN":"The hotel admits it has no room. Guest, hotel and co-signer refund everything to the guest, bond included, and the account closes.",
+    "tick default.refund|REFUSE":"The co-signer checks whether the automatic refund is due. It isn’t: the hotel confirmed the booking.",
+    "tick default.refund|SIGN":"The hotel missed its confirmation deadline, so the pre-signed refund completes. The guest gets the room money back without anyone having to act.",
+    "tick default.noshow|REFUSE":"The co-signer checks whether the automatic no-show payout applies. It doesn’t here.",
+    "tick default.noshow|SIGN":"The guest never arrived and didn’t dispute in time, so the pre-signed no-show completes: the hotel is paid the room, less the fee.",
+    "tick default.release|REFUSE":"The co-signer checks whether the automatic release is due. Not yet.",
+    "tick default.release|SIGN":"The dispute window closed with no claim and no dispute, so the pre-signed release completes: room to the hotel, the full deposit back to the guest.",
+    "ruling:arbiter|tesSUCCESS":"The arbiter reviews the evidence and rules. Arbiter and guest sign the ruling and the account closes; a ruling doesn’t need the co-signer.",
+    "ruling:arbiter|SIGN":"The guest never answered the claim before the window closed, so it stands. The arbiter signs a default ruling with the hotel paying exactly the claim, and the co-signer records that it checks out.",
+    "ruling:backupArbiter|REFUSE":"The backup arbiter tries to rule early. The co-signer refuses: the primary arbiter’s time to rule hasn’t run out yet.",
+    "ruling:backupArbiter|SIGN":"The primary arbiter stayed silent past its deadline, so the backup arbiter’s ruling is allowed. Backup, guest and co-signer sign, and the account closes."
+  };
+  var STEP_WHY_PATH={
+    unconfirmed:{"tick default.noshow|REFUSE":"No-show doesn’t apply: the booking was never confirmed, and the refund is already on its way."},
+    noshow:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel did confirm."},
+    happy:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed, and the account now also holds the deposit.","tick default.noshow|REFUSE":"No-show doesn’t apply: the guest checked in.","tick default.release|REFUSE":"Too early: the “nobody acts” release only fires once the guest’s window to dispute has closed."},
+    silence:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed, and the account now also holds the deposit.","tick default.noshow|REFUSE":"No-show doesn’t apply: the guest checked in."},
+    claimUnanswered:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed, and the account now also holds the deposit.","tick default.noshow|REFUSE":"No-show doesn’t apply: the guest checked in.","tick default.release|REFUSE":"The release can’t just return the deposit: the hotel posted a claim against it, which has to be agreed or ruled on."},
+    entryRuled:{"tick default.refund|REFUSE":"The automatic refund doesn’t apply: the hotel confirmed, and the dispute bond is now in the account.","tick default.noshow|REFUSE":"No-show can’t fire: the guest has an open, bonded dispute. Silence can’t override a raised flag."}
+  };
+  function stepWhy(pathId, s){
+    var k=s.step+"|"+(s.decision||s.final||"");
+    return (STEP_WHY_PATH[pathId]&&STEP_WHY_PATH[pathId][k]) || STEP_WHY[k] || "";
+  }
+  function ruleRow(r){
+    var ex=((S.data&&S.data.hotel&&S.data.hotel.explanations)||{})[r.id]||{};
+    var cls = r.result==="pass"?"pass":(r.result==="fail"||r.result==="error")?"fail":"";
+    var mark = cls==="pass"?"✓ ":cls==="fail"?"✕ ":"– ";
+    var title = ex.title || r.reason || r.id;
+    return '<button type="button" class="rule '+cls+'" aria-expanded="false" data-rule="'+esc(r.id)+'" data-result="'+esc(r.result)+'">' +
+      '<span class="rid">'+esc(r.id)+'</span><span class="rt">'+mark+esc(title)+(r.result==="n/a"?" (not applicable)":"")+'</span>' +
+      (cls==="fail"&&r.reason?'<span class="rc">'+esc(r.reason)+'</span>':'') + '</button>' +
+      '<div class="rexp" hidden>'+esc(ex.message||"The policy gives no explanation for this check.")+'</div>';
+  }
+  function stepCard(s, closing, pathId){
     var pill = s.decision ? '<span class="pill '+(s.decision==="SIGN"?"sign":"refuse")+'">'+esc(s.decision)+'</span>' : "";
     var fin = s.final ? '<span class="pill '+(s.final==="tesSUCCESS"||s.final==="RECEIPTED"||s.final==="STORED"?"neutral":"refuse")+'">'+esc(s.final)+'</span>' : "";
     var html = '<div class="tstep'+(closing?" close":"")+'"><div class="th">' +
       (s.at ? '<span class="at">'+esc(s.at.replace("T"," ").replace("Z",""))+'</span>' : "") +
       '<b>'+esc(s.step)+'</b>' + (s.stage && s.stage!==s.step ? '<span class="stg">'+esc(s.stage)+'</span>' : "") + pill + fin +
       (s.tx ? '<span class="tx">'+txLink(s.tx,"tx "+short(s.tx))+'</span>' : "") + '</div>';
-    if (s.failing && s.failing.length) html += '<div class="sub">failing: <span class="mono">'+esc(s.failing.join(", "))+'</span></div>';
+    var why=stepWhy(pathId, s); if (why) html += '<div class="why">'+esc(why)+'</div>';
     if (s.receipt) html += '<div class="sub">co-signer receipt · <span class="mono">'+esc(s.receipt.statementType)+'</span> received '+esc(s.receipt.receivedAt)+' (ledger '+esc(s.receipt.ledgerIndex)+') · <span class="mono">'+esc(s.receipt.statementId)+'</span></div>';
-    if (s.rules && s.rules.length) html += '<div class="rules">'+s.rules.map(function(r){
-      var cls = r.result==="pass"?"pass":r.result==="fail"?"fail":"";
-      return '<span class="rule '+cls+'" data-rule="'+esc(r.id)+'" data-result="'+esc(r.result)+'">'+esc(r.id)+' · <span class="rr">'+esc(r.result)+'</span>'+(r.reason?' · '+esc(r.reason):'')+'</span>';
-    }).join("")+'</div>';
+    if (s.rules && s.rules.length) html += '<div class="rules">'+s.rules.map(ruleRow).join("")+'</div>';
     if (s.payouts && s.payouts.length) html += '<div class="payouts">'+s.payouts.map(function(p){ return '<div class="prow"><span>'+esc(hotelLabel(p.to))+'</span><span class="mono">'+esc(p.value)+' RLUSD</span></div>'; }).join("")+'</div>';
     return html+'</div>';
   }
@@ -990,13 +1044,19 @@
     logEvent("info", "hotel path → "+esc(a.id)+(LIVE?" · running on Testnet (timers are seconds apart; a few minutes)":" · replaying the co-signer’s transcript"));
     var dc=$("#decision"); dc.hidden=false;
     dc.innerHTML='<div class="dc-head"><div class="req">Hotel stay · <span class="mono">'+esc(a.id)+'</span> — '+a.title+'</div><span class="verdict pending" id="verdict">'+(LIVE?"running on Testnet…":"replaying…")+'</span></div>' +
+      (a.shows?'<div class="hshows">'+esc(a.shows)+'<span class="hint">Click any check to see what it means.</span></div>':'') +
       '<div class="tl" id="tl"></div><div id="outcome"></div>';
+    $("#tl").addEventListener("click", function(e){
+      var b=e.target.closest&&e.target.closest(".rule"); if(!b) return;
+      var x=b.nextElementSibling, open=b.getAttribute("aria-expanded")==="true";
+      b.setAttribute("aria-expanded", open?"false":"true"); if (x) x.hidden=open;
+    });
     dc.scrollIntoView({behavior:REDUCE?"auto":"smooth", block:"nearest"});
     api.hotel({path:a.path}).then(function(steps){
       var close=closingStep(steps), tl=$("#tl"), seq=Promise.resolve();
       steps.forEach(function(s){
         seq=seq.then(function(){ return delay(LIVE?60:380); }).then(function(){
-          tl.insertAdjacentHTML("beforeend", stepCard(s, s===close));
+          tl.insertAdjacentHTML("beforeend", stepCard(s, s===close, a.id));
           if (s.decision) logEvent(s.decision==="SIGN"?"sign":"refuse", "co-signer "+esc(s.decision)+" · "+esc(s.stage||s.step)+(s.failing&&s.failing.length?" · failing "+esc(s.failing.join(", ")):""));
           else if (s.receipt) logEvent("att", esc(s.receipt.statementType)+" receipted · "+esc(s.receipt.receivedAt));
           if (s.tx) logEvent(s.final==="tesSUCCESS"?"settle":"refuse", esc(s.step)+" · "+esc(s.final||"")+" · "+txLink(s.tx,"tx "+short(s.tx)));
