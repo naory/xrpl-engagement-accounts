@@ -1,5 +1,7 @@
 # Arbiter Neutrality Implementation Plan
 
+> **Superseded** (2026-11-14) by [`../specs/2026-11-14-arbiter-chargeback-design.md`](../specs/2026-11-14-arbiter-chargeback-design.md) (a new plan follows from it) — the user chose a lean design with chargeback-style defaults instead of a backup arbiter. Kept for the reasoning.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** No account with an arbiter role can open unless each arbiter is accredited by a recognised outside body on the template's trust list, allowed by the guest's mandate, independent of the parties, and the backup was not picked by the merchant — plus refuse lapsed backups and flag lapsed primary rulings.

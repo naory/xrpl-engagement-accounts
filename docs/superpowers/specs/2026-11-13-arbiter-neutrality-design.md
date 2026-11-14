@@ -1,5 +1,7 @@
 # Arbiter neutrality (design)
 
+> **Superseded** (2026-11-14) by [`2026-11-14-arbiter-chargeback-design.md`](2026-11-14-arbiter-chargeback-design.md) — the user chose a lean design with chargeback-style defaults instead of a backup arbiter. Kept for the reasoning.
+
 Status: design, 2026-11-13. Applies to **every template with an arbiter role** (today `settlement-vault/hotel@1`
 and `@2`; future escrow and bond templates). The hotel is the first user.
 
