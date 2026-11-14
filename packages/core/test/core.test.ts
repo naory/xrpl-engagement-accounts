@@ -84,6 +84,15 @@ describe('template validator', () => {
     expect(r.minimalWinningSets).toContainEqual(['principal', 'arbiter'])
     expect(r.minimalWinningSets).not.toContainEqual(['arbiter', 'backupArbiter'])
   })
+  it('V8 counts per-night variants as max x (1 + steps)', () => {
+    const t = structuredClone(load('hotel@2.json'))
+    const base = validateTemplate(t).ticketsNeeded
+    const [name, o] = Object.entries(t.outcomes).find(([, x]: any) => x.presigned) as [string, any]
+    const steps = t.blueprints[o.blueprint].steps.length
+    o.variants = { perNight: true, max: 13 }
+    expect(validateTemplate(t).ticketsNeeded).toBe(base - (1 + steps) + 13 * (1 + steps))
+    void name
+  })
   it('V6 accepts onExpire "none" (a window that only closes)', () => {
     const t = structuredClone(load('hotel@1.json'))
     t.timers = { ...t.timers, claimBy: { from: 'deliveryBy', durationSecs: 86400, onExpire: 'none' } }

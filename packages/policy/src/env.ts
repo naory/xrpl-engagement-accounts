@@ -73,6 +73,11 @@ export function createEnvironment(ctx: EnvContext): Environment {
   env.registerFunction('zero(string): Amount', (code: string) => { ctx.assets.get(code); return zero(code) })
   env.registerFunction('asset(string): string', (code: string) => { ctx.assets.get(code); return code })
   env.registerFunction('bps(Amount, int): Amount', (a: Amount, n: bigint) => bpsFn(a, n))
+  // whole 24h boundaries from start that are <= at (0 when at < start)
+  env.registerFunction('nightsElapsed(google.protobuf.Timestamp, google.protobuf.Timestamp): int', (start: Date, at: Date) => {
+    const d = at.getTime() - start.getTime()
+    return d <= 0 ? 0n : BigInt(Math.floor(d / 86_400_000))
+  })
   env.registerFunction('minor(Amount): int', (a: Amount) => a.minor)
   env.registerFunction('assetOf(Amount): string', (a: Amount) => a.asset)
 

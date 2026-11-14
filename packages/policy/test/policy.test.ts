@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { signStatement, verifyStatement } from '@eng/core'
-import { Assets, REGISTRY, REGISTRY_VERSION, TxFacts, decide, decisionStatementBody, lintPolicy, type DecideInput, type Decision, type PolicyDoc } from '@eng/policy'
+import { createEnvironment, Assets, REGISTRY, REGISTRY_VERSION, TxFacts, decide, decisionStatementBody, lintPolicy, type DecideInput, type Decision, type PolicyDoc } from '@eng/policy'
 import {
   LEDGER_INDEX, NOW, W, b1Approval, b1Challenge, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, closeBatch, confirmation,
   historyEntry, hotelEngagement, hotelLedger, hotelMandate, inflight, memo, policies, review, templates,
@@ -382,6 +382,18 @@ describe('Task 1 prerequisites', () => {
   it('registry knows the hotel@2 attestation types', () => {
     for (const t of ['party.checkin/1', 'party.concession/1', 'party.issue/1', 'party.claim/1']) expect(REGISTRY[t]).toBeDefined()
     expect(REGISTRY_VERSION).toBe('att-registry@2026.11')
+  })
+})
+
+describe('nightsElapsed()', () => {
+  const START = '2026-12-01T15:00:00Z'
+  const nights = (at: string) => createEnvironment({ assets }).evaluate(`nightsElapsed(timestamp('${START}'), timestamp('${at}'))`)
+  it('counts 24h boundaries from start', () => {
+    expect(nights(START)).toBe(0n)
+    expect(nights('2026-12-02T14:59:59Z')).toBe(0n)
+    expect(nights('2026-12-02T15:00:00Z')).toBe(1n)
+    expect(nights('2026-12-04T15:00:01Z')).toBe(3n)
+    expect(nights('2026-11-30T15:00:00Z')).toBe(0n)
   })
 })
 
