@@ -35,7 +35,7 @@
     "deposit": "amt(def.conf.claim.deposit.value, 'RLUSD')",
     "balance": "ledger.balance(eng.account, 'RLUSD')",
     "confirmed": "def.conf != null && def.conf.claim.mandateHash == eng.mandateId && def.conf.claim.city == mandate.constraints.city && def.conf.claim.checkIn == mandate.constraints.checkIn && def.conf.claim.checkOut == mandate.constraints.checkOut && amt(def.conf.claim.total.value, 'RLUSD') == def.booked && def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
-    "checkedIn": "def.conf != null && att.latest('party.checkin/1', 'counterparty') != null && att.latest('party.checkin/1', 'counterparty').claim.status == 'checked_in' && def.balance >= def.booked + def.deposit",
+    "checkedIn": "def.conf != null && att.list('party.checkin/1', 'counterparty').exists(c, c.claim.status == 'checked_in') && def.balance >= def.booked + def.deposit",
     "disputes": "att.list('party.dispute/1', 'principal')",
     "disputeOpen": "ledger.credentialExists(eng.parties.principal, eng.account, 'ENG/DISPUTE') && size(def.disputes) > 0 && def.balance >= def.booked + (def.checkedIn ? def.deposit : zero('RLUSD')) + amt(params.minDisputeBond, 'RLUSD')",
     "entryDispute": "def.disputeOpen && def.disputes.exists(d, d.claim.phase == 'entry')",
@@ -93,7 +93,7 @@
           "title": "Guest checked in",
           "reason": "NOT_CHECKED_IN",
           "check": "def.checkedIn",
-          "message": "The hotel has recorded the guest's arrival, and the deposit is in the account."
+          "message": "The hotel has recorded the guest's arrival (once recorded, a check-in can't be taken back), and the deposit is in the account."
         },
         {
           "id": "K2",
@@ -176,17 +176,24 @@
         },
         {
           "id": "R2",
-          "title": "Account holds just the room price",
+          "title": "The room price is in the account",
           "reason": "BALANCE_CHANGED",
-          "check": "def.balance == def.booked",
-          "message": "This refund was signed in advance for exactly the room price. If anything else is in the account now (a deposit, a dispute bond), it no longer fits."
+          "check": "def.balance >= def.booked",
+          "message": "The refund needs at least the room price in the account. Anything more (a stray payment, a deposit) is not a reason to stall: it goes back to the guest too."
         },
         {
           "id": "R3",
           "title": "Valid refund",
           "reason": "TX_SHAPE",
           "check": "tx.matchesBlueprint('close.refundAll')",
-          "message": "The automatic refund sends the room price back to the guest and closes the account."
+          "message": "The automatic refund pays the guest back and closes the account."
+        },
+        {
+          "id": "R4",
+          "title": "Everything goes back to the guest",
+          "reason": "PAYOUT_MISMATCH",
+          "check": "def.toGuest == def.balance",
+          "message": "The guest gets back every last cent in the account, the room price plus anything extra, with no fee."
         }
       ]
     },
@@ -212,7 +219,7 @@
           "title": "Guest never checked in",
           "reason": "CHECKED_IN",
           "check": "!def.checkedIn",
-          "message": "If the guest arrived and paid the deposit, it isn't a no-show."
+          "message": "If the hotel recorded the guest as checked in and the deposit is in, it isn't a no-show. A recorded check-in is final: a later 'refused' doesn't undo it."
         },
         {
           "id": "N4",
@@ -223,24 +230,31 @@
         },
         {
           "id": "N5",
-          "title": "Account holds just the room price",
+          "title": "The room price is in the account",
           "reason": "BALANCE_CHANGED",
-          "check": "def.balance == def.booked",
-          "message": "The no-show ending was signed in advance for exactly the room price. If anything else is in the account now, it no longer fits."
+          "check": "def.balance >= def.booked",
+          "message": "The no-show needs at least the room price in the account. Anything more (a partial deposit, a stray payment) does not stop it: it goes back to the guest."
         },
         {
           "id": "N6",
           "title": "Valid no-show payout",
           "reason": "TX_SHAPE",
-          "check": "tx.matchesBlueprint('close.releaseAll')",
-          "message": "The no-show ending pays the room to the hotel (less the fee) and closes the account."
+          "check": "tx.matchesBlueprint('close.releaseAll') || tx.matchesBlueprint('close.releaseWithDeposit')",
+          "message": "The no-show ending pays the room to the hotel (less the fee), returns anything extra to the guest, and closes the account."
         },
         {
           "id": "N7",
           "title": "Correct service fee",
           "reason": "FEE_MISMATCH",
           "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
-          "message": "The service takes 0.5% of whatever the hotel receives."
+          "message": "The service takes 0.5% of the room price the hotel receives. Money returned to the guest carries no fee."
+        },
+        {
+          "id": "N8",
+          "title": "Hotel gets the room, the guest gets any extra",
+          "reason": "PAYOUT_MISMATCH",
+          "check": "def.toMerchant + def.toFee == def.booked && def.toGuest + def.booked == def.balance && tx.payouts.hasResidual() == (def.balance > def.booked)",
+          "message": "The hotel is paid exactly the room price (less the fee). Anything else in the account, such as a partial deposit, goes back to the guest. Of the two no-show endings signed in advance, only the one that fits the money actually in the account can be used."
         }
       ]
     },
@@ -263,17 +277,17 @@
         },
         {
           "id": "L3",
-          "title": "Account holds room plus deposit",
+          "title": "Room and deposit are in the account",
           "reason": "BALANCE_CHANGED",
-          "check": "def.balance == def.booked + def.deposit",
-          "message": "The release was signed in advance for the room plus the deposit. If anything else is in the account, it no longer fits."
+          "check": "def.balance >= def.booked + def.deposit",
+          "message": "The release needs at least the room plus the deposit in the account. Anything more (a stray payment) does not stop it: it goes back to the guest."
         },
         {
           "id": "L4",
           "title": "Valid release",
           "reason": "TX_SHAPE",
           "check": "tx.matchesBlueprint('close.releaseWithDeposit')",
-          "message": "The release pays the room to the hotel, returns the deposit to the guest, and closes the account."
+          "message": "The release pays the room to the hotel, returns the deposit and anything extra to the guest, and closes the account."
         },
         {
           "id": "L5",
@@ -284,10 +298,10 @@
         },
         {
           "id": "L6",
-          "title": "Deposit goes back in full",
+          "title": "Deposit and any extra go back in full",
           "reason": "PAYOUT_MISMATCH",
-          "check": "def.toGuest == def.deposit && def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
-          "message": "The whole deposit returns to the guest; the hotel gets the room price less the fee."
+          "check": "def.toMerchant + def.toFee == def.booked && def.toGuest + def.booked == def.balance && def.toGuest >= def.deposit && def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
+          "message": "The hotel gets the room price less the fee; the whole deposit, plus anything else in the account, returns to the guest."
         }
       ]
     },

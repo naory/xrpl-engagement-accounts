@@ -70,6 +70,11 @@ export interface LedgerAccountState {
   regularKey?: string | null
   /** Objects the account owns, for drain / deletion checks. */
   ownerObjects?: { trustlines: number; signerList: boolean; tickets: number[]; other: number }
+  /**
+   * Whether a payee can receive (read for the payees of a proposed transaction): lsfDepositAuth, and its trust lines
+   * to the configured issuers keyed by asset code (a missing code = no trust line). Absent = not read (unknown).
+   */
+  receive?: { depositAuth: boolean; lines: Record<string, { balance: string; limit: string }> }
 }
 
 export interface LedgerCredential {

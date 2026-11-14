@@ -30,6 +30,7 @@ describe('hotel stay simulated transcript', () => {
     ['silence', 'default.release'],
     ['claimUnanswered', 'ruling.default'],
     ['backupRuling', 'ruling.backup'],
+    ['partialDeposit', 'default.noshow'],
   ] as Array<[HotelPath, string]>)('%s closes with %s SIGN', (path, stage) => {
     const s = outcome(path, stage)
     expect(s).toMatchObject({ stage, decision: 'SIGN', failing: [], final: 'tesSUCCESS' })
@@ -72,6 +73,28 @@ describe('hotel stay simulated transcript', () => {
 
   it('happy: a guest + hotel close without the co-signer is below quorum', () => {
     expect(t.paths.happy.find((s) => s.step === 'probe:principal+counterparty')).toMatchObject({ final: 'tefBAD_QUORUM' })
+  })
+
+  it('partialDeposit: refused check-in ends as a no-show; the sweep variant returns the partial deposit, the exact one is refused (N8)', () => {
+    const steps = t.paths.partialDeposit
+    const exact = steps.find((s) => s.step === 'tick default.noshow')!
+    expect(exact).toMatchObject({ decision: 'REFUSE' })
+    expect(exact.failing).toContain('N8')
+    const sweep = steps.find((s) => s.step === 'tick default.noshowSweep')!
+    expect(sweep).toMatchObject({ stage: 'default.noshow', decision: 'SIGN', failing: [], final: 'tesSUCCESS' })
+    const pay = Object.fromEntries(sweep.payouts!.map((p) => [p.to, minor(p.value)]))
+    expect(pay[t.cast.guest]).toBe(minor(t.booking.partialDeposit))
+    expect(pay[t.cast.hotel] + pay[t.cast.service]).toBe(minor(t.booking.room))
+  })
+
+  it('noshow: the exact variant pays the hotel; the sweep variant is refused because it would deliver nothing (B11)', () => {
+    expect(t.paths.noshow.find((s) => s.step === 'tick default.noshow')).toMatchObject({ decision: 'SIGN', final: 'tesSUCCESS' })
+    expect(t.paths.noshow.find((s) => s.step === 'tick default.noshowSweep')!.failing).toContain('B11')
+  })
+
+  it('silence: the release sweep returns exactly the deposit', () => {
+    const s = outcome('silence', 'default.release')
+    expect(minor(s.payouts!.find((p) => p.to === t.cast.guest)!.value)).toBe(minor(t.booking.deposit))
   })
 
   it('every hotel payout carries exactly the 50 bps fee (minor units)', () => {

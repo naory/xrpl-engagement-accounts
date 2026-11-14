@@ -1,7 +1,7 @@
 // Facts derived from the proposed transaction and the ledger snapshot. These are the "trusted
 // computing base" behind the helper functions rules call (tx.*, ledger.*, history.*, inflight.*).
 import { createHash } from 'node:crypto'
-import { Amount, formatAmount, parseAmount, sha256Jcs, zero, type AssetDef, type Template } from '@eng/core'
+import { Amount, formatAmount, parseAmount, sha256Jcs, toMinor, zero, type AssetDef, type Template } from '@eng/core'
 import type { EngagementRecord, InflightEntry, LedgerSnapshot } from './types.ts'
 import { toCel } from './convert.ts'
 
@@ -151,6 +151,11 @@ export class TxFacts {
   /** B11: a pre-signed outcome must certainly succeed at the pinned ledger (single-shot, F2). */
   wouldSucceed(): boolean {
     const code = this.ctx.eng.asset
+    // A partial payment (residual sweep) that can deliver nothing fails on-ledger (tecPATH_DRY), which inside an
+    // ALLORNOTHING Batch fails the whole Batch and burns its Tickets: only sign a sweep that delivers > 0.
+    if (this.payouts.items.some((p) => p.partial && p.amount.minor <= 0n)) return false
+    // Every payee must be able to accept what it is paid, or that inner Payment fails (and the Batch with it).
+    if (!this.payeesCanReceive()) return false
     if (this.closes()) {
       const seq = this.ctx.ledger.accounts[this.ctx.eng.account]?.sequence
       const oldEnough = seq == null || seq + ACCOUNT_DELETE_MIN_AGE <= this.ctx.ledger.index
@@ -158,6 +163,31 @@ export class TxFacts {
     }
     const bal = ledgerBalance(this.ctx.ledger, this.ctx.assets, this.ctx.eng.account, code)
     return this.payouts.sum(code).cmp(bal) <= 0
+  }
+
+  /**
+   * Payees the snapshot shows cannot receive: a missing account, DepositAuth set, or (for an IOU) no trust line to the
+   * asset's issuer or not enough room under its limit for the total paid to it. A payee the snapshot did not read is not
+   * assumed blocked. Payments to the issuer itself always succeed.
+   */
+  payeesCanReceive(): boolean {
+    for (const to of this.payouts.destinations()) {
+      const st = this.ctx.ledger.accounts[to]
+      if (!st) continue
+      if (!st.exists) return false
+      if (!st.receive) continue
+      if (st.receive.depositAuth) return false
+      for (const code of new Set(this.payouts.items.filter((p) => p.to === to).map((p) => p.asset))) {
+        const def = this.ctx.assets.defs[code]
+        if (!def || def.kind === 'XRP' || def.issuer === to) continue
+        const line = st.receive.lines[code]
+        if (!line) return false
+        // Trust-line values can carry more precision than the asset's decimals: round against the payee (limit down, balance up).
+        const room = new Amount(code, minorRounded(line.limit, def.decimals, 'floor') - minorRounded(line.balance, def.decimals, 'ceil'))
+        if (this.payouts.to(to, code).cmp(room) > 0) return false
+      }
+    }
+    return true
   }
 
   /** Map inner transactions to blueprint tokens and match against the template blueprint. */
@@ -220,6 +250,17 @@ export class TxFacts {
  */
 export function intentHashOf(destination: string, amount: Amount, decimals: number, invoiceRef: string | null): string {
   return sha256Jcs({ destination, amount: { asset: amount.asset, value: formatAmount(amount, decimals) }, invoiceRef })
+}
+
+/** `value` in minor units at `decimals`, rounding any extra precision down (floor) or up (ceil). */
+export function minorRounded(value: string, decimals: number, mode: 'floor' | 'ceil'): bigint {
+  const EXTRA = 30
+  const fine = toMinor(value, decimals + EXTRA)
+  const unit = 10n ** BigInt(EXTRA)
+  const q = fine / unit // truncates toward zero
+  const r = fine % unit
+  if (r === 0n) return q
+  return mode === 'floor' ? (fine < 0n ? q - 1n : q) : (fine > 0n ? q + 1n : q)
 }
 
 export function matchTokens(steps: string[], tokens: string[]): boolean {

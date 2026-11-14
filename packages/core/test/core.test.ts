@@ -75,11 +75,11 @@ describe('template validator', () => {
     expect(r.errors).toEqual([])
     expect(r.minimalWinningSets).toEqual([['owner'], ['agent', 'cosigner']])
   })
-  it('accepts hotel@2: 15 tickets, no arbiter-only winning set, arbiters+service disclosed', () => {
+  it('accepts hotel@2: 21 tickets (two no-show variants), no arbiter-only winning set, arbiters+service disclosed', () => {
     const r = validateTemplate(load('hotel@2.json'))
     expect(r.errors).toEqual([])
     expect(r.ok).toBe(true)
-    expect(r.ticketsNeeded).toBe(15)
+    expect(r.ticketsNeeded).toBe(21) // refund 4 + noshow exact 5 + noshow sweep 6 + release 6
     expect(r.disclosures.filter((d) => d.id === 'V11').map((d) => d.message)).toEqual([expect.stringContaining('arbiter, backupArbiter, cosigner')])
     expect(r.minimalWinningSets).toContainEqual(['principal', 'arbiter'])
     expect(r.minimalWinningSets).not.toContainEqual(['arbiter', 'backupArbiter'])
