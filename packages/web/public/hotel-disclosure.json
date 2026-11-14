@@ -170,7 +170,8 @@
         "appointedBy": "counterparty"
       },
       "timers": {
-        "disputeWindowEnds": 7200
+        "disputeWindowEnds": 7200,
+        "rulingDueBy": 172800
       }
     },
     "terms": {
@@ -221,7 +222,7 @@
         },
         {
           "timer": "rulingDueBy",
-          "seconds": 432000,
+          "seconds": 172800,
           "from": "disputeOpened",
           "onExpire": [
             "default.chargebackEntry",
@@ -315,7 +316,7 @@
         "timers.entryDisputeBy": 75600,
         "timers.claimBy": 86400,
         "timers.disputeWindowEnds": 7200,
-        "timers.rulingDueBy": 432000
+        "timers.rulingDueBy": 172800
       }
     },
     "deviations": [
@@ -328,6 +329,16 @@
         "expected": "at least 2 days",
         "actual": 7200,
         "actualText": "2 hours"
+      },
+      {
+        "normId": "H4",
+        "term": "timers.rulingDueBy",
+        "severity": "warn",
+        "title": "How long the arbiter has to rule",
+        "why": "If the arbiter misses this deadline, the money in dispute comes back to you automatically, like a card chargeback. Too short, and the hotel has no fair chance to answer; too long, and your money stays frozen while you wait.",
+        "expected": "between 3 days and 7 days",
+        "actual": 172800,
+        "actualText": "2 days"
       },
       {
         "normId": "H6",

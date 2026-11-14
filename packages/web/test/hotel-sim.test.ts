@@ -30,6 +30,8 @@ describe('hotel stay simulated transcript', () => {
     ['silence', 'default.release'],
     ['claimUnanswered', 'ruling.default'],
     ['partialDeposit', 'default.noshow'],
+    ['arbiterSilent', 'default.chargebackClaim'],
+    ['staySilent', 'default.chargebackStay'],
   ] as Array<[HotelPath, string]>)('%s closes with %s SIGN', (path, stage) => {
     const s = outcome(path, stage)
     expect(s).toMatchObject({ stage, decision: 'SIGN', failing: [], final: 'tesSUCCESS' })
@@ -84,6 +86,23 @@ describe('hotel stay simulated transcript', () => {
   it('silence: the release sweep returns exactly the deposit', () => {
     const s = outcome('silence', 'default.release')
     expect(minor(s.payouts!.find((p) => p.to === t.cast.guest)!.value)).toBe(minor(t.booking.deposit))
+  })
+
+  it('arbiterSilent: the claim chargeback is refused before the ruling deadline, then pays room (less fee) to the hotel, the rest to the guest', () => {
+    const steps = t.paths.arbiterSilent
+    const early = steps.find((s) => s.stage === 'default.chargebackClaim' && s.decision === 'REFUSE')!
+    expect(early.failing!.length).toBeGreaterThan(0)
+    expect(steps.indexOf(early)).toBeLessThan(steps.indexOf(outcome('arbiterSilent', 'default.chargebackClaim')))
+    const pay = Object.fromEntries(outcome('arbiterSilent', 'default.chargebackClaim').payouts!.map((p) => [p.to, minor(p.value)]))
+    expect(pay[t.cast.hotel] + pay[t.cast.service]).toBe(minor(t.booking.room))
+    expect(pay[t.cast.guest]).toBe(minor(t.booking.deposit) + minor(t.booking.bond))
+  })
+
+  it('staySilent: night 1 of 3 to the hotel (less fee), the remaining nights, deposit and bond to the guest', () => {
+    const pay = Object.fromEntries(outcome('staySilent', 'default.chargebackStay').payouts!.map((p) => [p.to, minor(p.value)]))
+    const nightly = minor(t.booking.room) / 3n
+    expect(pay[t.cast.hotel] + pay[t.cast.service]).toBe(nightly)
+    expect(pay[t.cast.guest]).toBe(minor(t.booking.room) - nightly + minor(t.booking.deposit) + minor(t.booking.bond))
   })
 
   it('every hotel payout carries exactly the 50 bps fee (minor units)', () => {

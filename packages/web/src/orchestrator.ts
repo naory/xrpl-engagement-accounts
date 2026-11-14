@@ -178,6 +178,15 @@ export class DemoOrchestrator {
     }
     throw new Error(`faucet failed for ${label}`)
   }
+  /** Top `wallet` up from the faucet until it holds at least `drops` XRP (a faucet grant is ~100 XRP). */
+  private async ensureXrp(wallet: Wallet, drops: number): Promise<void> {
+    for (let i = 0; i < 12; i++) {
+      const info = await accountInfo(this.client, wallet.address)
+      if (info && Number((info.account_data as Json).Balance) >= drops) return
+      try { await this.client.fundWallet(wallet) } catch { await sleep(5000) }
+    }
+    throw new Error(`faucet could not fund ${wallet.address} with ${drops} drops`)
+  }
   private stmt(signer: Wallet, kind: string, type: string, subject: Json, claim: Json): Statement {
     const t = isoNow()
     const body: StatementBody = { v: 'eng.att/1', type, engagementId: this.engagementId, subject, claim, observedAt: t, issuedAt: t, nonce: newNonce(), attester: { account: signer.address, kind } }
@@ -508,6 +517,9 @@ export class DemoOrchestrator {
 
     const h: NonNullable<DemoOrchestrator['hotelRun']> = { cast, svc, policyLayer: layerHash(policy), pooled, accounts: {}, aging: null, ready: pooled, status: pooled ? 'ready — accounts are leased pre-aged from the pool' : '', ran: new Set(), failed: false }
     this.hotelRun = h
+    // The service pre-creates (or tops up) one account per path, each needing reserves for its Tickets: ~10 paths is far
+    // more than one faucet grant, so top the service up first (the stay variants grow staySilent's account the most).
+    await this.ensureXrp(service, HOTEL_PATHS.reduce((n, p) => n + HotelFlow.precreateDrops(this.fees, hotelPathNights(p)), 0) + 5_000_000)
     // The co-signer registers a deal only with an accredited arbiter: the accreditor issues ENG/ARBITER, the arbiter accepts.
     for (const s of await this.hotelFlow('happy').accredit()) if (s.final !== 'tesSUCCESS') throw new Error(`${s.step} failed: ${s.final}`)
     if (!pooled) {

@@ -19,7 +19,7 @@ export const STANDARD_OFFER: HotelOffer = {
 }
 /** Same booking, with terms a guest's agent should notice. */
 export const UNUSUAL_OFFER: HotelOffer = {
-  ...STANDARD_OFFER, deposit: '300.00', timers: { disputeWindowEnds: 7200 },
+  ...STANDARD_OFFER, deposit: '300.00', timers: { disputeWindowEnds: 7200, rulingDueBy: 172800 }, // a 2-day ruling window: below the 3-day norm
 }
 
 export interface OfferCheck { label: string; offer: HotelOffer; terms: DealTerms; deviations: Deviation[] }

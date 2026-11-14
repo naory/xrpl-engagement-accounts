@@ -7,8 +7,8 @@ describe('hotel-disclosure.json', () => {
   it('the standard offer is within norms; the unusual one is flagged on exactly its unusual terms', () => {
     const d = buildHotelDisclosure()
     expect(d.standard.deviations).toEqual([])
-    expect(d.unusual.deviations.map((x) => [x.term, x.severity])).toEqual([
-      ['timers.disputeWindowEnds', 'serious'], ['depositBps', 'warn'],
+    expect(d.unusual.deviations.map((x) => [x.term, x.severity]).sort()).toEqual([
+      ['depositBps', 'warn'], ['timers.disputeWindowEnds', 'serious'], ['timers.rulingDueBy', 'warn'],
     ])
   })
   it('the committed file matches a fresh build (run npm run web:disclosure)', () => {
