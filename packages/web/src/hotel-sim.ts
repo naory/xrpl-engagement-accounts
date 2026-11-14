@@ -19,7 +19,7 @@ import { encodeForMultisigning } from 'ripple-binary-codec'
 import { Amount, formatAmount, localSigner, parseAmount, signStatement, type AssetDef, type Statement, type Template } from '@eng/core'
 import { ruleExplanations, type EngagementRecord, type LedgerSnapshot, type PolicyDoc } from '@eng/policy'
 import {
-  CosignerService, DEMO_HOTEL_BOOKING, FixtureLedgerSource, HOTEL_PATHS, HOTEL_TICKETS, HOTEL_TICKET_COUNT,
+  CosignerService, DEMO_HOTEL_BOOKING, FixtureLedgerSource, HOTEL_PATHS, hotelTickets,
   buildCloseBatch, combine, currencyHex, memo, multisignBlob, receiptOf,
   type DecideResponse, type HotelReceipt, type Fees, type HotelBooking, type HotelPath, type HotelStepResult, type TickResult,
 } from '@eng/cosigner'
@@ -85,8 +85,7 @@ const OPEN_INDEX = 99_000_000
 /** The pre-created account's Sequence (an account starts at the index it was created in, here ~27 min before open). */
 const PRECREATED_SEQ = OPEN_INDEX - 400
 /** Tickets reserved at open (outer + inner of each pre-signed default, spec §5.4) and Sequences the open Batch uses. */
-const TICKETS = HOTEL_TICKETS
-const TICKET_COUNT = HOTEL_TICKET_COUNT
+const { slices: TICKETS, count: TICKET_COUNT } = hotelTickets(1)
 const OPEN_SEQUENCES = 4 + TICKET_COUNT
 
 const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -298,7 +297,7 @@ class PathSim {
   /** Posted = receipted by the co-signer (ingest judges the window on the snapshot's closeTime). */
   private async post(s: Statement): Promise<HotelReceipt> { return receiptOf(await this.svc.ingest(this.id, s)) }
 
-  private async presign(outcome: keyof typeof TICKETS, payouts: PresignPayout[]): Promise<void> {
+  private async presign(outcome: string, payouts: PresignPayout[]): Promise<void> {
     const [a, b] = TICKETS[outcome]
     const tx = buildCloseBatch({
       eng: this.eng.address, currency: CURRENCY, issuer: W.issuer.address, payouts, deleteTo: W.service.address,

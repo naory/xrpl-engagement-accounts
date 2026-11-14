@@ -799,7 +799,7 @@
       },
       {
         "step": "probe:principal+counterparty",
-        "tx": "565E25E9F0AE22FE70715A9E06958DA5D48E8DF18DBACC352837D49618478EF3",
+        "tx": "159F538096EEEC90C4A242EBB4D7A2226042D5D0D9BC35E14A3E3D6AB3E3B199",
         "final": "tefBAD_QUORUM",
         "at": "2026-11-14T18:00:00Z"
       },
@@ -870,7 +870,7 @@
             "result": "pass"
           }
         ],
-        "tx": "6B401D5A23C1A428790A1FF4290D545095E2A27189235EA4EFC86F6419C30ED7",
+        "tx": "C1FF917544238DF407796FE962C909F4756CF11FDC1FE83CF127DC9153FAD6ED",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -1659,7 +1659,7 @@
             "result": "pass"
           }
         ],
-        "tx": "E8A7584C63B9B05C5947D5352E1ED84D6301CE4F5ACCDD0493FEF0F9D84B3326",
+        "tx": "020B23D586179914ABA2EC9AFC5264ABED044D67C26E08CB8A8AE81567A87D1F",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -2017,7 +2017,7 @@
         "at": "2026-11-12T11:01:00Z"
       },
       {
-        "tx": "EFAD4B1DA17B99690121705E6082D4499EBFC3F5949CB16B48BFC5181D2C2DE4",
+        "tx": "4EC478706BF6A8E5F8B8A5F0DBA8A15CDE954CE5F0DD6003881BDC1200036058",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -3149,7 +3149,7 @@
             "result": "pass"
           }
         ],
-        "tx": "A22FA7DB1F828E7562B2B0E6453A5D1A514651809C0F0ACB2341BFEF6885C24C",
+        "tx": "C41659A900DCA70D95B86B78F19DB97274DF26BCAC85BE3ACBD76218DBCD6DF5",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -3529,6 +3529,20 @@
           }
         ],
         "at": "2026-11-12T11:01:00Z"
+      }
+    ],
+    "arbiterSilent": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
+      }
+    ],
+    "staySilent": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
       }
     ]
   }

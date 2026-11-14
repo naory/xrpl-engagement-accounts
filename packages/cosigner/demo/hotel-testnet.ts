@@ -3,10 +3,12 @@
 //   npm install && npm run demo:hotel        (from the repo root; ~25 min, most of it the AccountDelete age wait)
 //   XRPL_URL=wss://s.devnet.rippletest.net:51233 npm run demo:hotel
 //
-// All engagement accounts are pre-created first, then the script waits until each can be deleted
-// (Sequence + 256 ≤ ledger index, counting the open Batch's Sequence numbers), then the nine paths run
-// concurrently, each opening its own account when it starts (timers count from open). Keys are fresh per
-// run; results land in demo/results/hotel-run-*.json, with the co-signer's decision log beside them.
+// The service's accreditor first issues the arbiter an ENG/ARBITER Credential (the arbiter accepts it); a deal naming an
+// unaccredited arbiter is refused at registration, before any funding (H16). All engagement accounts are pre-created
+// (reserves sized from each path's nights), then the script waits until each can be deleted (Sequence + 256 ≤ ledger
+// index, counting the open Batch's Sequence numbers), then the ten paths run concurrently, each opening its own account
+// when it starts (timers count from open). Keys are fresh per run; results land in demo/results/hotel-run-*.json, with
+// the co-signer's decision log beside them.
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,10 +16,10 @@ import xrpl from 'xrpl'
 import { localSigner, type Template } from '@eng/core'
 import { layerHash, type PolicyDoc } from '@eng/policy'
 import {
-  CosignerService, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, HOTEL_PATHS, HotelFlow, XrplLedgerSource,
+  CosignerService, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, HOTEL_PATHS, HotelFlow, XrplLedgerSource, hotelPathNights, hotelTerms,
   type HotelCast, type HotelPath, type HotelStepResult,
 } from '../src/index.ts'
-import { ASF_DEFAULT_RIPPLE, accountInfo, currencyHex, iou, sendSimple, serverFees, sleep, type SubmitResult } from '../src/xrpl-io.ts'
+import { ASF_DEFAULT_RIPPLE, accountInfo, currencyHex, iou, sendSimple, serverFees, sleep, type Fees, type SubmitResult } from '../src/xrpl-io.ts'
 
 type Wallet = InstanceType<typeof xrpl.Wallet>
 type Json = Record<string, unknown>
@@ -68,6 +70,17 @@ async function fund(client: InstanceType<typeof xrpl.Client>, label: string): Pr
   throw new Error(`faucet failed for ${label}`)
 }
 
+/** Top the service up from the faucet until it holds `drops` (+ its own reserve): pre-creating funds every account's Tickets. */
+async function ensureXrp(client: InstanceType<typeof xrpl.Client>, w: Wallet, drops: number, fees: Fees): Promise<void> {
+  for (let i = 0; i < 5; i++) {
+    const have = Number(((await accountInfo(client, w.address))!.account_data as Json).Balance)
+    if (have >= drops + fees.reserveBase) return
+    log(`service holds ${have / 1e6} XRP, needs ${(drops + fees.reserveBase) / 1e6}: faucet top-up`)
+    try { await client.fundWallet(w) } catch (e) { log(`faucet top-up retry: ${(e as Error).message}`); await sleep(5000) }
+  }
+  throw new Error('could not fund the service for pre-creating the engagement accounts')
+}
+
 async function main() {
   const client = new xrpl.Client(URL_, { timeout: 60_000 })
   await client.connect()
@@ -80,35 +93,50 @@ async function main() {
   const guest = await fund(client, 'guest (principal)')
   const hotel = await fund(client, 'hotel (counterparty)')
   const service = await fund(client, 'service (fee, AccountDelete destination, pre-create)')
-  const arbiter = xrpl.Wallet.generate() // signs only
+  const arbiter = await fund(client, 'arbiter (accepts its accreditation, then only signs)')
+  const accreditor = await fund(client, 'accreditor (the service\'s arbiter accreditor)')
   const cosigner = xrpl.Wallet.generate() // signs only
-  Object.assign(results.accounts, { arbiter: arbiter.address, cosigner: cosigner.address })
+  const unaccredited = xrpl.Wallet.generate() // an arbiter nobody accredited (H16); never funded
+  Object.assign(results.accounts, { cosigner: cosigner.address, 'unaccredited arbiter': unaccredited.address })
 
   must(await sendSimple(client, issuer, { TransactionType: 'AccountSet', Account: issuer.address, SetFlag: ASF_DEFAULT_RIPPLE }), 'issuer DefaultRipple')
   for (const w of [guest, hotel, service]) must(await sendSimple(client, w, { TransactionType: 'TrustSet', Account: w.address, LimitAmount: iou(CUR, issuer.address, '10000000') }), `trust line ${w.address}`)
   must(await sendSimple(client, issuer, { TransactionType: 'Payment', Account: issuer.address, Destination: guest.address, Amount: iou(CUR, issuer.address, '10000') }), 'issue 10,000 RLUSD to the guest')
 
-  // ── Co-signer: baseline + a demo copy of pol_hotel@2.0.0 (this run's issuer, rulingWindow 60 s) ──
+  // ── Co-signer: baseline + a demo copy of pol_hotel@2.0.0 (this run's issuer and accreditor, rulingWindow 60 s) ──
   const read = <T>(f: string) => JSON.parse(fs.readFileSync(path.join(root, f), 'utf8')) as T
   const baseline = read<PolicyDoc>('policies/baseline@1.1.0.json')
   const policy = read<PolicyDoc>('policies/hotel@2.0.0.json')
   policy.version = '2.0.0-demo'
   policy.assets!.RLUSD.issuer = issuer.address
   policy.params!.rulingWindow = '60s'
+  policy.params!.arbiterIssuers = [accreditor.address]
   const template = read<Template>('templates/hotel@2.json')
   const dataDir = path.join(resultsDir, `decisions-hotel-${stamp}`)
   const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(client), templates: [template], policies: [baseline, policy], dataDir })
-  log(`co-signer ${cosigner.address}; policy layer pol_hotel@2.0.0-demo ${layerHash(policy)} (rulingWindow 60s)`)
+  log(`co-signer ${cosigner.address}; policy layer pol_hotel@2.0.0-demo ${layerHash(policy)} (rulingWindow 60s, arbiterIssuers [${accreditor.address}])`)
 
-  const cast: HotelCast = { issuer, guest, hotel, arbiter, service, currency: CUR }
+  const cast: HotelCast = { issuer, guest, hotel, arbiter, accreditor, service, currency: CUR }
   const onTx = (label: string, r: SubmitResult) => results.txs.push({ label, hash: r.hash, final: r.final })
   const flows = Object.fromEntries(HOTEL_PATHS.map((p) => [p, new HotelFlow({
     client, fees, svc, cast, timers: DEMO_HOTEL_TIMERS, policyLayers: [layerHash(policy)], rulingWindowSecs: 60, runId: RUN,
-    log: (m) => log(m), onTx,
+    log: (m) => log(m), onTx, probeCosigner: cosigner,
   })])) as Record<HotelPath, HotelFlow>
 
-  // ── Pre-create every engagement account, then wait until each can be deleted ──
-  const accounts = await flows.happy.precreate(HOTEL_PATHS.length)
+  // ── Accreditation: the accreditor issues ENG/ARBITER to the arbiter, who accepts it ──
+  for (const s of await flows.happy.accredit()) if (s.final !== 'tesSUCCESS') throw new Error(`${s.step} failed: ${s.final} (${s.tx})`)
+  log(`arbiter ${arbiter.address} accredited by ${accreditor.address} (ENG/ARBITER, accepted)`)
+
+  // ── H16: a deal naming an unaccredited arbiter is refused at registration, before the account is ever funded ──
+  const probe = await flows.happy.registerProbe(unaccredited)
+  const probeFunded = (await accountInfo(client, probe.account)) !== null
+  record('H16', 'Unaccredited arbiter → the co-signer refuses to register the deal, before any funding',
+    'register() throws NOT_NEUTRAL (ARBITER_NOT_ACCREDITED); nothing registered; the engagement account was never funded',
+    `${probe.final}; account ${probe.account} funded=${probeFunded}`, probe.final.startsWith('NOT_NEUTRAL') && probe.final.includes('ARBITER_NOT_ACCREDITED') && !probeFunded)
+
+  // ── Pre-create every engagement account (reserves sized from each path's nights), then wait until each can be deleted ──
+  await ensureXrp(client, service, HOTEL_PATHS.reduce((n, p) => n + HotelFlow.precreateDrops(fees, hotelPathNights(p)), 0) + 10_000_000, fees)
+  const accounts = await flows.happy.precreate(HOTEL_PATHS.map(hotelPathNights))
   HOTEL_PATHS.forEach((p, i) => { results.accounts[`engagement:${p}`] = accounts[i].address })
   log(`pre-created ${accounts.length} engagement accounts`)
   await flows.happy.waitUntilAged(accounts.map((a) => a.address))
@@ -168,8 +196,25 @@ async function main() {
       `advisory ruling.default SIGN; tesSUCCESS; payouts ${payouts.map((x) => `${x.value}→${label(x.to)}`).join(', ')}; account deleted`,
       `advisory ${fmt(s)}; payouts ${showPay(s)}; deleted=${gone}`, ok, { tx: s?.tx, path: 'claimUnanswered' })
   }
-  // H8, H9, H14 (the backup-arbiter checks) are gone with the backup arbiter; the chargeback paths that replace them
-  // ("arbiter silent → chargeback") arrive with the HotelFlow arbiterSilent/staySilent paths.
+  // H8/H9/H14/H17: the arbiter never rules → chargeback-style defaults, completed by the co-signer (chargeback spec §4.3).
+  await closed('H8', 'Claim disputed, arbiter silent past its ruling deadline → default.chargebackClaim', 'arbiterSilent', S('arbiterSilent', 'tick default.chargebackClaim', 1),
+    want(m(room), m(deposit) + m(bond)), 'default.chargebackClaim SIGN; tesSUCCESS; room to the hotel less the fee, deposit + bond to the guest')
+  {
+    const s = S('arbiterSilent', 'tick default.chargebackClaim', 0)
+    record('H9', 'default.chargebackClaim before the ruling deadline', 'REFUSE incl. G1 (NOT_DUE); nothing submitted', `${fmt(s)}; ${reasons(s, ['G1'])}`,
+      s?.decision === 'REFUSE' && !!s.failing?.includes('G1') && !s.tx, { path: 'arbiterSilent' })
+  }
+  {
+    const s = S('arbiterSilent', 'probe:arbiter+cosigner')
+    record('H14', 'Arbiter + co-signer alone (weight 6 < quorum 7)', 'tefBAD_QUORUM', fmt(s), s?.final === 'tefBAD_QUORUM', { tx: s?.tx, path: 'arbiterSilent' })
+  }
+  {
+    // 3 nights at floor(400 ÷ 3) = 133.333333; disputed in night 1 → one night to the hotel (less the fee), the rest to the guest.
+    const night = BigInt(Math.round(Number(hotelTerms(room, 3).nightly) * 1e6))
+    const total = BigInt(Math.round((m(room) + m(deposit) + m(bond)) * 1e6))
+    await closed('H17', 'Mid-stay dispute (night 1 of 3), arbiter silent → default.chargebackStay#1', 'staySilent', S('staySilent', 'tick default.chargebackStay#1'),
+      flow.split(night, total - night), 'default.chargebackStay#1 SIGN; tesSUCCESS; one night to the hotel less the fee, the remaining nights + deposit + bond to the guest')
+  }
   {
     const s = S('happy', 'probe:principal+counterparty')
     record('H10', 'Guest + hotel alone (weight 6 < quorum 7)', 'tefBAD_QUORUM', fmt(s), s?.final === 'tefBAD_QUORUM', { tx: s?.tx, path: 'happy' })
