@@ -73,11 +73,11 @@ describe('hotel@2 — refund.conceded', () => {
     const l = hotel2Ledger({ balance: '422', dispute: true, closeTime: '2026-11-16T11:00:00Z' })
     expect(failing({ stage: 'refund.conceded', proposedTx: tx, ledger: l, statements: [hotel2Confirmation(), d, concession(d.id)] })).toEqual(['F1'])
   })
-  it('refuses when only the hotel issued the dispute Credential (F1)', () => {
+  it('a receipted entry dispute stays open without the guest\'s Credential (R27): the concession refunds even if only the hotel issued one', () => {
     const l = hotel2Ledger({ balance: '422', closeTime: '2026-11-12T10:00:00Z' })
     l.credentials.push({ issuer: hotel, subject: W.engHotel2.address, type: 'ENG/DISPUTE', accepted: false, expiration: null })
     const d = dispute('entry')
-    expect(failing({ stage: 'refund.conceded', proposedTx: tx, ledger: l, statements: [hotel2Confirmation(), d, concession(d.id)] })).toEqual(['F1'])
+    expect(failing({ stage: 'refund.conceded', proposedTx: tx, ledger: l, statements: [hotel2Confirmation(), d, concession(d.id)] })).toEqual([])
   })
 })
 

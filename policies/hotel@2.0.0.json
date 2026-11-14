@@ -42,7 +42,7 @@
     "confirmed": "def.conf != null && def.conf.claim.mandateHash == eng.mandateId && def.conf.claim.city == mandate.constraints.city && def.conf.claim.checkIn == mandate.constraints.checkIn && def.conf.claim.checkOut == mandate.constraints.checkOut && amt(def.conf.claim.total.value, 'RLUSD') == def.booked && def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
     "checkedIn": "def.conf != null && att.list('party.checkin/1', 'counterparty').exists(c, c.claim.status == 'checked_in') && att.list('party.checkin/1', 'principal').exists(c, c.claim.status == 'checked_in') && def.balance >= def.booked + def.deposit",
     "disputes": "att.list('party.dispute/1', 'principal')",
-    "disputeOpen": "ledger.credentialExists(eng.parties.principal, eng.account, 'ENG/DISPUTE') && size(def.disputes) > 0 && (def.disputes.exists(d, d.claim.phase == 'entry') ? def.balance >= def.booked + amt(params.minDisputeBond, 'RLUSD') : def.conf != null && def.balance >= def.booked + def.deposit + amt(params.minDisputeBond, 'RLUSD'))",
+    "disputeOpen": "size(def.disputes) > 0 && (def.disputes.exists(d, d.claim.phase == 'entry') ? def.balance >= def.booked + amt(params.minDisputeBond, 'RLUSD') : def.conf != null && def.balance >= def.booked + def.deposit + amt(params.minDisputeBond, 'RLUSD'))",
     "entryDispute": "def.disputeOpen && def.disputes.exists(d, d.claim.phase == 'entry')",
     "conceded": "def.entryDispute && att.list('party.concession/1', 'counterparty').exists(c, def.disputes.exists(d, d.claim.phase == 'entry' && d.id == c.claim.disputeRef))",
     "claim": "att.latest('party.claim/1', 'counterparty')",

@@ -1494,3 +1494,91 @@ describe('co-signer: fix round 5 (R23, R25) — checked in needs the guest\'s ow
     await svc.ingest(ENG, early)
   })
 })
+
+describe('co-signer: R27 — a receipted dispute stays open (no withdraw-and-revive)', () => {
+  const sweep = { to: W.dana.address, value: '0', partial: true }
+  const room = [{ to: W.atlas.address, value: '409.94' }, { to: W.service.address, value: '2.06' }]
+  const blob = (payouts: Array<{ to: string; value: string; partial?: boolean }>, basis: string) => presign(hotel2Close(payouts, { tickets: true, memos: [memo('eng/basis', basis)] }))
+  const arb = (t: string) => ruling(W.arbiter, [{ to: W.atlas.address, value: '470.00' }], t)
+  const night = (k: bigint) => {
+    const gross = k * 137333333n
+    const f = (gross * 50n) / 10000n
+    const fmt = (m: bigint) => `${m / 1000000n}.${(m % 1000000n).toString().padStart(6, '0')}`
+    return blob([{ to: W.atlas.address, value: fmt(gross - f) }, { to: W.service.address, value: fmt(f) }, sweep], 'default.chargebackStay')
+  }
+  async function storeAll(svc: CosignerService) {
+    await svc.storePresigned(ENG, 'default.chargebackEntry', blob([sweep], 'default.chargebackEntry'))
+    await svc.storePresigned(ENG, 'default.chargebackClaim', blob([...room, sweep], 'default.chargebackClaim'))
+    await svc.storePresigned(ENG, 'default.chargebackStay#1', night(1n))
+    await svc.storePresigned(ENG, 'default.chargebackStay#2', night(2n))
+    await svc.storePresigned(ENG, 'default.release', blob([...room, sweep], 'default.release'))
+    await svc.storePresigned(ENG, 'default.noshow', blob(room, 'default.noshow'))
+    await svc.storePresigned(ENG, 'default.noshowSweep', blob([...room, sweep], 'default.noshowSweep'))
+  }
+  const signed = (rs: TickResult[]) => rs.filter((r) => r.decision === 'SIGN').map((r) => r.outcome)
+  /** Ticks at each time with the given balance and dispute Credential; returns what signed at each. */
+  async function ticks(svc: CosignerService, source: FixtureLedgerSource, balance: string, cred: boolean, times: string[]) {
+    const out: Record<string, string[]> = {}
+    for (const t of times) {
+      source.snap = hotel2Ledger({ balance, dispute: cred, closeTime: t })
+      out[t] = signed(await svc.tick(ENG))
+    }
+    return out
+  }
+  /** Checked in (hotel + guest acknowledgement + deposit), then a bonded stay dispute receipted at 11-11T15:30 (deadline 11-16T15:29:30). */
+  async function stayDisputed() {
+    const { svc, source } = await confirmedSetup('2026-11-11T15:01:00Z')
+    await svc.ingest(ENG, checkin('checked_in'))
+    source.snap = hotel2Ledger({ balance: '562', closeTime: '2026-11-11T15:02:00Z' })
+    await svc.ingest(ENG, guestCheckin('2026-11-11T15:01:30Z'))
+    source.snap = hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-11T15:30:00Z' })
+    await svc.ingest(ENG, dispute('stay', '2026-11-11T15:29:30Z'))
+    await storeAll(svc)
+    return { svc, source }
+  }
+  /** The hotel's checked_in, then a bonded entry dispute receipted at 11-11T15:30 (deadline 11-16T15:29:30). */
+  async function entryDisputed() {
+    const { svc, source } = await confirmedSetup('2026-11-11T15:01:00Z')
+    await svc.ingest(ENG, checkin('checked_in'))
+    source.snap = hotel2Ledger({ balance: '422', dispute: true, closeTime: '2026-11-11T15:30:00Z' })
+    await svc.ingest(ENG, dispute('entry', '2026-11-11T15:29:30Z'))
+    return { svc, source }
+  }
+
+  it('stay: deleting the Credential withdraws nothing — the dispute keeps blocking the release and the stay chargeback fires at the deadline, not later', async () => {
+    const { svc, source } = await stayDisputed()
+    const out = await ticks(svc, source, '572', false, ['2026-11-12T11:00:01Z', '2026-11-16T15:29:30Z', '2026-11-16T15:29:31Z'])
+    expect(out).toEqual({ '2026-11-12T11:00:01Z': [], '2026-11-16T15:29:30Z': [], '2026-11-16T15:29:31Z': ['default.chargebackStay#1'] })
+  })
+
+  it('stay: an arbiter ruling before the deadline counts while the Credential is gone; reviving it later fires nothing', async () => {
+    const { svc, source } = await stayDisputed()
+    expect(await ticks(svc, source, '572', false, ['2026-11-12T11:00:01Z', '2026-11-16T15:29:00Z'])).toEqual({ '2026-11-12T11:00:01Z': [], '2026-11-16T15:29:00Z': [] })
+    source.snap = hotel2Ledger({ balance: '572', dispute: false, closeTime: '2026-11-16T15:29:20Z' })
+    await svc.ingest(ENG, arb('2026-11-16T15:29:10Z'))
+    const out = await ticks(svc, source, '572', true, ['2026-11-16T15:30:02Z', '2026-11-17T11:00:01Z', '2027-01-01T00:00:00Z'])
+    for (const [t, s] of Object.entries(out)) expect(s, t).toEqual([])
+    const off = await ticks(svc, source, '572', false, ['2027-01-01T00:00:00Z'])
+    expect(off['2027-01-01T00:00:00Z']).toEqual([])
+  })
+
+  it('entry: after a receipted entry dispute the guest\'s acknowledgement is ENTRY_DISPUTED even with the Credential deleted; the entry chargeback fires at the deadline', async () => {
+    const { svc, source } = await entryDisputed()
+    source.snap = hotel2Ledger({ balance: '572', dispute: false, closeTime: '2026-11-11T15:40:00Z' })
+    await expect(svc.ingest(ENG, guestCheckin('2026-11-11T15:39:30Z'))).rejects.toThrow(/ENTRY_DISPUTED/)
+    await storeAll(svc)
+    expect((await svc.decide({ engagementId: ENG, stage: 'checkin' })).failing).toContain('K1')
+    const out = await ticks(svc, source, '572', false, ['2026-11-12T11:00:01Z', '2026-11-16T15:29:30Z', '2026-11-16T15:29:31Z'])
+    expect(out).toEqual({ '2026-11-12T11:00:01Z': [], '2026-11-16T15:29:30Z': [], '2026-11-16T15:29:31Z': ['default.chargebackEntry'] })
+  })
+
+  it('entry: an arbiter ruling before the deadline counts while the Credential is gone; reviving it later fires nothing', async () => {
+    const { svc, source } = await entryDisputed()
+    await storeAll(svc)
+    source.snap = hotel2Ledger({ balance: '422', dispute: false, closeTime: '2026-11-16T15:29:20Z' })
+    expect(signed(await svc.tick(ENG))).toEqual([])
+    await svc.ingest(ENG, arb('2026-11-16T15:29:10Z'))
+    const out = await ticks(svc, source, '422', true, ['2026-11-16T15:30:02Z', '2026-11-17T11:00:01Z', '2027-01-01T00:00:00Z'])
+    for (const [t, s] of Object.entries(out)) expect(s, t).toEqual([])
+  })
+})

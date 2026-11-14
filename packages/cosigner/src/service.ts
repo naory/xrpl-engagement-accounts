@@ -256,8 +256,9 @@ export class CosignerService {
 
   /**
    * Ordering rules no single statement can show (R28–R33, R38, R39): only the hotel confirms, and only once; an
-   * entry dispute is filed from check-in on, and a bonded one (principal's ENG/DISPUTE Credential on the account and
-   * the bond on the ledger at this receipt) freezes the stay — the hotel can no longer record a check-in; a recorded
+   * entry dispute is filed from check-in on, and a receipted one (bonded at ingest: principal's ENG/DISPUTE Credential on
+   * the account and the bond on the ledger) freezes the stay for good — no check-in can be recorded by either side, even
+   * if the Credential is later deleted (R27); a recorded
    * check-in is final — once the hotel's checked_in is receipted it cannot be followed by refused (or anything else),
    * so a stay can't be turned into a no-show; a claim is posted from checkout on, once per deal,
    * itemized, positive, and capped at the deposit of the (first) confirmation.
@@ -320,7 +321,9 @@ export class CosignerService {
     }
     if (s.type === 'party.checkin/1' && (s.claim as { status?: unknown }).status === 'checked_in') {
       const entryDispute = posted.some((p) => p.type === 'party.dispute/1' && p.attester.account === parties.principal && (p.claim as { phase?: unknown }).phase === 'entry')
-      if (entryDispute && parties.principal && this.disputeBonded(st, posted, assets, ledger, 'entry')) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
+      // Any receipted entry dispute (bonded at ingest, R12) freezes the check-in for good: deleting the Credential later
+      // withdraws nothing (R27), so neither the hotel nor the guest can record a check-in after it.
+      if (entryDispute) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
     }
     if (s.type === 'party.claim/1') {
       // Claims are post-checkout by design: an early claim would open a "case" an arbiter could rule on before the guest
@@ -399,10 +402,12 @@ export class CosignerService {
   }
 
   /**
-   * As the policy's def.disputeOpen, at this ledger: the principal's ENG/DISPUTE Credential is on the account and the
-   * balance covers booked + minDisputeBond, plus the first confirmation's deposit for a stay or settlement dispute (never
+   * Whether a principal dispute may be receipted (R12), at this ledger: the principal's ENG/DISPUTE Credential is on the
+   * account and the balance covers booked + minDisputeBond, plus the first confirmation's deposit for a stay or settlement dispute (never
    * for an entry dispute). The term is fixed by the dispute's phase, not by whether the guest is checked in, so no
-   * payment into the account can move an open dispute's threshold.
+   * payment into the account can move an open dispute's threshold. Only ingest checks the Credential: once receipted, a
+   * dispute stays open on the balance threshold alone (the policy's def.disputeOpen, R27) — deleting the Credential
+   * withdraws nothing, so a dispute can't be withdrawn and revived after the arbiter's deadline.
    */
   private disputeBonded(st: EngagementState, posted: Statement[], assets: Record<string, AssetDef>, ledger: LedgerSnapshot, phase: unknown): boolean {
     const { parties, account, amount } = st.record
