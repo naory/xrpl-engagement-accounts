@@ -304,9 +304,19 @@ export class CosignerService {
       // The ruling clock starts only on an open dispute: the Credential and the bond must already be on the ledger.
       if (isPrincipalDispute(s) && !this.disputeBonded(st, posted, assets, ledger, phase)) throw new Error('NOT_BONDED: post the ENG/DISPUTE Credential and the bond (room, plus the deposit for a stay or settlement dispute, plus minDisputeBond in the account) before the dispute statement')
     }
+    const hotelCheckedIn = (p: Statement) => p.type === 'party.checkin/1' && p.attester.account === parties.counterparty && (p.claim as { status?: unknown }).status === 'checked_in'
+    if (s.type === 'party.checkin/1' && s.attester.account === parties.counterparty && (s.claim as { status?: unknown }).status === 'checked_in') {
+      // The hotel can't record a check-in before the scheduled check-in time, so it can't foreclose the entry window early.
+      const checkIn = Date.parse(st.record.timers?.checkIn ?? '')
+      if (!Number.isNaN(checkIn) && Date.parse(ledger.closeTime) < checkIn) throw new Error(`TOO_EARLY: the hotel can record a check-in from checkIn (${st.record.timers!.checkIn})`)
+    }
+    if (s.type === 'party.checkin/1' && s.attester.account === parties.principal && s.attester.account !== parties.counterparty) {
+      // The guest's own acknowledgement (it has the keys): only "checked_in", and only after the hotel recorded the check-in.
+      if ((s.claim as { status?: unknown }).status !== 'checked_in') throw new Error('BAD_CHECKIN: the guest\'s party.checkin/1 acknowledges a check-in (status "checked_in")')
+      if (!posted.some(hotelCheckedIn)) throw new Error('NO_HOTEL_CHECKIN: the guest acknowledges a check-in only after the hotel has recorded it')
+    }
     if (s.type === 'party.checkin/1' && s.attester.account === parties.counterparty && (s.claim as { status?: unknown }).status !== 'checked_in') {
-      const checkedIn = posted.some((p) => p.type === 'party.checkin/1' && p.attester.account === parties.counterparty && (p.claim as { status?: unknown }).status === 'checked_in')
-      if (checkedIn) throw new Error(`CHECKIN_FINAL: the hotel already recorded the guest as checked in; a later ${String((s.claim as { status?: unknown }).status)} is not accepted`)
+      if (posted.some(hotelCheckedIn)) throw new Error(`CHECKIN_FINAL: the hotel already recorded the guest as checked in; a later ${String((s.claim as { status?: unknown }).status)} is not accepted`)
     }
     if (s.type === 'party.checkin/1' && (s.claim as { status?: unknown }).status === 'checked_in') {
       const entryDispute = posted.some((p) => p.type === 'party.dispute/1' && p.attester.account === parties.principal && (p.claim as { phase?: unknown }).phase === 'entry')
@@ -331,11 +341,16 @@ export class CosignerService {
     }
   }
 
-  /** Checked in (as the policy's def.checkedIn): the hotel's checked_in is receipted and the balance covers booked + the first confirmation's deposit. */
+  /**
+   * Checked in (as the policy's def.checkedIn): the hotel's checked_in and the guest's own acknowledgement (a principal
+   * party.checkin/1 "checked_in", R23) are receipted, and the balance covers booked + the first confirmation's deposit —
+   * so a hotel paying the deposit in itself can't put a guest who never got the keys on the stay track.
+   */
   private checkedIn(st: EngagementState, posted: Statement[], assets: Record<string, AssetDef>, ledger: LedgerSnapshot): boolean {
     const { parties, account, amount } = st.record
     const conf = posted.find((p) => p.type === 'party.confirmation/1' && p.attester.account === parties.counterparty)
-    if (!conf || !posted.some((p) => p.type === 'party.checkin/1' && p.attester.account === parties.counterparty && (p.claim as { status?: unknown }).status === 'checked_in')) return false
+    const says = (role: string) => posted.some((p) => p.type === 'party.checkin/1' && p.attester.account === parties[role] && (p.claim as { status?: unknown }).status === 'checked_in')
+    if (!conf || !says('counterparty') || !says('principal')) return false
     const asset = Object.values(assets).find((a) => a.code === (amount?.asset ?? st.record.asset))
     const dep = (conf.claim as { deposit?: { currency?: string; value?: string } }).deposit
     if (!asset || !amount || dep?.currency !== asset.code || typeof dep.value !== 'string') return false

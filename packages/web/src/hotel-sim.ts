@@ -196,10 +196,15 @@ class PathSim {
     this.add({ ...this.decided('confirm', await this.svc.decide({ engagementId: this.id, stage: 'confirm' })), receipt })
   }
 
-  /** Spec §5.3 order: check-in attestation → default.release pre-signed and stored → deposit → `checkin`. */
+  /**
+   * Spec §5.3 order: the hotel's check-in attestation → the guest's own acknowledgement (it has the keys; R23) →
+   * default.release pre-signed and stored → deposit → `checkin`.
+   */
   async checkIn(): Promise<void> {
     const receipt = await this.post(this.stmt(W.hotel, 'COUNTERPARTY', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'checked_in', room: '204', deposit: money(BOOKING.deposit) }))
     this.add({ step: 'checkin attestation', final: 'RECEIPTED', receipt })
+    const ack = await this.post(this.stmt(W.guest, 'PRINCIPAL', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'checked_in', room: '204' }))
+    this.add({ step: 'guest acknowledges check-in', final: 'RECEIPTED', receipt: ack })
     await this.presign('default.release', [...split(micro(BOOKING.room), 0n), SWEEP_TO_GUEST]) // deposit + anything extra
     this.add({ step: 'default.release pre-signed', final: 'STORED' })
     this.balance += micro(BOOKING.deposit)

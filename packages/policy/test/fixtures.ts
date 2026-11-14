@@ -313,6 +313,15 @@ export function checkin(status: 'checked_in' | 'refused'): Statement {
   })
 }
 
+/** The guest's own acknowledgement of the check-in (R23): its agent posts it once it has the keys, after the hotel's checked_in. */
+export function guestCheckin(issuedAt = '2026-11-11T15:00:30Z'): Statement {
+  return statement(W.dana, {
+    kind: 'PRINCIPAL', type: 'party.checkin/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
+    claim: { status: 'checked_in', room: '204' },
+    ...at(issuedAt),
+  })
+}
+
 /** The hotel's deposit claim, posted before claimBy. Amounts become {currency, value}; `total` is the exact sum of the items. */
 export function claim(items: Array<{ kind: string; amount: string }>): Statement {
   const cents = (v: string) => { const [w, f = ''] = v.split('.'); return BigInt(w) * 100n + BigInt((f + '00').slice(0, 2)) }

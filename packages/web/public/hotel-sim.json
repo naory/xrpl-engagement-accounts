@@ -64,7 +64,7 @@
     },
     "K1": {
       "title": "Guest checked in",
-      "message": "The hotel has recorded the guest's arrival (once recorded, a check-in can't be taken back), and the deposit is in the account."
+      "message": "The hotel has recorded the guest's arrival (once recorded, a check-in can't be taken back), the guest has confirmed it (they have the keys), and the deposit is in the account."
     },
     "K2": {
       "title": "Deposit is exactly right",
@@ -124,7 +124,7 @@
     },
     "N3": {
       "title": "Guest never checked in",
-      "message": "If the hotel recorded the guest as checked in and the deposit is in, it isn't a no-show. A recorded check-in is final: a later 'refused' doesn't undo it."
+      "message": "If the hotel recorded the guest as checked in, the guest confirmed it and the deposit is in, it isn't a no-show. A recorded check-in is final: a later 'refused' doesn't undo it."
     },
     "N4": {
       "title": "No open dispute",
@@ -360,6 +360,17 @@
         "final": "RECEIPTED",
         "receipt": {
           "statementId": "att:1F4A25B53D13C63993344222F2FF41371B0AD93F6B30CC0C08E14FD37D328918",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "guest acknowledges check-in",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:5868EC588C511276185F42A2CDB66D4E4AB965C4626A6959AA0BB3FE7CDD3C65",
           "statementType": "party.checkin/1",
           "receivedAt": "2026-11-11T15:00:00Z",
           "ledgerIndex": 99221400
@@ -779,7 +790,7 @@
         "step": "claim",
         "final": "RECEIPTED",
         "receipt": {
-          "statementId": "att:318CD43880364D8F89224CD14637775C04DE3C8C5A58E4434FC50A6B8A7B6C7D",
+          "statementId": "att:54232E2BE1C3950D1BAEDAE17817D368ED3E44E2BE619FE31DD10196C01FEC0F",
           "statementType": "party.claim/1",
           "receivedAt": "2026-11-14T15:00:00Z",
           "ledgerIndex": 99286200
@@ -859,7 +870,7 @@
             "result": "pass"
           }
         ],
-        "tx": "E1469F365CA88C1E670572F32E6D7E27DD9E76C6E679703B42F93C2D240BD4EB",
+        "tx": "6B401D5A23C1A428790A1FF4290D545095E2A27189235EA4EFC86F6419C30ED7",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -2119,6 +2130,17 @@
         "at": "2026-11-11T15:00:00Z"
       },
       {
+        "step": "guest acknowledges check-in",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:E5FF2F82EB4F4B550516E1298C667E1913442252EE6627E14F7BA034BE37E4B5",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
         "step": "default.release pre-signed",
         "final": "STORED",
         "at": "2026-11-11T15:00:00Z"
@@ -2630,6 +2652,17 @@
         "at": "2026-11-11T15:00:00Z"
       },
       {
+        "step": "guest acknowledges check-in",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:52F42DCCE609BFAF1E2BDCA765D619F5974EB5756CB6388DD5573548839F13E7",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
         "step": "default.release pre-signed",
         "final": "STORED",
         "at": "2026-11-11T15:00:00Z"
@@ -2704,7 +2737,7 @@
         "step": "claim",
         "final": "RECEIPTED",
         "receipt": {
-          "statementId": "att:04B6D38B158EF6DA26B3C9304B5CB9FDAFFD2A4FFC5BC8282CE182A6B8583A97",
+          "statementId": "att:388B5AB3CE3664510834E4ACAB3ED922F933C620133E16659BAA104A801E1E4B",
           "statementType": "party.claim/1",
           "receivedAt": "2026-11-14T15:00:00Z",
           "ledgerIndex": 99286200
