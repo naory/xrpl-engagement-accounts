@@ -226,10 +226,10 @@ export class CosignerService {
     }
     if (s.type === 'party.ruling/1' && attester === st.record.parties.arbiter) {
       // A ruling is about a case: a receipted guest dispute or hotel claim. Otherwise an arbiter could pre-block defaults.
-      const { parties } = st.record
-      const posted = [...st.attestations.values()].map((a) => a.statement)
-      const hasCase = posted.some((p) => (p.type === 'party.dispute/1' && p.attester.account === parties.principal) || (p.type === 'party.claim/1' && p.attester.account === parties.counterparty))
-      if (!hasCase) throw new Error('NO_CASE: no receipted dispute or claim for the arbiter to rule on')
+      const opened = this.caseOpenedAt(st)
+      if (!opened) throw new Error('NO_CASE: no receipted dispute or claim for the arbiter to rule on')
+      // The policy counts only rulings issued at/after the case opened: refuse one it would ignore, so a receipted ruling always counts.
+      if (Date.parse(s.issuedAt) < opened.at) throw new Error(`EARLY_RULING: issued ${s.issuedAt}, before the case opened (${new Date(opened.at).toISOString()})`)
       // A ruling counts only if receipted by the deal's ruling deadline, so a late one can't block a due default.
       const due = this.rulingDeadline(st)
       if (due != null && received > due) throw new Error(`LATE: party.ruling/1 after the ruling deadline (${new Date(due).toISOString()})`)
@@ -345,19 +345,29 @@ export class CosignerService {
     if (typeof raw !== 'string') return undefined
     let window: number
     try { window = celDurationMs(raw) } catch { throw new Error(`NO_DEADLINE: rulingWindow ${JSON.stringify(raw)} is not a duration`) }
+    const opened = this.caseOpenedAt(st)
+    if (!opened) return undefined
+    if (opened.kind === 'dispute') return opened.at + window
+    const end = Date.parse(st.record.timers?.disputeWindowEnds ?? '')
+    return Number.isNaN(end) ? undefined : end + window
+  }
+
+  /**
+   * When the case the arbiter rules on opened, as the policy's def.arbiterRulings filter sees it: the principal's
+   * dispute's issuedAt floored at checkout (settlement) or the scheduled check-in (entry, stay) — def.disputeOpenedAt —
+   * else the latest (by issuedAt) hotel claim's issuedAt. Undefined when neither is receipted.
+   */
+  private caseOpenedAt(st: EngagementState): { kind: 'dispute' | 'claim'; at: number } | undefined {
     const { parties, timers } = st.record
     const posted = [...st.attestations.values()].map((a) => a.statement)
     const d = posted.find((p) => p.type === 'party.dispute/1' && p.attester.account === parties.principal)
     if (d) {
       const anchor = Date.parse(((d.claim as { phase?: unknown }).phase === 'settlement' ? timers?.deliveryBy : timers?.checkIn) ?? '')
       const issued = Date.parse(d.issuedAt)
-      return (Number.isNaN(anchor) ? issued : Math.max(issued, anchor)) + window
+      return { kind: 'dispute', at: Number.isNaN(anchor) ? issued : Math.max(issued, anchor) }
     }
-    if (posted.some((p) => p.type === 'party.claim/1' && p.attester.account === parties.counterparty)) {
-      const end = Date.parse(timers?.disputeWindowEnds ?? '')
-      return Number.isNaN(end) ? undefined : end + window
-    }
-    return undefined
+    const claims = posted.filter((p) => p.type === 'party.claim/1' && p.attester.account === parties.counterparty).map((p) => Date.parse(p.issuedAt))
+    return claims.length ? { kind: 'claim', at: Math.max(...claims) } : undefined
   }
 
   /**

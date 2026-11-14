@@ -256,11 +256,11 @@ describe('hotel@2 — chargeback-style defaults when the arbiter misses its ruli
       const i = input('2026-11-16T20:00:01Z')
       expect(failing({ ...i, statements: i.statements.filter((x) => x.type !== 'party.confirmation/1') })).toEqual(['E1'])
     })
-    it('a guest checked in at decision time (deposit paid after an entry dispute) is on the stay/claim track (E1, R8)', () => {
-      // entry dispute 11-11T20:00, the hotel's checked_in 21:00, then the deposit: room 412 + deposit 150 + bond 10
-      expect(failing(input('2026-11-16T20:00:01Z', [checkinAt('checked_in', '2026-11-11T21:00:00Z')], { balance: '572' }))).toEqual(['E1'])
-      // without the deposit the guest is not checked in and the entry chargeback still applies
-      expect(failing(input('2026-11-16T20:00:01Z', [checkinAt('checked_in', '2026-11-11T21:00:00Z')]))).toEqual([])
+    it('an entry dispute resolves to the entry chargeback whatever the balance: a deposit paid in later changes nothing (R15)', () => {
+      // entry dispute 11-11T20:00, the hotel's checked_in 21:00; at the deadline the account holds 422, or 572 with a deposit
+      for (const balance of ['422', '572']) {
+        expect(failing(input('2026-11-16T20:00:01Z', [checkinAt('checked_in', '2026-11-11T21:00:00Z')], { balance }))).toEqual([])
+      }
     })
     it('a fixed payment that leaves the bond behind is refused (E4)', () => {
       expect(failing(input('2026-11-16T20:00:01Z', [], { proposedTx: cb('default.chargebackEntry', [{ to: guest, value: '412' }]) }))).toContain('E4')
@@ -300,10 +300,8 @@ describe('hotel@2 — chargeback-style defaults when the arbiter misses its ruli
     it('refuses with no dispute open (G1)', () => {
       expect(failing(input('2026-11-21T10:00:01Z', [], { disputes: [], balance: '562', open: false }))).toContain('G1')
     })
-    it('an entry dispute by a guest checked in at decision time falls to the claim chargeback (R10)', () => {
-      // entry dispute 11-11T20:00 → due after 11-16T20:00; checked in with the deposit (412 + 150 + bond 10)
-      expect(failing(input('2026-11-16T20:00:00Z', [], { disputes: [dispute('entry')] }))).toEqual(['G1'])
-      expect(failing(input('2026-11-16T20:00:01Z', [], { disputes: [dispute('entry')] }))).toEqual([])
+    it('an entry dispute never opens the claim chargeback, even with the guest checked in and the deposit in (G1, R15)', () => {
+      expect(failing(input('2026-11-21T10:00:01Z', [], { disputes: [dispute('entry')] }))).toEqual(['G1'])
     })
     it('an entry dispute by a guest not checked in (no deposit) stays on the entry track (G1)', () => {
       expect(failing(input('2026-11-21T10:00:01Z', [], { disputes: [dispute('entry')], balance: '422' }))).toContain('G1')

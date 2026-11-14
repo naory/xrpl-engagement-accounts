@@ -323,8 +323,8 @@
           "id": "E1",
           "title": "Arbiter missed its deadline on an arrival dispute",
           "reason": "NOT_DUE",
-          "check": "def.confirmed && !def.checkedIn && def.entryDispute && size(def.disputes) == 1 && def.rulingDue",
-          "message": "Only for a confirmed booking the guest hasn't checked into (check-in recorded and deposit paid), with the guest's one open, bonded dispute about a problem on arrival (no room, wrong room), once the arbiter's ruling deadline, counted from the dispute, has passed. An unconfirmed booking is refunded instead; a guest who checked in after all is on the stay or claim track."
+          "check": "def.confirmed && def.entryDispute && size(def.disputes) == 1 && def.rulingDue",
+          "message": "Only for a confirmed booking with the guest's one open, bonded dispute about a problem on arrival (no room, wrong room), once the arbiter's ruling deadline, counted from the dispute, has passed. Whether it is an arrival dispute is fixed when it is filed, so later payments into the account can't change the outcome. An unconfirmed booking is refunded instead."
         },
         {
           "id": "E2",
@@ -356,8 +356,8 @@
           "id": "G1",
           "title": "Arbiter missed its deadline on a claim or stay dispute",
           "reason": "NOT_DUE",
-          "check": "def.checkedIn && size(def.disputes) == 1 && def.rulingDue && (size(def.settlementDisputes) == 1 || def.entryDispute || (def.stayDispute != null && def.stayNight >= eng.terms.nights))",
-          "message": "Only for a stay that happened, with the guest's one open, bonded dispute filed after checkout (against the hotel's claim or the stay), in the stay's last night, or on arrival by a guest who then checked in and paid the deposit, once the arbiter's ruling deadline has passed."
+          "check": "def.checkedIn && size(def.disputes) == 1 && def.rulingDue && (size(def.settlementDisputes) == 1 || (def.stayDispute != null && def.stayNight >= eng.terms.nights))",
+          "message": "Only for a stay that happened, with the guest's one open, bonded dispute filed after checkout (against the hotel's claim or the stay) or in the stay's last night, once the arbiter's ruling deadline has passed."
         },
         {
           "id": "G2",

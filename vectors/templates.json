@@ -150,7 +150,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackEntry": {
-            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.",
+            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically. This holds even if you were given the keys afterwards, so a hotel should not hand over keys while an arrival dispute is open.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -159,7 +159,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackClaim": {
-            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night, or a problem on arrival after you checked in and paid the deposit) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
+            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1020,7 +1020,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackEntry": {
-            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.",
+            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically. This holds even if you were given the keys afterwards, so a hotel should not hand over keys while an arrival dispute is open.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1029,7 +1029,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackClaim": {
-            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night, or a problem on arrival after you checked in and paid the deposit) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
+            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1197,7 +1197,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackEntry": {
-            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.",
+            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically. This holds even if you were given the keys afterwards, so a hotel should not hand over keys while an arrival dispute is open.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1206,7 +1206,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackClaim": {
-            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night, or a problem on arrival after you checked in and paid the deposit) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
+            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1375,7 +1375,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackEntry": {
-            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.",
+            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically. This holds even if you were given the keys afterwards, so a hotel should not hand over keys while an arrival dispute is open.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1384,7 +1384,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackClaim": {
-            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night, or a problem on arrival after you checked in and paid the deposit) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
+            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1552,7 +1552,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackEntry": {
-            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.",
+            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically. This holds even if you were given the keys afterwards, so a hotel should not hand over keys while an arrival dispute is open.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1561,7 +1561,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackClaim": {
-            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night, or a problem on arrival after you checked in and paid the deposit) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
+            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],

@@ -172,7 +172,7 @@
     },
     "E1": {
       "title": "Arbiter missed its deadline on an arrival dispute",
-      "message": "Only for a confirmed booking the guest hasn't checked into (check-in recorded and deposit paid), with the guest's one open, bonded dispute about a problem on arrival (no room, wrong room), once the arbiter's ruling deadline, counted from the dispute, has passed. An unconfirmed booking is refunded instead; a guest who checked in after all is on the stay or claim track."
+      "message": "Only for a confirmed booking with the guest's one open, bonded dispute about a problem on arrival (no room, wrong room), once the arbiter's ruling deadline, counted from the dispute, has passed. Whether it is an arrival dispute is fixed when it is filed, so later payments into the account can't change the outcome. An unconfirmed booking is refunded instead."
     },
     "E2": {
       "title": "Arbiter hasn't ruled",
@@ -188,7 +188,7 @@
     },
     "G1": {
       "title": "Arbiter missed its deadline on a claim or stay dispute",
-      "message": "Only for a stay that happened, with the guest's one open, bonded dispute filed after checkout (against the hotel's claim or the stay), in the stay's last night, or on arrival by a guest who then checked in and paid the deposit, once the arbiter's ruling deadline has passed."
+      "message": "Only for a stay that happened, with the guest's one open, bonded dispute filed after checkout (against the hotel's claim or the stay) or in the stay's last night, once the arbiter's ruling deadline has passed."
     },
     "G2": {
       "title": "Arbiter hasn't ruled",

@@ -1054,21 +1054,43 @@ describe('co-signer: review fixes R10–R14', () => {
   const arb = (t: string) => ruling(W.arbiter, [{ to: W.atlas.address, value: '470.00' }], t)
   const summary = (rs: TickResult[]) => Object.fromEntries(rs.map((r) => [r.outcome, r.failing.length ? `${r.decision}:${r.failing.join('|')}` : r.decision]))
 
-  it('R10: hotel checked_in → bonded entry dispute → deposit → arbiter silent: the claim chargeback SIGNs, the entry one refuses (E1)', async () => {
-    const { svc, source } = await confirmedSetup('2026-11-11T15:01:00Z')
-    await svc.ingest(ENG, checkin('checked_in'))
-    source.snap = hotel2Ledger({ balance: '422', dispute: true, closeTime: '2026-11-11T15:30:00Z' })
-    await svc.ingest(ENG, dispute('entry', '2026-11-11T15:29:00Z')) // deadline 11-16T15:29:00
-    await svc.storePresigned(ENG, 'default.chargebackEntry', blob([sweep], 'default.chargebackEntry'))
+  it('R15: hotel checked_in → bonded entry dispute → anyone tops up the deposit → arbiter silent: the entry chargeback SIGNs, the claim one refuses', async () => {
+    for (const balance of ['422', '572']) {
+      const { svc, source } = await confirmedSetup('2026-11-11T15:01:00Z')
+      await svc.ingest(ENG, checkin('checked_in'))
+      source.snap = hotel2Ledger({ balance: '422', dispute: true, closeTime: '2026-11-11T15:30:00Z' })
+      await svc.ingest(ENG, dispute('entry', '2026-11-11T15:29:30Z')) // deadline 11-16T15:29:30
+      await svc.storePresigned(ENG, 'default.chargebackEntry', blob([sweep], 'default.chargebackEntry'))
+      await svc.storePresigned(ENG, 'default.chargebackClaim', blob([...room, sweep], 'default.chargebackClaim'))
+      if (balance === '572') {
+        source.snap = hotel2Ledger({ balance, dispute: true, closeTime: '2026-11-12T10:00:00Z' }) // the deposit lands
+        await expect(svc.ingest(ENG, dispute('stay', '2026-11-12T09:59:30Z'))).rejects.toThrow(/ALREADY_DISPUTED/)
+      }
+      source.snap = hotel2Ledger({ balance, dispute: true, closeTime: '2026-11-16T15:29:30Z' })
+      expect(summary(await svc.tick(ENG))['default.chargebackEntry']).toMatch(/^REFUSE:.*E1/)
+      source.snap.closeTime = '2026-11-16T15:29:31Z'
+      const r = summary(await svc.tick(ENG))
+      expect(r['default.chargebackEntry']).toBe('SIGN')
+      expect(r['default.chargebackClaim']).toMatch(/^REFUSE:.*G1/)
+    }
+  })
+
+  it('R16: an arbiter ruling issued before the case opened is EARLY_RULING (a receipted ruling always counts)', async () => {
+    // a settlement dispute future-dated within the clock skew: the case opens at its issuedAt 10:04:50
+    const { svc, source } = await checkedIn('2026-11-14T15:01:00Z')
+    await svc.ingest(ENG, claim([{ kind: 'minibar', amount: '58.00' }])) // claim issued 11-14T15:00
+    source.snap.closeTime = '2026-11-14T15:01:30Z'
+    await expect(svc.ingest(ENG, arb('2026-11-14T14:59:59Z'))).rejects.toThrow(/EARLY_RULING/) // before the claim
+    source.snap = hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-15T10:00:00Z' })
+    await svc.ingest(ENG, dispute('settlement', '2026-11-15T10:04:50Z'))
+    source.snap.closeTime = '2026-11-15T10:02:00Z'
+    await expect(svc.ingest(ENG, arb('2026-11-15T10:01:30Z'))).rejects.toThrow(/EARLY_RULING: .*2026-11-15T10:04:50/)
+    expect(svc.statements(ENG).some((s) => s.type === 'party.ruling/1')).toBe(false)
+    source.snap.closeTime = '2026-11-15T10:05:00Z'
+    await svc.ingest(ENG, arb('2026-11-15T10:04:50Z')) // at the case-open instant: receipted, and it counts
     await svc.storePresigned(ENG, 'default.chargebackClaim', blob([...room, sweep], 'default.chargebackClaim'))
-    source.snap = hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-12T10:00:00Z' }) // the deposit lands
-    await expect(svc.ingest(ENG, dispute('stay', '2026-11-12T09:59:30Z'))).rejects.toThrow(/ALREADY_DISPUTED/)
-    source.snap.closeTime = '2026-11-16T15:29:00Z'
-    expect(summary(await svc.tick(ENG))['default.chargebackClaim']).toBe('REFUSE:G1')
-    source.snap.closeTime = '2026-11-16T15:29:01Z'
-    const r = summary(await svc.tick(ENG))
-    expect(r['default.chargebackEntry']).toMatch(/^REFUSE:.*E1/)
-    expect(r['default.chargebackClaim']).toBe('SIGN')
+    source.snap.closeTime = '2026-11-20T10:05:00Z'
+    expect(summary(await svc.tick(ENG))['default.chargebackClaim']).toBe('REFUSE:G2')
   })
 
   it('R11a: an arbiter ruling with no receipted dispute or claim is NO_CASE', async () => {
