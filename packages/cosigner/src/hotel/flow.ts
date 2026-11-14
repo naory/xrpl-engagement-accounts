@@ -154,8 +154,10 @@ export class HotelFlow {
     /** Called for every submitted transaction (results files list every hash). */
     onTx?: (label: string, r: SubmitResult) => void
     /**
-     * The co-signer's key, for quorum probes only (H14: arbiter + co-signer is below quorum). Available where the demo
-     * runs the co-signer in-process; the flow never uses it to sign anything that could apply.
+     * DEMO ONLY — never enable outside `npm run demo:hotel`. The co-signer's raw key, used solely by the H14 quorum
+     * probe: quorumProbe(['arbiter', 'cosigner']) signs a LIVE close transaction with this key outside decide(), i.e.
+     * bypassing every policy check, to show arbiter (4) + co-signer (2) stay below quorum 7 (tefBAD_QUORUM). Anywhere
+     * the co-signer's key must stay behind its policy engine (production, the web demo), leave this unset.
      */
     probeCosigner?: Wallet
   }) {
@@ -222,22 +224,6 @@ export class HotelFlow {
     return [{ step: 'accreditation issued', tx: issued.hash, final: issued.final }, { step: 'accreditation accepted', tx: accepted.hash, final: accepted.final }]
   }
 
-  /**
-   * Ask the co-signer to register a deal naming `arbiter` for a fresh, never-funded account, before any money moves.
-   * With an arbiter that holds no ENG/ARBITER from a listed issuer, register() refuses NOT_NEUTRAL and nothing is
-   * registered, so the guest never funds the account (H16). `final` is "REGISTERED" or the refusal message.
-   */
-  async registerProbe(arbiter: Wallet): Promise<HotelStepResult & { account: string; final: string }> {
-    const account = xrpl.Wallet.generate().address
-    const id = `eng_hotel_unaccredited_${this.o.runId ?? Date.now().toString(36)}`
-    const t0 = (await ledgerClock(this.o.client)).time
-    const mandate = this.mandateFor(id, 'unaccredited', t0, 1)
-    const record = this.recordFor(id, account, t0, 1, mandate, arbiter.address)
-    let final = 'REGISTERED'
-    try { await this.o.svc.register(record, mandate) } catch (e) { final = (e as Error).message }
-    return { step: 'register (unaccredited arbiter)', final, account }
-  }
-
   // ── Steps ────────────────────────────────────────────────────────────────
   /**
    * Open Batch (guest funds the room, SignerList, the deal's Tickets — sized from its nights — RegularKey cleared),
@@ -249,7 +235,20 @@ export class HotelFlow {
     this.id = `eng_hotel_${path}_${this.o.runId ?? Date.now().toString(36)}`
     this.nights = hotelPathNights(path)
     this.plan = hotelTickets(this.nights)
-    const { r, tx } = await withLock(cast.guest.address, async () => {
+    // The co-signer's neutrality gate runs before any money moves: register() needs no on-ledger account, so the record
+    // is registered first, and the open Batch — which funds the room and installs the SignerList giving the arbiter
+    // weight 4 — is submitted only once registration succeeded. An unaccredited arbiter is refused NOT_NEUTRAL here and
+    // nothing is submitted. Both run under the guest's lock (paths queue there for their open Batch), so the timers are
+    // anchored at the validated close time just before this deal's own Batch, not before the queue.
+    const opened = await withLock(cast.guest.address, async () => {
+      this.t0 = (await ledgerClock(client)).time
+      this.mandate = this.mandateFor(this.id, path, this.t0, this.nights)
+      this.record = this.recordFor(this.id, eng.address, this.t0, this.nights, this.mandate, cast.arbiter.address)
+      try {
+        await svc.register(this.record, this.mandate)
+      } catch (e) {
+        return { refused: (e as Error).message }
+      }
       const seq = Number(((await accountInfo(client, eng.address))!.account_data as Json).Sequence)
       const funderSeq = Number(((await accountInfo(client, cast.guest.address))!.account_data as Json).Sequence)
       const built = buildOpenBatch({
@@ -261,13 +260,13 @@ export class HotelFlow {
       addBatchSigner(cast.guest, built.tx)
       return { r: this.track('open', await submit(client, cast.service.sign(built.tx as never).tx_blob)), tx: built.tx }
     })
+    if ('refused' in opened) {
+      this.log(`register refused, nothing submitted: ${opened.refused}`)
+      return { step: 'register', final: opened.refused }
+    }
+    const { r, tx } = opened
     const final = await this.batchFinal(r, tx)
     if (final !== 'tesSUCCESS') return { step: 'open', tx: r.hash, final }
-
-    this.t0 = (await ledgerClock(client, r.ledger)).time
-    this.mandate = this.mandateFor(this.id, path, this.t0, this.nights)
-    this.record = this.recordFor(this.id, eng.address, this.t0, this.nights, this.mandate, cast.arbiter.address)
-    await svc.register(this.record, this.mandate)
     // Automatic endings return any extra money to the guest (residual sweep). The refund sweeps everything; the no-show
     // is signed exact and with a sweep, since a sweep that delivers nothing would fail on-ledger and burn its Tickets.
     // The entry chargeback (arbiter silent on an arrival dispute) returns everything to the guest.

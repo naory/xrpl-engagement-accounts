@@ -4,7 +4,7 @@
 //   XRPL_URL=wss://s.devnet.rippletest.net:51233 npm run demo:hotel
 //
 // The service's accreditor first issues the arbiter an ENG/ARBITER Credential (the arbiter accepts it); a deal naming an
-// unaccredited arbiter is refused at registration, before any funding (H16). All engagement accounts are pre-created
+// unaccredited arbiter is refused at registration inside HotelFlow.open(), before the open Batch moves any money (H16). All engagement accounts are pre-created
 // (reserves sized from each path's nights), then the script waits until each can be deleted (Sequence + 256 ≤ ledger
 // index, counting the open Batch's Sequence numbers), then the ten paths run concurrently, each opening its own account
 // when it starts (timers count from open). Keys are fresh per run; results land in demo/results/hotel-run-*.json, with
@@ -19,7 +19,7 @@ import {
   CosignerService, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, HOTEL_PATHS, HotelFlow, XrplLedgerSource, hotelPathNights, hotelTerms,
   type HotelCast, type HotelPath, type HotelStepResult,
 } from '../src/index.ts'
-import { ASF_DEFAULT_RIPPLE, accountInfo, currencyHex, iou, sendSimple, serverFees, sleep, type Fees, type SubmitResult } from '../src/xrpl-io.ts'
+import { ASF_DEFAULT_RIPPLE, accountInfo, currencyHex, iou, iouBalance, sendSimple, serverFees, sleep, type Fees, type SubmitResult } from '../src/xrpl-io.ts'
 
 type Wallet = InstanceType<typeof xrpl.Wallet>
 type Json = Record<string, unknown>
@@ -127,15 +127,34 @@ async function main() {
   for (const s of await flows.happy.accredit()) if (s.final !== 'tesSUCCESS') throw new Error(`${s.step} failed: ${s.final} (${s.tx})`)
   log(`arbiter ${arbiter.address} accredited by ${accreditor.address} (ENG/ARBITER, accepted)`)
 
-  // ── H16: a deal naming an unaccredited arbiter is refused at registration, before the account is ever funded ──
-  const probe = await flows.happy.registerProbe(unaccredited)
-  const probeFunded = (await accountInfo(client, probe.account)) !== null
-  record('H16', 'Unaccredited arbiter → the co-signer refuses to register the deal, before any funding',
-    'register() throws NOT_NEUTRAL (ARBITER_NOT_ACCREDITED); nothing registered; the engagement account was never funded',
-    `${probe.final}; account ${probe.account} funded=${probeFunded}`, probe.final.startsWith('NOT_NEUTRAL') && probe.final.includes('ARBITER_NOT_ACCREDITED') && !probeFunded)
+  // ── Pre-create every engagement account (reserves sized from each path's nights), plus one for H16 ──
+  await ensureXrp(client, service, [...HOTEL_PATHS.map(hotelPathNights), 1].reduce((n, k) => n + HotelFlow.precreateDrops(fees, k), 0) + 10_000_000, fees)
+  const [h16Account] = await flows.happy.precreate([1])
+  results.accounts['engagement:unaccredited (H16)'] = h16Account.address
 
-  // ── Pre-create every engagement account (reserves sized from each path's nights), then wait until each can be deleted ──
-  await ensureXrp(client, service, HOTEL_PATHS.reduce((n, p) => n + HotelFlow.precreateDrops(fees, hotelPathNights(p)), 0) + 10_000_000, fees)
+  // ── H16: the real deal flow (HotelFlow.open) with an unaccredited arbiter: the co-signer's gate refuses before money moves ──
+  {
+    const h16Txs: SubmitResult[] = []
+    const h16 = new HotelFlow({
+      client, fees, svc, cast: { ...cast, arbiter: unaccredited }, timers: DEMO_HOTEL_TIMERS, policyLayers: [layerHash(policy)], rulingWindowSecs: 60,
+      runId: `${RUN}_unaccredited`, log: (m) => log(m), onTx: (label, r) => { if (label.includes('_unaccredited')) h16Txs.push(r); onTx(label, r) },
+    })
+    const rl = () => iouBalance(client, guest.address, CUR, issuer.address)
+    const before = await rl()
+    const steps = await h16.run('happy', h16Account)
+    await sleep(8000) // a couple of ledgers: anything submitted would have validated by now
+    const after = await rl()
+    const engRlusd = await iouBalance(client, h16Account.address, CUR, issuer.address)
+    results.paths['unaccredited (H16)'] = { engagementId: h16.engagementId, account: h16Account.address, steps }
+    const s = steps[0]
+    const refused = steps.length === 1 && s?.step === 'register' && !!s.final?.startsWith('NOT_NEUTRAL') && !!s.final?.includes('ARBITER_NOT_ACCREDITED')
+    record('H16', 'Unaccredited arbiter in the real deal flow (HotelFlow.open) → the co-signer refuses to register, before any money moves',
+      'open(): register() refuses NOT_NEUTRAL (ARBITER_NOT_ACCREDITED); no open Batch submitted; the guest\'s RLUSD unchanged; the engagement account holds no RLUSD',
+      `${s?.step}: ${s?.final}; transactions submitted ${h16Txs.length}; guest RLUSD ${before} → ${after}; engagement account RLUSD ${engRlusd}`,
+      refused && h16Txs.length === 0 && before === after && Number(engRlusd ?? 0) === 0, { path: 'unaccredited (H16)' })
+  }
+
+  // ── Wait until every path's account can be deleted ──
   const accounts = await flows.happy.precreate(HOTEL_PATHS.map(hotelPathNights))
   HOTEL_PATHS.forEach((p, i) => { results.accounts[`engagement:${p}`] = accounts[i].address })
   log(`pre-created ${accounts.length} engagement accounts`)
@@ -202,7 +221,7 @@ async function main() {
   {
     const s = S('arbiterSilent', 'tick default.chargebackClaim', 0)
     record('H9', 'default.chargebackClaim before the ruling deadline', 'REFUSE incl. G1 (NOT_DUE); nothing submitted', `${fmt(s)}; ${reasons(s, ['G1'])}`,
-      s?.decision === 'REFUSE' && !!s.failing?.includes('G1') && !s.tx, { path: 'arbiterSilent' })
+      s?.decision === 'REFUSE' && !!s.failing?.includes('G1') && s.rules?.find((x) => x.id === 'G1')?.reason === 'NOT_DUE' && !s.tx, { path: 'arbiterSilent' })
   }
   {
     const s = S('arbiterSilent', 'probe:arbiter+cosigner')

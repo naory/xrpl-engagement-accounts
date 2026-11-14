@@ -2,7 +2,10 @@
 // paths book a multi-night stay. The flow itself runs live (npm run demo:hotel).
 import fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { HOTEL_PATHS, hotelOpenSequences, hotelPathNights, hotelTerms, hotelTickets } from '@eng/cosigner'
+import xrpl from 'xrpl'
+import { localSigner } from '@eng/core'
+import { CosignerService, DEMO_HOTEL_TIMERS, FixtureLedgerSource, HOTEL_PATHS, HotelFlow, hotelOpenSequences, hotelPathNights, hotelTerms, hotelTickets, type HotelCast } from '@eng/cosigner'
+import { W, hotel2Ledger, policies, templates } from '../../policy/test/fixtures.ts'
 
 const template = JSON.parse(fs.readFileSync(new URL('../../../templates/hotel@2.json', import.meta.url), 'utf8')) as { outcomes: Record<string, { presigned?: boolean; variants?: { perNight?: boolean; max: number } }> }
 
@@ -55,5 +58,48 @@ describe('deal terms', () => {
     expect(HOTEL_PATHS).toContain('staySilent')
     expect(Object.fromEntries(HOTEL_PATHS.map((p) => [p, hotelPathNights(p)]))).toMatchObject({ staySilent: 3, arbiterSilent: 1, happy: 1 })
     expect(HOTEL_PATHS.filter((p) => hotelPathNights(p) !== 1)).toEqual(['staySilent'])
+  })
+})
+
+describe('HotelFlow.open: the neutrality gate runs before any money moves', () => {
+  /** A fake XRPL client that records every request; answers only `ledger` (the clock) and stops the flow at anything else. */
+  function fakeClient(calls: string[]) {
+    return {
+      request: async (r: { command: string }) => {
+        calls.push(r.command)
+        if (r.command === 'ledger') return { result: { ledger_index: 98811234, ledger: { close_time_iso: '2026-11-01T09:00:00Z' } } }
+        throw new Error(`stop: ${r.command}`)
+      },
+    }
+  }
+  function flowWith(arbiter: InstanceType<typeof xrpl.Wallet>, calls: string[]) {
+    const snap = hotel2Ledger({ closeTime: '2026-11-01T09:00:00Z' })
+    const svc = new CosignerService({ signer: localSigner(W.cosigner), source: new FixtureLedgerSource(snap), templates: [templates.hotel2], policies: [policies.baseline, policies.hotel2] })
+    const register = svc.register.bind(svc)
+    svc.register = async (...a: Parameters<CosignerService['register']>) => { calls.push('register'); return register(...a) }
+    const cast = { issuer: W.issuer, guest: W.dana, hotel: W.atlas, arbiter, accreditor: W.accreditor, service: W.service, currency: 'RLUSD' } as unknown as HotelCast
+    const flow = new HotelFlow({ client: fakeClient(calls) as never, fees: { base: 10, reserveBase: 1_000_000, inc: 200_000 }, svc, cast, timers: DEMO_HOTEL_TIMERS, runId: 't' })
+    return { flow, svc }
+  }
+
+  it('an unaccredited arbiter: register() refuses NOT_NEUTRAL and open() never reads or submits anything for the open Batch', async () => {
+    const calls: string[] = []
+    const unaccredited = xrpl.Wallet.generate()
+    const { flow, svc } = flowWith(unaccredited, calls)
+    const steps = await flow.run('happy', W.engHotel2 as never)
+    expect(steps).toHaveLength(1)
+    expect(steps[0]).toMatchObject({ step: 'register' })
+    expect(steps[0].final).toMatch(/^NOT_NEUTRAL: .*ARBITER_NOT_ACCREDITED/)
+    expect(steps[0].tx).toBeUndefined()
+    expect(calls).toEqual(['ledger', 'register'])
+    expect(svc.engagement(flow.engagementId)).toBeUndefined()
+  })
+
+  it('an accredited arbiter: registered first, and only then does open() touch the ledger for the Batch', async () => {
+    const calls: string[] = []
+    const { flow, svc } = flowWith(W.arbiter as never, calls)
+    await expect(flow.open(W.engHotel2 as never, 'happy')).rejects.toThrow(/stop: account_info/)
+    expect(calls).toEqual(['ledger', 'register', 'account_info'])
+    expect(svc.engagement(flow.engagementId)?.terms).toEqual({ nights: 1, nightly: '400' })
   })
 })
