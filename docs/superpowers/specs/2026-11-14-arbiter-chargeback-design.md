@@ -45,8 +45,9 @@ All of the following are reasonable defaults for the demo, **not** validated bus
 - Ruling deadline 5 days; norms min 3 days, max 7 days.
 - Chargeback-style defaults as in §2.3, including that a stay dispute after checkout falls back to "claim rejected".
 - **Nights are prorated equally**: nightly price = room ÷ nights (rounding: the last night absorbs the remainder).
-  A night counts as "used" once it has begun: night *i* begins at check-in time + *i*·24 h; the cut-off is the
-  co-signer's **receipt time** of the guest's stay dispute (can't be backdated).
+  A night counts as "used" once it has begun: night *i* begins at check-in time + *i*·24 h; the night is computed
+  from the dispute's `issuedAt`, which ingest rejects (`NIGHT_MISMATCH`) if it falls in a different night than the
+  co-signer's **receipt time**, so it can't be backdated across a night boundary.
 - **Cap: 14 nights.** Longer stays get no pre-signed stay variants beyond the cap; such a stay dispute waits for the
   arbiter (and courts).
 - The dispute bond (10 RLUSD) is returned to the guest in every chargeback default.
