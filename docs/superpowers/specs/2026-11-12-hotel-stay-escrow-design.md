@@ -189,7 +189,8 @@ ruling → backup). A claim leaves no ledger trace, so "posted" must be defined,
      without a stored release blob.
   4. The `checkin` stage confirms the deposit on-ledger; state → CHECKED_IN.
 - If the hotel won't do step 1 → no deposit is paid; the guest's remedy is an entry dispute before `entryDisputeBy`.
-  If the guest won't do steps 2–3 → the hotel posts `status: "refused"` → no-show path; the guest may still dispute.
+  If the guest won't do steps 2–3, the deposit never arrives; check-in only counts once the deposit is in, so the guest still
+  ends as a no-show. Once a `checked_in` is recorded, a later `refused` is rejected (`CHECKIN_FINAL`); the guest may still dispute.
 - Service fee (50 bps) applies to **everything the hotel receives** (room and claims), keeping hotel@1's `S4` formula
   `toFee == bps(toMerchant + toFee)` unchanged (my call). Refunds carry no fee.
 

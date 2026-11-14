@@ -373,6 +373,9 @@ describe('hotel@2 — B11: a pre-signed ending is refused when a payee cannot re
   it('signs when the guest can receive (trust line with room, no DepositAuth)', () => {
     expect(failing(refundAt(ok))).toEqual([])
   })
+  it('B11: trust-line dust beyond 36 decimals does not block a payee with room', () => {
+    expect(failing(refundAt({ depositAuth: false, lines: { RLUSD: { balance: '1e-50', limit: '1000000' } } }))).toEqual([])
+  })
   it('refuses when the guest set DepositAuth', () => {
     expect(failing(refundAt({ ...ok, depositAuth: true }))).toEqual(['B11'])
     expect(b11(refundAt({ ...ok, depositAuth: true }))).toMatchObject({ result: 'fail', reason: 'WOULD_FAIL' })

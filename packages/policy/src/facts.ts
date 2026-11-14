@@ -1,7 +1,7 @@
 // Facts derived from the proposed transaction and the ledger snapshot. These are the "trusted
 // computing base" behind the helper functions rules call (tx.*, ledger.*, history.*, inflight.*).
 import { createHash } from 'node:crypto'
-import { Amount, formatAmount, parseAmount, sha256Jcs, toMinor, zero, type AssetDef, type Template } from '@eng/core'
+import { Amount, formatAmount, parseAmount, sha256Jcs, zero, type AssetDef, type Template } from '@eng/core'
 import type { EngagementRecord, InflightEntry, LedgerSnapshot } from './types.ts'
 import { toCel } from './convert.ts'
 
@@ -252,15 +252,30 @@ export function intentHashOf(destination: string, amount: Amount, decimals: numb
   return sha256Jcs({ destination, amount: { asset: amount.asset, value: formatAmount(amount, decimals) }, invoiceRef })
 }
 
-/** `value` in minor units at `decimals`, rounding any extra precision down (floor) or up (ceil). */
+/**
+ * `value` in minor units at `decimals`, rounding any extra precision down (floor) or up (ceil). Digits beyond the
+ * working precision are truncated but still count as a non-zero remainder, so trust-line dust never throws.
+ */
 export function minorRounded(value: string, decimals: number, mode: 'floor' | 'ceil'): bigint {
-  const EXTRA = 30
-  const fine = toMinor(value, decimals + EXTRA)
-  const unit = 10n ** BigInt(EXTRA)
-  const q = fine / unit // truncates toward zero
-  const r = fine % unit
-  if (r === 0n) return q
-  return mode === 'floor' ? (fine < 0n ? q - 1n : q) : (fine > 0n ? q + 1n : q)
+  const v = value.trim()
+  const m = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(v)
+  if (!m || (m[2] === '' && (m[3] ?? '') === '')) throw new Error(`invalid decimal: ${value}`)
+  const neg = m[1] === '-'
+  // Normalise to digits + exponent: value = digits * 10^(exp - fracLen)
+  const frac = m[3] ?? ''
+  const digits = BigInt((m[2] + frac) || '0')
+  const shift = (m[4] ? Number(m[4]) : 0) - frac.length + decimals // value*10^decimals = digits * 10^shift
+  let q: bigint
+  let rem = false
+  if (shift >= 0) q = digits * 10n ** BigInt(shift)
+  else {
+    const d = 10n ** BigInt(-shift)
+    q = digits / d
+    rem = digits % d !== 0n
+  }
+  const n = neg ? -q : q
+  if (!rem) return n
+  return mode === 'floor' ? (neg ? n - 1n : n) : (neg ? n : n + 1n)
 }
 
 export function matchTokens(steps: string[], tokens: string[]): boolean {
