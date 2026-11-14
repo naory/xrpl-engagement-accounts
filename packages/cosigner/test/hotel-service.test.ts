@@ -97,22 +97,22 @@ describe('co-signer attestation store', () => {
   })
 
   it('picks the window by dispute phase (type#phase)', async () => {
-    // 2026-11-15: past entryDisputeBy (11-12T11:00) but inside disputeWindowEnds (11-17T11:00); Credential + bond posted.
-    const { svc, source } = await setup('2026-11-15T10:00:00Z')
-    source.snap = hotel2Ledger({ closeTime: '2026-11-15T10:00:00Z', dispute: true, balance: '422' })
+    // 2026-11-15: past entryDisputeBy (11-12T11:00) but inside disputeWindowEnds (11-17T11:00); checked in, Credential + bond posted.
+    const { svc, source } = await checkedIn('2026-11-15T10:00:00Z')
+    source.snap = hotel2Ledger({ closeTime: '2026-11-15T10:00:00Z', dispute: true, balance: '572' })
     await expect(svc.ingest(ENG, dispute('entry', '2026-11-15T09:59:00Z'))).rejects.toThrow(/LATE: party\.dispute\/1 after entryDisputeBy/)
     const s = dispute('settlement', '2026-11-15T09:59:00Z')
     expectReceiptFor(await svc.ingest(ENG, s), s, '2026-11-15T10:00:00Z')
-    expect(svc.statements(ENG).map((x) => x.id)).toEqual([s.id])
+    expect(svc.statements(ENG).filter((x) => x.type === 'party.dispute/1').map((x) => x.id)).toEqual([s.id])
   })
 
   it('rejects a statement issued more than 300 s before it is received (backdating)', async () => {
-    const { svc, source } = await setup('2026-11-16T10:05:01Z')
-    source.snap = hotel2Ledger({ closeTime: '2026-11-16T10:05:01Z', dispute: true, balance: '422' })
+    const { svc, source } = await checkedIn('2026-11-16T10:05:01Z')
+    source.snap = hotel2Ledger({ closeTime: '2026-11-16T10:05:01Z', dispute: true, balance: '572' })
     await expect(svc.ingest(ENG, dispute('settlement', '2026-11-16T10:00:00Z'))).rejects.toThrow(/STALE_ISSUED/)
     const s = dispute('settlement', '2026-11-16T10:00:01Z') // exactly 300 s: accepted
     expectReceiptFor(await svc.ingest(ENG, s), s, '2026-11-16T10:05:01Z')
-    expect(svc.statements(ENG).map((x) => x.id)).toEqual([s.id])
+    expect(svc.statements(ENG).filter((x) => x.type === 'party.dispute/1').map((x) => x.id)).toEqual([s.id])
   })
 
   it('rejects a claim whose total is not the exact sum of its items', async () => {
@@ -166,7 +166,7 @@ describe('co-signer attestation store', () => {
       expect(svc.statements(ENG).map((x) => x.id)).toEqual([s.id])
       const bad = await fetch(`${base}/v1/engagements/${ENG}/attestations`, { method: 'POST', body: JSON.stringify({ statement: claimAt('2026-11-11T15:00:00Z', [{ amount: '1.00' }], '2.00') }) })
       expect(bad.status).toBe(400)
-      expect(((await bad.json()) as { error: string }).error).toMatch(/CLAIM_TOTAL/)
+      expect(((await bad.json()) as { error: string }).error).toMatch(/TOO_EARLY: a claim/) // a claim before checkout (R20)
     } finally {
       server.close()
     }
@@ -1190,5 +1190,205 @@ describe('co-signer: review fixes R10–R14', () => {
     await svc.storePresigned(ENG, 'default.chargebackStay#1', blob(night(1n), 'default.chargebackStay'))
     await svc.storePresigned(ENG, 'default.chargebackStay#2', blob(night(2n), 'default.chargebackStay'))
     expect((await svc.tick(ENG)).map((r) => r.outcome)).toEqual(['default.chargebackStay#1', 'default.chargebackStay#2'])
+  })
+})
+
+describe('co-signer: fix round 4 (R20, R21) — no action flips which default fires', () => {
+  const sweep = { to: W.dana.address, value: '0', partial: true }
+  const room = [{ to: W.atlas.address, value: '409.94' }, { to: W.service.address, value: '2.06' }]
+  const blob = (payouts: Array<{ to: string; value: string; partial?: boolean }>, basis: string) => presign(hotel2Close(payouts, { tickets: true, memos: [memo('eng/basis', basis)] }))
+  const arb = (t: string) => ruling(W.arbiter, [{ to: W.atlas.address, value: '470.00' }], t)
+  /** Stay variant #k of the 3-night fixture deal: k × nightly 137.333333 to the hotel (less the 50 bps fee), the rest swept to the guest. */
+  const night = (k: bigint) => {
+    const gross = k * 137333333n
+    const f = (gross * 50n) / 10000n
+    const fmt = (m: bigint) => `${m / 1000000n}.${(m % 1000000n).toString().padStart(6, '0')}`
+    return blob([{ to: W.atlas.address, value: fmt(gross - f) }, { to: W.service.address, value: fmt(f) }, sweep], 'default.chargebackStay')
+  }
+  /** Every automatic ending of the deal, pre-signed and stored, so a tick shows which of them (if any) fires. */
+  async function storeAll(svc: CosignerService) {
+    await svc.storePresigned(ENG, 'default.chargebackEntry', blob([sweep], 'default.chargebackEntry'))
+    await svc.storePresigned(ENG, 'default.chargebackClaim', blob([...room, sweep], 'default.chargebackClaim'))
+    await svc.storePresigned(ENG, 'default.chargebackStay#1', night(1n))
+    await svc.storePresigned(ENG, 'default.chargebackStay#2', night(2n))
+    await svc.storePresigned(ENG, 'default.release', blob([...room, sweep], 'default.release'))
+    await svc.storePresigned(ENG, 'default.noshow', blob(room, 'default.noshow'))
+    await svc.storePresigned(ENG, 'default.noshowSweep', blob([...room, sweep], 'default.noshowSweep'))
+  }
+  const signed = (rs: TickResult[]) => rs.filter((r) => r.decision === 'SIGN').map((r) => r.outcome)
+  const failingOf = (rs: TickResult[], outcome: string) => rs.find((r) => r.outcome === outcome)?.failing ?? []
+  const iso = (ms: number) => new Date(ms).toISOString().replace('.000Z', 'Z')
+  const plus = (t: string, secs: number) => iso(Date.parse(t) + secs * 1000)
+  const add = (a: string, b: string) => {
+    const m = (v: string) => { const [i, d = ''] = v.split('.'); return BigInt(i) * 1000000n + BigInt(d.padEnd(6, '0')) }
+    const s = m(a) + m(b)
+    return `${s / 1000000n}.${(s % 1000000n).toString().padStart(6, '0')}`
+  }
+
+  it('R20 (P4): a hotel claim before checkout is TOO_EARLY, so no case exists for a ruling; the guest\'s entry dispute is receipted and the no-show cannot pay the hotel', async () => {
+    const { svc, source } = await confirmedSetup('2026-11-05T10:00:00Z')
+    await expect(svc.ingest(ENG, claimAt('2026-11-05T09:59:30Z', [{ amount: '20.00' }], '20.00'))).rejects.toThrow(/TOO_EARLY: a claim/)
+    source.snap.closeTime = '2026-11-06T10:00:00Z'
+    await expect(svc.ingest(ENG, arb('2026-11-06T09:59:30Z'))).rejects.toThrow(/NO_CASE/)
+    source.snap = hotel2Ledger({ balance: '422', dispute: true, closeTime: '2026-11-11T15:30:00Z' })
+    const d = dispute('entry', '2026-11-11T15:29:30Z')
+    expectReceiptFor(await svc.ingest(ENG, d), d, '2026-11-11T15:30:00Z')
+    await storeAll(svc)
+    source.snap.closeTime = '2026-11-12T11:00:01Z' // past entryDisputeBy: the no-show would be due without the dispute
+    let r = await svc.tick(ENG)
+    expect(signed(r)).toEqual([])
+    expect(failingOf(r, 'default.noshowSweep')).toContain('N4')
+    source.snap.closeTime = '2026-11-16T15:29:31Z' // 1 s past the ruling deadline
+    r = await svc.tick(ENG)
+    expect(signed(r)).toEqual(['default.chargebackEntry'])
+  })
+
+  it('R20 (P4b): a mid-stay hotel claim is TOO_EARLY; the guest\'s stay dispute is receipted and its night-1 chargeback fires', async () => {
+    const { svc, source } = await checkedIn('2026-11-11T16:00:00Z')
+    await expect(svc.ingest(ENG, claimAt('2026-11-11T15:59:30Z', [{ amount: '20.00' }], '20.00'))).rejects.toThrow(/TOO_EARLY: a claim/)
+    source.snap.closeTime = '2026-11-11T17:00:00Z'
+    await expect(svc.ingest(ENG, arb('2026-11-11T16:59:30Z'))).rejects.toThrow(/NO_CASE/)
+    source.snap = hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-12T10:00:30Z' })
+    const d = dispute('stay', '2026-11-12T10:00:00Z')
+    expectReceiptFor(await svc.ingest(ENG, d), d, '2026-11-12T10:00:30Z')
+    await storeAll(svc)
+    source.snap.closeTime = '2026-11-17T10:00:00Z' // at the deadline: nothing yet
+    expect(signed(await svc.tick(ENG))).toEqual([])
+    source.snap.closeTime = '2026-11-17T10:00:01Z'
+    expect(signed(await svc.tick(ENG))).toEqual(['default.chargebackStay#1'])
+  })
+
+  it('R20: a claim is accepted from checkout (deliveryBy, inclusive); 1 s before it is TOO_EARLY', async () => {
+    const { svc, source } = await checkedIn('2026-11-14T10:59:59Z')
+    await expect(svc.ingest(ENG, claimAt('2026-11-14T10:59:30Z', [{ amount: '20.00' }], '20.00'))).rejects.toThrow(/TOO_EARLY: a claim can be posted from checkout/)
+    source.snap.closeTime = '2026-11-14T11:00:00Z'
+    const c = claimAt('2026-11-14T10:59:40Z', [{ amount: '20.00' }], '20.00')
+    expectReceiptFor(await svc.ingest(ENG, c), c, '2026-11-14T11:00:00Z')
+  })
+
+  it('R20: ALREADY_RULED guards settlement disputes, and a stay dispute received at the checkout instant after a claim ruling (it would re-date the case and void the ruling)', async () => {
+    const { svc, source } = await checkedIn('2026-11-14T11:00:00Z')
+    source.snap = hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-14T11:00:00Z' })
+    await svc.ingest(ENG, claimAt('2026-11-14T10:59:50Z', [{ amount: '20.00' }], '20.00'))
+    await svc.ingest(ENG, arb('2026-11-14T10:59:55Z'))
+    await expect(svc.ingest(ENG, dispute('stay', '2026-11-14T10:59:58Z'))).rejects.toThrow(/ALREADY_RULED/)
+    source.snap.closeTime = '2026-11-15T10:00:30Z'
+    await expect(svc.ingest(ENG, dispute('settlement', '2026-11-15T10:00:00Z'))).rejects.toThrow(/ALREADY_RULED/)
+    expect(svc.statements(ENG).some((s) => s.type === 'party.dispute/1')).toBe(false)
+  })
+
+  it('R21 (P5b): a settlement dispute from a guest who is not checked in (checked_in posted, deposit short) is NOT_CHECKED_IN, with or without a claim; once checked in and bonded it is receipted and no top-up closes it', async () => {
+    for (const withClaim of [false, true]) {
+      const { svc, source } = await confirmedSetup('2026-11-11T15:01:00Z')
+      await svc.ingest(ENG, checkin('checked_in'))
+      if (withClaim) {
+        source.snap = hotel2Ledger({ balance: '500', closeTime: '2026-11-14T15:01:00Z' })
+        await svc.ingest(ENG, claim([{ kind: 'minibar', amount: '58.00' }]))
+      }
+      source.snap = hotel2Ledger({ balance: '500', dispute: true, closeTime: '2026-11-16T10:00:30Z' })
+      await expect(svc.ingest(ENG, dispute('settlement', '2026-11-16T10:00:00Z'))).rejects.toThrow(/NOT_CHECKED_IN: a settlement dispute/)
+      expect(svc.statements(ENG).some((s) => s.type === 'party.dispute/1')).toBe(false)
+      // the guest pays the deposit and the bond, then files: receipted; the deadline runs from this dispute
+      source.snap = hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-16T11:00:30Z' })
+      await svc.ingest(ENG, dispute('settlement', '2026-11-16T11:00:00Z'))
+      await storeAll(svc)
+      for (const balance of ['572', '600', '1000']) {
+        source.snap = hotel2Ledger({ balance, dispute: true, closeTime: '2026-11-17T11:00:01Z' }) // past disputeWindowEnds
+        const r = await svc.tick(ENG)
+        expect(signed(r)).toEqual([])
+        expect(failingOf(r, 'default.release')).toContain('L2')
+      }
+      source.snap = hotel2Ledger({ balance: '1000', dispute: true, closeTime: '2026-11-21T11:00:01Z' })
+      expect(signed(await svc.tick(ENG))).toEqual(['default.chargebackClaim'])
+    }
+  })
+
+  it('R21: a stay dispute needs room + deposit + bond whatever the timing; NOT_BONDED at 571.999999', async () => {
+    const { svc, source } = await checkedIn('2026-11-12T10:00:30Z')
+    source.snap = hotel2Ledger({ balance: '571.999999', dispute: true, closeTime: '2026-11-12T10:00:30Z' })
+    await expect(svc.ingest(ENG, dispute('stay', '2026-11-12T10:00:00Z'))).rejects.toThrow(/NOT_BONDED/)
+    source.snap = hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-12T10:01:30Z' })
+    await svc.ingest(ENG, dispute('stay', '2026-11-12T10:01:00Z'))
+  })
+
+  // Sweep: phase × timing × action. Each case files one bonded dispute, optionally adds a hotel claim (after checkout) or
+  // an arbiter ruling (before the deadline), then anyone tops up the account by `topUp`. Every tick before the ruling
+  // deadline must sign nothing; 1 s after it exactly the phase's chargeback signs (or, after a receipted ruling, nothing
+  // ever does: the arbiter and the winning party close).
+  type Scenario = { name: string; checkedIn: boolean; checkinPosted: boolean; phase: 'entry' | 'stay' | 'settlement'; issued: string; balance: string; deadline: string; expect: string }
+  const scenarios: Scenario[] = [
+    { name: 'entry, no check-in recorded', checkedIn: false, checkinPosted: false, phase: 'entry', issued: '2026-11-11T15:29:30Z', balance: '422', deadline: '2026-11-16T15:29:30Z', expect: 'default.chargebackEntry' },
+    { name: 'entry, checked_in posted but no deposit', checkedIn: false, checkinPosted: true, phase: 'entry', issued: '2026-11-11T15:29:30Z', balance: '422', deadline: '2026-11-16T15:29:30Z', expect: 'default.chargebackEntry' },
+    { name: 'stay, night 1', checkedIn: true, checkinPosted: true, phase: 'stay', issued: '2026-11-12T10:00:00Z', balance: '572', deadline: '2026-11-17T10:00:00Z', expect: 'default.chargebackStay#1' },
+    { name: 'stay, night 2', checkedIn: true, checkinPosted: true, phase: 'stay', issued: '2026-11-12T15:00:00Z', balance: '572', deadline: '2026-11-17T15:00:00Z', expect: 'default.chargebackStay#2' },
+    { name: 'stay, last night', checkedIn: true, checkinPosted: true, phase: 'stay', issued: '2026-11-14T10:00:00Z', balance: '572', deadline: '2026-11-19T10:00:00Z', expect: 'default.chargebackClaim' },
+    { name: 'settlement, after checkout', checkedIn: true, checkinPosted: true, phase: 'settlement', issued: '2026-11-16T10:00:00Z', balance: '572', deadline: '2026-11-21T10:00:00Z', expect: 'default.chargebackClaim' },
+  ]
+  const TOP_UPS = ['0', '0.000001', '9.999999', '139.999999', '140', '150', '1000']
+  // after entryDisputeBy / checkInBy, after checkout, after claimBy, after disputeWindowEnds, after the unanswered-claim lapse
+  const CHECKPOINTS = ['2026-11-12T11:00:01Z', '2026-11-14T11:00:01Z', '2026-11-15T11:00:01Z', '2026-11-17T11:00:01Z', '2026-11-22T11:00:01Z']
+
+  async function filed(sc: Scenario, action: 'none' | 'claim' | 'ruling') {
+    const { svc, source } = await confirmedSetup('2026-11-11T15:01:00Z')
+    if (sc.checkinPosted) await svc.ingest(ENG, checkin('checked_in'))
+    const received = plus(sc.issued, 30)
+    const claimFirst = action === 'claim' && sc.phase === 'settlement'
+    if (claimFirst) {
+      source.snap = hotel2Ledger({ balance: sc.balance, closeTime: '2026-11-14T15:01:00Z' })
+      await svc.ingest(ENG, claim([{ kind: 'minibar', amount: '58.00' }]))
+    }
+    source.snap = hotel2Ledger({ balance: sc.balance, dispute: true, closeTime: received })
+    await svc.ingest(ENG, dispute(sc.phase, sc.issued))
+    if (action === 'claim' && !claimFirst) {
+      source.snap = hotel2Ledger({ balance: sc.balance, dispute: true, closeTime: '2026-11-14T15:01:00Z' })
+      await svc.ingest(ENG, claim([{ kind: 'minibar', amount: '58.00' }]))
+    }
+    if (action === 'ruling') {
+      source.snap = hotel2Ledger({ balance: sc.balance, dispute: true, closeTime: plus(sc.issued, 86400 + 30) })
+      await svc.ingest(ENG, arb(plus(sc.issued, 86400)))
+    }
+    await storeAll(svc)
+    return { svc, source }
+  }
+
+  for (const sc of scenarios) {
+    it(`sweep — ${sc.name}: top-ups ${TOP_UPS.join('/')} (± a hotel claim) never move or block the ${sc.expect} default`, async () => {
+      for (const action of ['none', 'claim'] as const) {
+        for (const topUp of TOP_UPS) {
+          const { svc, source } = await filed(sc, action)
+          const balance = add(sc.balance, topUp)
+          const label = `${action} +${topUp}`
+          for (const t of [...CHECKPOINTS.filter((c) => c > plus(sc.issued, 30) && c < sc.deadline), sc.deadline]) {
+            source.snap = hotel2Ledger({ balance, dispute: true, closeTime: t })
+            expect(signed(await svc.tick(ENG)), `${label} at ${t}`).toEqual([])
+          }
+          source.snap = hotel2Ledger({ balance, dispute: true, closeTime: plus(sc.deadline, 1) })
+          expect(signed(await svc.tick(ENG)), `${label} after the deadline`).toEqual([sc.expect])
+        }
+      }
+    }, 120_000)
+
+    it(`sweep — ${sc.name}: a ruling receipted before the deadline blocks every default for good, whatever is paid in`, async () => {
+      for (const topUp of ['0', '150', '1000']) {
+        const { svc, source } = await filed(sc, 'ruling')
+        const balance = add(sc.balance, topUp)
+        for (const t of [...CHECKPOINTS.filter((c) => c > plus(sc.issued, 86400 + 30)), plus(sc.deadline, 1), '2027-03-01T00:00:00Z']) {
+          source.snap = hotel2Ledger({ balance, dispute: true, closeTime: t })
+          expect(signed(await svc.tick(ENG)), `+${topUp} at ${t}`).toEqual([])
+        }
+      }
+    }, 60_000)
+  }
+
+  it('sweep — second statements: a second dispute (any phase) is ALREADY_DISPUTED, a second claim ALREADY_CLAIMED, and the original default still fires', async () => {
+    const { svc, source } = await filed(scenarios[2], 'claim') // stay night 1 + a post-checkout claim
+    source.snap = hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-14T10:00:30Z' })
+    await expect(svc.ingest(ENG, dispute('stay', '2026-11-14T10:00:00Z'))).rejects.toThrow(/ALREADY_DISPUTED/)
+    source.snap.closeTime = '2026-11-15T10:00:30Z'
+    await expect(svc.ingest(ENG, claimAt('2026-11-15T10:00:00Z', [{ amount: '20.00' }], '20.00'))).rejects.toThrow(/ALREADY_CLAIMED/)
+    source.snap.closeTime = '2026-11-16T10:00:30Z'
+    await expect(svc.ingest(ENG, dispute('settlement', '2026-11-16T10:00:00Z'))).rejects.toThrow(/ALREADY_DISPUTED/)
+    source.snap = hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-17T10:00:01Z' })
+    expect(signed(await svc.tick(ENG))).toEqual(['default.chargebackStay#1'])
   })
 })

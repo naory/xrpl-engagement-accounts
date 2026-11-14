@@ -259,7 +259,7 @@ export class CosignerService {
    * entry dispute is filed from check-in on, and a bonded one (principal's ENG/DISPUTE Credential on the account and
    * the bond on the ledger at this receipt) freezes the stay — the hotel can no longer record a check-in; a recorded
    * check-in is final — once the hotel's checked_in is receipted it cannot be followed by refused (or anything else),
-   * so a stay can't be turned into a no-show; a claim is
+   * so a stay can't be turned into a no-show; a claim is posted from checkout on, once per deal,
    * itemized, positive, and capped at the deposit of the (first) confirmation.
    */
   private checkSequence(st: EngagementState, s: Statement, assets: Record<string, AssetDef>, ledger: LedgerSnapshot): void {
@@ -274,18 +274,24 @@ export class CosignerService {
     if (s.type === 'party.dispute/1') {
       const isPrincipalDispute = (p: Statement) => p.type === 'party.dispute/1' && p.attester.account === parties.principal
       if (isPrincipalDispute(s) && posted.some(isPrincipalDispute)) throw new Error('ALREADY_DISPUTED: the guest already has a receipted dispute on this deal; one dispute per deal')
-      // A dispute filed after the arbiter ruled on the hotel's claim would re-date the case and void that ruling.
-      if (isPrincipalDispute(s) && posted.some((p) => p.type === 'party.ruling/1' && p.attester.account === parties.arbiter)) throw new Error('ALREADY_RULED: the arbiter has already ruled on this deal; a later dispute cannot reopen it')
       const phase = (s.claim as { phase?: unknown }).phase
       const checkIn = Date.parse(st.record.timers?.checkIn ?? '')
+      const deliveryBy = Date.parse(st.record.timers?.deliveryBy ?? '')
       const received = Date.parse(ledger.closeTime)
+      // A dispute filed after the arbiter ruled on the hotel's claim would re-date the case and void that ruling. A claim
+      // (and so a ruling with no dispute) exists only from checkout on, so this never blocks an entry or stay dispute
+      // before checkout; at the checkout instant itself a stay dispute would re-date the case just the same.
+      const ruled = posted.some((p) => p.type === 'party.ruling/1' && p.attester.account === parties.arbiter)
+      if (isPrincipalDispute(s) && ruled && (phase === 'settlement' || (!Number.isNaN(deliveryBy) && received >= deliveryBy))) throw new Error('ALREADY_RULED: the arbiter has already ruled on the hotel\'s claim; a later dispute cannot reopen it')
       if (phase === 'entry') {
         if (!Number.isNaN(checkIn) && received < checkIn) throw new Error(`TOO_EARLY: an entry dispute can be filed from checkIn (${st.record.timers!.checkIn})`)
         if (this.checkedIn(st, posted, assets, ledger)) throw new Error('NOT_ENTRY: the guest is checked in (check-in recorded and deposit in); file a stay dispute instead')
       }
       if (phase === 'settlement') {
-        const deliveryBy = Date.parse(st.record.timers?.deliveryBy ?? '')
         if (!Number.isNaN(deliveryBy) && received < deliveryBy) throw new Error(`TOO_EARLY: a settlement dispute can be filed from checkout (deliveryBy ${st.record.timers!.deliveryBy})`)
+        // A guest never checked in has no stay to dispute (the entry/no-show track applies), and the bond threshold —
+        // room + deposit + bond for a settlement dispute — must not depend on a deposit paid in after filing.
+        if (!this.checkedIn(st, posted, assets, ledger)) throw new Error('NOT_CHECKED_IN: a settlement dispute needs a recorded check-in with the deposit in')
       }
       if (phase === 'stay') {
         if (!this.checkedIn(st, posted, assets, ledger)) throw new Error('NOT_CHECKED_IN: a stay dispute needs a recorded check-in with the deposit in; before that, file an entry dispute')
@@ -296,7 +302,7 @@ export class CosignerService {
         if (nIssued !== nReceived) throw new Error(`NIGHT_MISMATCH: issued in night ${nIssued + 1} (${s.issuedAt}), received in night ${nReceived + 1} (${ledger.closeTime})`)
       }
       // The ruling clock starts only on an open dispute: the Credential and the bond must already be on the ledger.
-      if (isPrincipalDispute(s) && !this.disputeBonded(st, posted, assets, ledger, phase)) throw new Error('NOT_BONDED: post the ENG/DISPUTE Credential and the bond (room, plus the deposit once checked in, plus minDisputeBond in the account) before the dispute statement')
+      if (isPrincipalDispute(s) && !this.disputeBonded(st, posted, assets, ledger, phase)) throw new Error('NOT_BONDED: post the ENG/DISPUTE Credential and the bond (room, plus the deposit for a stay or settlement dispute, plus minDisputeBond in the account) before the dispute statement')
     }
     if (s.type === 'party.checkin/1' && s.attester.account === parties.counterparty && (s.claim as { status?: unknown }).status !== 'checked_in') {
       const checkedIn = posted.some((p) => p.type === 'party.checkin/1' && p.attester.account === parties.counterparty && (p.claim as { status?: unknown }).status === 'checked_in')
@@ -307,6 +313,10 @@ export class CosignerService {
       if (entryDispute && parties.principal && this.disputeBonded(st, posted, assets, ledger, 'entry')) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
     }
     if (s.type === 'party.claim/1') {
+      // Claims are post-checkout by design: an early claim would open a "case" an arbiter could rule on before the guest
+      // has anything to dispute, and a receipted ruling blocks the guest's later dispute (ALREADY_RULED).
+      const deliveryBy = Date.parse(st.record.timers?.deliveryBy ?? '')
+      if (s.attester.account === parties.counterparty && !Number.isNaN(deliveryBy) && Date.parse(ledger.closeTime) < deliveryBy) throw new Error(`TOO_EARLY: a claim can be posted from checkout (deliveryBy ${st.record.timers!.deliveryBy})`)
       if (s.attester.account === parties.counterparty && posted.some((p) => p.type === 'party.claim/1' && p.attester.account === parties.counterparty)) throw new Error('ALREADY_CLAIMED: the hotel already has a receipted claim on this deal; one claim per deal')
       checkClaimTotal(s, assets)
       const c = s.claim as { items: Array<{ amount: { value: string } }>; total: { currency: string; value: string } }
@@ -375,7 +385,9 @@ export class CosignerService {
 
   /**
    * As the policy's def.disputeOpen, at this ledger: the principal's ENG/DISPUTE Credential is on the account and the
-   * balance covers booked + (the first confirmation's deposit, once checked in — never for an entry dispute) + minDisputeBond.
+   * balance covers booked + minDisputeBond, plus the first confirmation's deposit for a stay or settlement dispute (never
+   * for an entry dispute). The term is fixed by the dispute's phase, not by whether the guest is checked in, so no
+   * payment into the account can move an open dispute's threshold.
    */
   private disputeBonded(st: EngagementState, posted: Statement[], assets: Record<string, AssetDef>, ledger: LedgerSnapshot, phase: unknown): boolean {
     const { parties, account, amount } = st.record
@@ -385,9 +397,11 @@ export class CosignerService {
     if (!facts.credentialExists(parties.principal!, account, 'ENG/DISPUTE')) return false
     const bond = [...st.layers].reverse().map((l) => (l.params as { minDisputeBond?: unknown } | undefined)?.minDisputeBond).find((b) => typeof b === 'string') as string | undefined
     let need = parseAmount(amount.value, asset).add(bond ? parseAmount(bond, asset) : zero(asset.code))
-    if (phase !== 'entry' && this.checkedIn(st, posted, assets, ledger)) {
-      const conf = posted.find((p) => p.type === 'party.confirmation/1' && p.attester.account === parties.counterparty)!
-      need = need.add(parseAmount((conf.claim as { deposit: { value: string } }).deposit.value, asset))
+    if (phase !== 'entry') {
+      const conf = posted.find((p) => p.type === 'party.confirmation/1' && p.attester.account === parties.counterparty)
+      const dep = (conf?.claim as { deposit?: { currency?: string; value?: string } } | undefined)?.deposit
+      if (dep?.currency !== asset.code || typeof dep.value !== 'string') return false
+      try { need = need.add(parseAmount(dep.value, asset)) } catch { return false }
     }
     return facts.balance(account, asset.code).cmp(need) >= 0
   }

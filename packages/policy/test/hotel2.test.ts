@@ -477,6 +477,34 @@ describe('hotel@2 — automatic endings return extra money to the guest (residua
   })
 })
 
+describe('hotel@2 — R21: a dispute\'s bond threshold is fixed by its phase, so no top-up opens or closes it', () => {
+  const roomToHotel = [{ to: hotel, value: '409.94' }, { to: fee, value: '2.06' }]
+  const sweep = { to: guest, value: '0', partial: true }
+  const tx = (b: string) => hotel2Close([...roomToHotel, sweep], { tickets: true, memos: basis(b) })
+  const after = '2026-11-17T11:00:01Z' // past entryDisputeBy and disputeWindowEnds
+  const at = (stage: string, statements: Statement[], balance: string) => ({ stage, proposedTx: tx(stage), statements: [hotel2Confirmation(), ...statements], ledger: hotel2Ledger({ balance, dispute: true, closeTime: after }) })
+
+  it('a stay or settlement dispute needs room + deposit + bond (572) even when the guest is not checked in: at 500 it is not open (N4 passes)', () => {
+    for (const phase of ['stay', 'settlement'] as const) {
+      expect(failing(at('default.noshow', [checkin('checked_in'), dispute(phase)], '500'))).toEqual([])
+      expect(failing(at('default.noshow', [dispute(phase)], '571.999999'))).toEqual([])
+    }
+  })
+  it('a stay or settlement dispute, once open, stays open at any higher balance: the release is blocked (L2)', () => {
+    for (const phase of ['stay', 'settlement'] as const) {
+      for (const balance of ['572', '572.000001', '581.999999', '712', '1000']) {
+        expect(failing(at('default.release', [checkin('checked_in'), dispute(phase)], balance)), `${phase} at ${balance}`).toEqual(['L2'])
+      }
+    }
+  })
+  it('an entry dispute stays open from room + bond (422) up, checked in or not (N4, L2)', () => {
+    for (const balance of ['422', '561.999999', '562', '572', '1000']) {
+      expect(failing(at('default.noshow', [dispute('entry')], balance))).toContain('N4')
+      expect(failing(at('default.release', [checkin('checked_in'), dispute('entry')], balance))).toContain('L2')
+    }
+  })
+})
+
 describe('hotel@2 — B11: a pre-signed ending is refused when a payee cannot receive the token', () => {
   // A payment the payee cannot accept fails on-ledger, failing the ALLORNOTHING Batch and burning its Tickets (F2).
   const sweep = { to: guest, value: '0', partial: true }
