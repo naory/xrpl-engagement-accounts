@@ -2,7 +2,7 @@
 
 Forward plan for **xrpl-engagement-accounts**. What's built and verified lives in the
 [README §12 "Built and verified"](README.md#12-roadmap) (B1 live on Testnet 11/11, x402 purchase
-4/4, hotel stay escrow 14/14, ledger mechanics 21/21, co-signer, policies, vectors, the published
+4/4, hotel stay escrow 17/17, ledger mechanics 21/21, co-signer, policies, vectors, the published
 settlement adapter).
 This file tracks what's next, highest-leverage first.
 
@@ -27,10 +27,13 @@ Hotel stay → production-ready (the flow itself is built and live; these close 
 - **Persistent co-signer state.** Receipts, stored statements and pre-signed defaults are in memory;
   a restart drops them, so a restarted co-signer could complete a default over a claim it had
   receipted. Needs a persistent store and a restart test.
-- **Arbiter neutrality safeguards.** At open, require an accredited arbiter on the guest's
-  `allowedArbiters`; the backup arbiter is appointed by the service (or the guest's side), never by
-  the merchant; arbiter fees are flat. The pre-booking check already *flags* these; this *enforces*
-  them.
+- **Outside accreditation bodies for arbiters.** Today the engagement service is the only accreditor
+  (`ENG/ARBITER`, `arbiterIssuers`); recognising outside bodies is an assumption to revisit with a real
+  business.
+- **Replacing a lapsed arbiter.** The backup arbiter is gone and a SignerList change needs quorum, so a
+  deal whose accreditation lapses mid-stay cannot swap arbiters; chargeback defaults cover silence only.
+- **Chargeback parameters.** Ruling window, split, 14-night cap and bond return are demo assumptions
+  pending a real business.
 
 Demo and agent tooling:
 
@@ -60,10 +63,17 @@ Product build-out already queued:
 
 ## Done (recent)
 
+- **Accredited arbiter and chargeback-style defaults — live on Testnet 17/17.** The backup arbiter is
+  removed (guest 3, hotel 3, arbiter 4, co-signer 2, quorum 7). The arbiter must hold an accepted
+  `ENG/ARBITER` credential from the service; the co-signer refuses `NOT_NEUTRAL` before money moves.
+  A silent arbiter triggers chargeback-style defaults (full refund on entry disputes, room to the hotel
+  on claims, nights used on mid-stay disputes), and an unanswered claim lapses. All parameters are
+  assumptions pending a real business —
+  [design](docs/superpowers/specs/2026-11-14-arbiter-chargeback-design.md).
 - **Hotel stay escrow, end to end — live on Testnet 14/14.** `settlement-vault/hotel@2` +
   `pol_hotel@2.0.0`: security deposit at check-in, entry disputes that end the deal early, deposit
   claims capped at the deposit, guest-only disputes, silence defaults pre-signed with Tickets, default
-  and backup arbiter rulings. The co-signer ingests party statements with signed receipts and
+  arbiter rulings (the backup arbiter was later removed). The co-signer ingests party statements with signed receipts and
   deadline windows and completes due defaults on `tick()`. Replaced the demo's old
   escrow-with-arbiter scenario with **Hotel stay**, whose simulated mode replays real co-signer
   decisions — [design](docs/superpowers/specs/2026-11-12-hotel-stay-escrow-design.md).

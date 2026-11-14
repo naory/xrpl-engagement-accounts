@@ -1,6 +1,6 @@
 # Hotel stay escrow — end to end through the co-signer (design)
 
-Status: design, 2026-11-12. Builds on `docs/use-cases/hotel-booking.md` (the "Dana books Lisbon" use case, paths A–D),
+Status: design, 2026-11-12. **Amended 2026-11-14:** the backup arbiter (§4 weights, §5.8) was removed in favour of an accredited arbiter and chargeback-style defaults; see [the chargeback design](2026-11-14-arbiter-chargeback-design.md). New weights: guest 3, hotel 3, arbiter 4, co-signer 2, quorum 7. Builds on `docs/use-cases/hotel-booking.md` (the "Dana books Lisbon" use case, paths A–D),
 `templates/hotel@1.json` and `policies/hotel@1.1.0.json`. This document is the delta: what the hotel flow becomes, and what
 must be built to run it for real.
 
@@ -74,6 +74,8 @@ moves money toward the inactive party, against the other side's raised flag, is 
 - `hotel@1` and `pol_hotel@1.1.0` stay untouched (vectors and tests depend on them). The new work is a new version.
 
 ## 4. Signers and weights (decided)
+
+> Superseded 2026-11-14: `backupArbiter` (weight 2) was removed; see [the chargeback design](2026-11-14-arbiter-chargeback-design.md). The rows below are the original decision.
 
 | Role | Weight |
 |---|---|
@@ -269,6 +271,8 @@ a mid-stay failure opens a dispute in the settlement phase (§5.7).
 - The co-signer refuses `default.release` while a claim is posted (new rule), so an unanswered claim can't be wiped by the release.
 
 ### 5.8 Backup arbiter
+
+> Superseded 2026-11-14: removed. A silent arbiter now triggers pre-signed chargeback-style defaults instead; see [the chargeback design](2026-11-14-arbiter-chargeback-design.md) §4.3. All chargeback parameters there are assumptions pending a real business.
 
 - Applies to **every** dispute: entry disputes, settlement disputes, and unanswered-claim default rulings.
 - Outcome `ruling.backup`: signers `[[backupArbiter, principal, cosigner], [backupArbiter, counterparty, cosigner]]`,
