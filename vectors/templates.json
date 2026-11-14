@@ -168,7 +168,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackStay": {
-            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
+            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the nights after the one you disputed in are refunded. The hotel gets the nights up to and including the night you disputed in (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -222,6 +222,7 @@
           "party.claim/1": "claimBy",
           "party.issue/1": "disputeWindowEnds",
           "party.dispute/1#entry": "entryDisputeBy",
+          "party.dispute/1#stay": "deliveryBy",
           "party.dispute/1#settlement": "disputeWindowEnds"
         },
         "blueprints": {
@@ -1037,7 +1038,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackStay": {
-            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
+            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the nights after the one you disputed in are refunded. The hotel gets the nights up to and including the night you disputed in (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1091,6 +1092,7 @@
           "party.claim/1": "claimByTypo",
           "party.issue/1": "disputeWindowEnds",
           "party.dispute/1#entry": "entryDisputeBy",
+          "party.dispute/1#stay": "deliveryBy",
           "party.dispute/1#settlement": "disputeWindowEnds"
         },
         "blueprints": {
@@ -1213,7 +1215,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackStay": {
-            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
+            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the nights after the one you disputed in are refunded. The hotel gets the nights up to and including the night you disputed in (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1267,6 +1269,7 @@
           "party.claim/1": "claimBy",
           "party.issue/1": "disputeWindowEnds",
           "party.dispute/1#entry": "entryDisputeBy",
+          "party.dispute/1#stay": "deliveryBy",
           "party.dispute/1#settlement": "disputeWindowEnds",
           "claim#": "claimBy"
         },
@@ -1390,7 +1393,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackStay": {
-            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
+            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the nights after the one you disputed in are refunded. The hotel gets the nights up to and including the night you disputed in (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1444,6 +1447,7 @@
           "party.claim/1": "claimBy",
           "party.issue/1": "disputeWindowEnds",
           "party.dispute/1#entry": "entryDisputeBy",
+          "party.dispute/1#stay": "deliveryBy",
           "party.dispute/1#settlement": "disputeWindowEnds"
         },
         "blueprints": {
@@ -1566,7 +1570,7 @@
             "enforcement": "final-signature"
           },
           "default.chargebackStay": {
-            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
+            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the nights after the one you disputed in are refunded. The hotel gets the nights up to and including the night you disputed in (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
             "presigned": true,
             "finalSigner": "cosigner",
             "signers": [["principal","counterparty","cosigner"]],
@@ -1620,6 +1624,7 @@
           "party.claim/1": "claimBy",
           "party.issue/1": "disputeWindowEnds",
           "party.dispute/1#entry": "entryDisputeBy",
+          "party.dispute/1#stay": "deliveryBy",
           "party.dispute/1#settlement": "disputeWindowEnds"
         },
         "blueprints": {

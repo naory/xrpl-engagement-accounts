@@ -301,10 +301,10 @@
         },
         {
           "id": "L5",
-          "title": "No deposit claim posted",
+          "title": "No deposit claim standing",
           "reason": "CLAIM_POSTED",
-          "check": "def.claim == null",
-          "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on."
+          "check": "def.claim == null || (now > timestamp(eng.timers.disputeWindowEnds) + def.rulingWindow && size(def.disputes) == 0 && def.arbiterRuling == null)",
+          "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on. But the hotel must make its case: if the guest didn't dispute and the arbiter hasn't ruled on the claim by the ruling deadline (counted from the end of the guest's dispute window), the claim lapses and the deposit goes back to the guest."
         },
         {
           "id": "L6",
@@ -322,8 +322,8 @@
           "id": "E1",
           "title": "Arbiter missed its deadline on an arrival dispute",
           "reason": "NOT_DUE",
-          "check": "def.entryDispute && size(def.disputes) == 1 && def.rulingDue",
-          "message": "Only for the guest's one open, bonded dispute about a problem on arrival (no room, wrong room), once the arbiter's ruling deadline, counted from the dispute, has passed."
+          "check": "def.confirmed && !def.checkedIn && def.entryDispute && size(def.disputes) == 1 && def.rulingDue",
+          "message": "Only for a confirmed booking the guest hasn't checked into (check-in recorded and deposit paid), with the guest's one open, bonded dispute about a problem on arrival (no room, wrong room), once the arbiter's ruling deadline, counted from the dispute, has passed. An unconfirmed booking is refunded instead; a guest who checked in after all is on the stay or claim track."
         },
         {
           "id": "E2",

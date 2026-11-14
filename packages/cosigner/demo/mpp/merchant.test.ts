@@ -19,14 +19,14 @@ const NETWORK = "xrpl:1";
 const INVOICE = "inv:mpp-demo-1";
 const PRICE = { amount: "800.00", asset: { kind: "IOU" as const, currency: RLUSD_HEX, issuer: W.issuer.address } };
 
-function cosigner(ledger = b1Ledger()) {
+async function cosigner(ledger = b1Ledger()) {
   const svc = new CosignerService({
     signer: localSigner(W.cosigner),
     source: new FixtureLedgerSource(ledger),
     templates: [templates.procurement, templates.hotel],
     policies: [policies.baseline, policies.procurement],
   });
-  svc.register(b1Engagement(), b1Mandate());
+  await svc.register(b1Engagement(), b1Mandate());
   return svc;
 }
 
@@ -60,7 +60,7 @@ function authHeader(challengeToken: string, hash: string, source?: string): stri
 
 describe("MPP engagement-account purchase (XRPL charge, push mode)", () => {
   it("runs the full chain: 402 → co-sign (W7, scheme mpp) → confirm by hash → deliver", async () => {
-    const svc = cosigner();
+    const svc = await cosigner();
     const txByHash: Record<string, XrplPaymentTransaction> = {};
     const merchant = createMppMerchant({
       resource: "https://vendor.example/data",
@@ -116,7 +116,7 @@ describe("MPP engagement-account purchase (XRPL charge, push mode)", () => {
   });
 
   it("co-signer refuses (W7) when the payment does not match the declared mpp challenge", async () => {
-    const svc = cosigner();
+    const svc = await cosigner();
     const tx = agentPayment(INVOICE);
     // The agent declares an mpp challenge naming a different payee than the payment.
     const d = await svc.decide({

@@ -154,7 +154,7 @@ async function main() {
     attesters: { approver: { accounts: [controller.address] }, vendor: { accounts: [vendorA.address, vendorB.address] } },
     deleteTo: service.address, state: 'OPEN', consumed: [], policyLayers: [layerHash(policy)], mandateId: mandate.id,
   }
-  const reg = svc.register(engagement, mandate)
+  const reg = await svc.register(engagement, mandate)
   log(`co-signer ${cosigner.address} registered ${ENG_ID} with layers:\n       ${reg.layers.join('\n       ')}`)
   log('mandate: budget 5,000 · daily cap 3,000 · approval above 1,000 · vendors A, B')
 

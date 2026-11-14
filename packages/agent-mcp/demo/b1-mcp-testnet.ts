@@ -154,7 +154,7 @@ async function main() {
     attesters: { approver: { accounts: [controller.address] }, vendor: { accounts: [vendorA.address, vendorB.address] } },
     deleteTo: service.address, state: 'OPEN', consumed: [], policyLayers: [layerHash(policy)], mandateId: mandate.id,
   }
-  svc.register(engagement, mandate)
+  await svc.register(engagement, mandate)
   const cosignerServer = createServer(svc, { token: TOKEN, readiness: () => client.isConnected() }).listen(0, '127.0.0.1')
   await new Promise((r) => cosignerServer.once('listening', r))
   const cosignerUrl = `http://127.0.0.1:${(cosignerServer.address() as AddressInfo).port}`

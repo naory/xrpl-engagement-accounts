@@ -57,6 +57,8 @@ function wallet(name: string): Wallet {
 const W = {
   issuer: wallet('issuer'), guest: wallet('guest'), hotel: wallet('hotel'), arbiter: wallet('arbiter'),
   service: wallet('service'), cosigner: wallet('cosigner'),
+  /** The service's arbiter accreditor: issues the arbiter's ENG/ARBITER (the policy's arbiterIssuers). */
+  accreditor: wallet('accreditor'),
 }
 const WEIGHTS: Record<string, number> = { [W.guest.address]: 3, [W.hotel.address]: 3, [W.arbiter.address]: 4, [W.cosigner.address]: 2 }
 const QUORUM = 7
@@ -95,6 +97,7 @@ const money = (v: string) => ({ currency: 'RLUSD', value: v })
 function loadLibrary(): { template: Template; policies: PolicyDoc[]; policy: PolicyDoc } {
   const policy = readJson<PolicyDoc>('policies/hotel@2.0.0.json')
   for (const a of Object.values(policy.assets ?? {})) if (a.kind === 'IOU') a.issuer = W.issuer.address
+  if (policy.params) policy.params.arbiterIssuers = [W.accreditor.address]
   if (policy.params?.rulingWindow !== `${RULING_WINDOW_SECS}s`) throw new Error(`hotel-sim assumes rulingWindow ${RULING_WINDOW_SECS}s, policy has ${String(policy.params?.rulingWindow)}`)
   return { template: readJson<Template>('templates/hotel@2.json'), policies: [readJson<PolicyDoc>('policies/baseline@1.1.0.json'), policy], policy }
 }
@@ -134,7 +137,8 @@ class PathSim {
       index: OPEN_INDEX, hash: '', closeTime: TIMERS.openedAt, baseFeeDrops: String(FEES.base), reserveIncDrops: String(FEES.inc),
       accounts: { [this.eng.address]: { exists: true, masterDisabled: true, regularKey: W.service.address, sequence: this.seq, ownerObjects: { trustlines: 1, signerList: false, tickets: [], other: 0 } } },
       balances: { [this.eng.address]: { RLUSD: '0' } },
-      credentials: [], history: {},
+      // The arbiter's accepted ENG/ARBITER from the service accreditor: the co-signer registers only a neutral arbiter.
+      credentials: [{ issuer: W.accreditor.address, subject: W.arbiter.address, type: 'ENG/ARBITER', accepted: true, expiration: null }], history: {},
     })
     this.setClock(TIMERS.openedAt)
     this.svc = new CosignerService({ signer: localSigner(W.cosigner), source: this.source, templates: [lib.template], policies: lib.policies })
@@ -177,7 +181,7 @@ class PathSim {
       fee: { bps: Number(FEE_BPS), to: W.service.address }, deleteTo: W.service.address,
       amount: { asset: 'RLUSD', value: BOOKING.room }, timers: { ...TIMERS }, state: 'OPEN', consumed: [], mandateId: this.mandate.id,
     }
-    this.svc.register(record, this.mandate)
+    await this.svc.register(record, this.mandate)
     await this.presign('default.refund', [SWEEP_TO_GUEST])
     await this.presign('default.noshow', split(micro(BOOKING.room), 0n))
     await this.presign('default.noshowSweep', [...split(micro(BOOKING.room), 0n), SWEEP_TO_GUEST])

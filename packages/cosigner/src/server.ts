@@ -131,7 +131,7 @@ export function createServer(svc: CosignerService, opts: ServerOptions = {}): ht
 
       if (method === 'POST' && url.pathname === '/v1/engagements') {
         const b = await body(req)
-        return send(200, svc.register(b.engagement as never, (b.mandate as never) ?? null))
+        return send(200, await svc.register(b.engagement as never, (b.mandate as never) ?? null))
       }
       if (method === 'POST' && url.pathname === '/v1/decide') {
         const b = await body(req)

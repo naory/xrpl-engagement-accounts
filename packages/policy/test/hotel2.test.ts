@@ -160,6 +160,31 @@ describe('hotel@2 — default.release', () => {
     const tx100 = hotel2Close([{ to: hotel, value: '459.69' }, { to: fee, value: '2.31' }, { to: guest, value: '100' }], { tickets: true, memos: basis('default.release') })
     expect(failing({ ...input([second]), proposedTx: tx100 })).toContain('L6')
   })
+  describe('an unanswered claim lapses when the arbiter is silent too (R6)', () => {
+    // disputeWindowEnds 11-17T11:00 + rulingWindow 5 days → the claim blocks the release until 11-22T11:00 (inclusive)
+    const posted = claim([{ kind: 'minibar', amount: '58.00' }])
+    const at = (closeTime: string, extra: Statement[] = [], engagement = hotel2Engagement()) => ({ ...input([posted, ...extra]), engagement, ledger: hotel2Ledger({ balance: '562', closeTime }) })
+    it('blocks the release up to and at disputeWindowEnds + rulingWindow; the release signs 1 s later', () => {
+      expect(failing(at('2026-11-17T11:00:01Z'))).toEqual(['L5'])
+      expect(failing(at('2026-11-22T11:00:00Z'))).toEqual(['L5'])
+      expect(failing(at('2026-11-22T11:00:01Z'))).toEqual([])
+    })
+    it('a receipted arbiter ruling keeps blocking it, for good', () => {
+      expect(failing(at('2026-11-22T11:00:01Z', [ruling(W.arbiter, [{ to: hotel, value: '470.00' }], '2026-11-20T09:00:00Z')]))).toEqual(['L5'])
+      expect(failing(at('2027-03-01T00:00:00Z', [ruling(W.arbiter, [{ to: hotel, value: '470.00' }], '2026-11-20T09:00:00Z')]))).toEqual(['L5'])
+    })
+    it('a ruling by someone other than the arbiter does not count', () => {
+      expect(failing(at('2026-11-22T11:00:01Z', [ruling(W.atlas, [{ to: hotel, value: '470.00' }], '2026-11-20T09:00:00Z')]))).toEqual([])
+    })
+    it('a dispute on file (even without its bond) keeps it blocked: the dispute decides', () => {
+      expect(failing(at('2026-11-22T11:00:01Z', [dispute('settlement')]))).toEqual(['L5'])
+    })
+    it('uses the deal\'s pinned ruling window (3 days → lapses after 11-20T11:00)', () => {
+      const engagement = hotel2Engagement({ terms: { nights: 3, nightly: '137.333333', rulingWindow: '259200s' } })
+      expect(failing(at('2026-11-20T11:00:00Z', [], engagement))).toEqual(['L5'])
+      expect(failing(at('2026-11-20T11:00:01Z', [], engagement))).toEqual([])
+    })
+  })
   it('acts strictly after disputeWindowEnds: refuses exactly at it, signs 1 s later (L1)', () => {
     expect(failing({ ...input(), ledger: hotel2Ledger({ balance: '562', closeTime: '2026-11-17T11:00:00Z' }) })).toEqual(['L1'])
     expect(failing({ ...input(), ledger: hotel2Ledger({ balance: '562', closeTime: '2026-11-17T11:00:01Z' }) })).toEqual([])
@@ -221,6 +246,16 @@ describe('hotel@2 — chargeback-style defaults when the arbiter misses its ruli
     })
     it('refuses when more than one dispute is on file: ambiguous, the arbiter decides (E1)', () => {
       expect(failing(input('2026-11-21T20:00:01Z', [], { disputes: [dispute('entry'), dispute('entry', '2026-11-11T21:00:00Z')] }))).toEqual(['E1'])
+    })
+    it('an unconfirmed booking never gets the entry chargeback: that is the refund\'s case (E1, R7)', () => {
+      const i = input('2026-11-16T20:00:01Z')
+      expect(failing({ ...i, statements: i.statements.filter((x) => x.type !== 'party.confirmation/1') })).toEqual(['E1'])
+    })
+    it('a guest checked in at decision time (deposit paid after an entry dispute) is on the stay/claim track (E1, R8)', () => {
+      // entry dispute 11-11T20:00, the hotel's checked_in 21:00, then the deposit: room 412 + deposit 150 + bond 10
+      expect(failing(input('2026-11-16T20:00:01Z', [checkinAt('checked_in', '2026-11-11T21:00:00Z')], { balance: '572' }))).toEqual(['E1'])
+      // without the deposit the guest is not checked in and the entry chargeback still applies
+      expect(failing(input('2026-11-16T20:00:01Z', [checkinAt('checked_in', '2026-11-11T21:00:00Z')]))).toEqual([])
     })
     it('a fixed payment that leaves the bond behind is refused (E4)', () => {
       expect(failing(input('2026-11-16T20:00:01Z', [], { proposedTx: cb('default.chargebackEntry', [{ to: guest, value: '412' }]) }))).toContain('E4')

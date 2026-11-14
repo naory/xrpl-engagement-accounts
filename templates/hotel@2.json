@@ -20,7 +20,7 @@
     "default.release": { "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseWithDeposit", "policyStage": "default.release", "enforcement": "final-signature" },
     "default.chargebackEntry": { "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.refundAll", "policyStage": "default.chargebackEntry", "enforcement": "final-signature" },
     "default.chargebackClaim": { "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseWithDeposit", "policyStage": "default.chargebackClaim", "enforcement": "final-signature" },
-    "default.chargebackStay": { "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseWithDeposit", "variants": { "perNight": true, "max": 13 }, "policyStage": "default.chargebackStay", "enforcement": "final-signature" }
+    "default.chargebackStay": { "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the nights after the one you disputed in are refunded. The hotel gets the nights up to and including the night you disputed in (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseWithDeposit", "variants": { "perNight": true, "max": 13 }, "policyStage": "default.chargebackStay", "enforcement": "final-signature" }
   },
   "timers": {
     "confirmBy":         { "description": "The hotel must confirm the booking within this time after you book.", "from": "open",          "durationSecs": 7200,   "onExpire": "default.refund" },
@@ -36,6 +36,7 @@
     "party.claim/1": "claimBy",
     "party.issue/1": "disputeWindowEnds",
     "party.dispute/1#entry": "entryDisputeBy",
+    "party.dispute/1#stay": "deliveryBy",
     "party.dispute/1#settlement": "disputeWindowEnds"
   },
   "blueprints": {

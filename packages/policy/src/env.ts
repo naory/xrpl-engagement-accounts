@@ -1,9 +1,21 @@
 // The cel-eng/1 environment (docs/spec/policy.md §3–§4): CEL + Amount + domain helpers.
-import { Environment } from '@marcbachmann/cel-js'
+import { Environment, evaluate } from '@marcbachmann/cel-js'
 import { Amount, bps as bpsFn, zero } from '@eng/core'
 import { Assets, HistoryFacts, InflightFacts, LedgerFacts, Payouts, TxFacts } from './facts.ts'
 import { toCel } from './convert.ts'
 import type { VerifiedStatement } from './pipeline.ts'
+
+/** Whole 24 h boundaries from `start` that are <= `at` (0 when at < start); epoch ms. The CEL nightsElapsed(). */
+export function nightsElapsed(startMs: number, atMs: number): number {
+  const d = atMs - startMs
+  return d <= 0 ? 0 : Math.floor(d / 86_400_000)
+}
+
+/** A CEL duration string (e.g. "432000s", "72h") in milliseconds, parsed exactly as the policy's duration() parses it. Throws if invalid. */
+export function celDurationMs(s: string): number {
+  const d = evaluate('duration(w)', { w: s }) as { seconds: number | bigint; nanos: number }
+  return Number(d.seconds) * 1000 + Math.floor(Number(d.nanos) / 1e6)
+}
 
 export class ConflictError extends Error {
   constructor(type: string, role: string, n: number) { super(`CONFLICT: expected exactly one ${type} from ${role}, found ${n}`) }
@@ -74,10 +86,7 @@ export function createEnvironment(ctx: EnvContext): Environment {
   env.registerFunction('asset(string): string', (code: string) => { ctx.assets.get(code); return code })
   env.registerFunction('bps(Amount, int): Amount', (a: Amount, n: bigint) => bpsFn(a, n))
   // whole 24h boundaries from start that are <= at (0 when at < start)
-  env.registerFunction('nightsElapsed(google.protobuf.Timestamp, google.protobuf.Timestamp): int', (start: Date, at: Date) => {
-    const d = at.getTime() - start.getTime()
-    return d <= 0 ? 0n : BigInt(Math.floor(d / 86_400_000))
-  })
+  env.registerFunction('nightsElapsed(google.protobuf.Timestamp, google.protobuf.Timestamp): int', (start: Date, at: Date) => BigInt(nightsElapsed(start.getTime(), at.getTime())))
   env.registerFunction('minor(Amount): int', (a: Amount) => a.minor)
   env.registerFunction('assetOf(Amount): string', (a: Amount) => a.asset)
 

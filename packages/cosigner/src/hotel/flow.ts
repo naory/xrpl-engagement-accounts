@@ -206,7 +206,7 @@ export class HotelFlow {
       state: 'OPEN', consumed: [], mandateId: this.mandate.id,
       ...(this.o.policyLayers ? { policyLayers: this.o.policyLayers } : {}),
     }
-    svc.register(this.record, this.mandate)
+    await svc.register(this.record, this.mandate)
     // Automatic endings return any extra money to the guest (residual sweep). The refund sweeps everything; the no-show
     // is signed exact and with a sweep, since a sweep that delivers nothing would fail on-ledger and burn its Tickets.
     await this.presign('default.refund', [this.sweepToGuest()])
