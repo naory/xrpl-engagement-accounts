@@ -258,7 +258,8 @@ describe('hotel@2 — chargeback-style defaults when the arbiter misses its ruli
     })
     it('an entry dispute resolves to the entry chargeback whatever the balance: a deposit paid in later changes nothing (R15)', () => {
       // entry dispute 11-11T20:00, the hotel's checked_in 21:00; at the deadline the account holds 422, or 572 with a deposit
-      for (const balance of ['422', '572']) {
+      // 562 / 565: a partial top-up would lift a deposit-inclusive bond threshold out of reach; for an entry dispute it is room + bond (R18)
+      for (const balance of ['422', '562', '565', '572']) {
         expect(failing(input('2026-11-16T20:00:01Z', [checkinAt('checked_in', '2026-11-11T21:00:00Z')], { balance }))).toEqual([])
       }
     })

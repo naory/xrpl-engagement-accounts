@@ -1102,16 +1102,47 @@ describe('co-signer: review fixes R10–R14', () => {
     await svc.ingest(ENG, ruling(W.atlas, [{ to: W.atlas.address, value: '1.00' }], '2026-11-05T10:00:30Z'))
   })
 
-  it('R11b: a ruling receipted on the claim, dated before the guest\'s dispute, does not block the dispute\'s chargeback', async () => {
+  it('R19a: once the arbiter ruled on the hotel\'s claim, a guest dispute is ALREADY_RULED (it can\'t re-date the case and void the ruling)', async () => {
     const { svc, source } = await checkedIn('2026-11-14T15:01:00Z')
     await svc.ingest(ENG, claim([{ kind: 'minibar', amount: '58.00' }]))
-    source.snap.closeTime = '2026-11-15T09:00:30Z'
-    await svc.ingest(ENG, arb('2026-11-15T09:00:00Z')) // a case exists (the claim): receipted
-    source.snap = hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-16T10:00:30Z' })
-    await svc.ingest(ENG, dispute('settlement', '2026-11-16T10:00:00Z')) // deadline 11-21T10:00
     await svc.storePresigned(ENG, 'default.chargebackClaim', blob([...room, sweep], 'default.chargebackClaim'))
-    source.snap.closeTime = '2026-11-21T10:00:01Z'
-    expect(summary(await svc.tick(ENG))['default.chargebackClaim']).toBe('SIGN')
+    await svc.storePresigned(ENG, 'default.release', blob([...room, { to: W.dana.address, value: '150' }], 'default.release'))
+    source.snap.closeTime = '2026-11-15T10:00:00Z'
+    await svc.ingest(ENG, arb('2026-11-15T09:59:30Z')) // ruling on the claim: receipted
+    source.snap = hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-16T10:00:30Z' })
+    await expect(svc.ingest(ENG, dispute('settlement', '2026-11-16T10:00:00Z'))).rejects.toThrow(/ALREADY_RULED/)
+    expect(svc.statements(ENG).some((x) => x.type === 'party.dispute/1')).toBe(false)
+    source.snap.closeTime = '2026-12-30T00:00:00Z' // long after every deadline: the ruling keeps both defaults off
+    const r = summary(await svc.tick(ENG))
+    expect(r['default.chargebackClaim']).toMatch(/^REFUSE:.*G1/)
+    expect(r['default.release']).toMatch(/^REFUSE:.*L5/)
+  })
+
+  it('R19b: a second hotel claim is ALREADY_CLAIMED (one claim per deal)', async () => {
+    const { svc, source } = await confirmedSetup('2026-11-14T15:01:00Z')
+    const first = claim([{ kind: 'minibar', amount: '58.00' }])
+    const r = await svc.ingest(ENG, first)
+    source.snap.closeTime = '2026-11-15T10:00:00Z'
+    await expect(svc.ingest(ENG, claimAt('2026-11-15T09:59:00Z', [{ amount: '20.00' }], '20.00'))).rejects.toThrow(/ALREADY_CLAIMED/)
+    expect(await svc.ingest(ENG, first)).toEqual(r) // re-posting the first returns its receipt
+    expect(svc.statements(ENG).filter((x) => x.type === 'party.claim/1')).toEqual([first])
+  })
+
+  it('R18: an entry dispute stays open whatever is paid in later (bond threshold = room + bond); a 140-149.99 top-up can\'t release the room', async () => {
+    for (const balance of ['562', '565']) {
+      const { svc, source } = await confirmedSetup('2026-11-11T15:01:00Z')
+      await svc.ingest(ENG, checkin('checked_in'))
+      source.snap = hotel2Ledger({ balance: '422', dispute: true, closeTime: '2026-11-11T15:30:00Z' })
+      await svc.ingest(ENG, dispute('entry', '2026-11-11T15:29:30Z')) // deadline 11-16T15:29:30
+      await svc.storePresigned(ENG, 'default.chargebackEntry', blob([sweep], 'default.chargebackEntry'))
+      await svc.storePresigned(ENG, 'default.release', blob([...room, sweep], 'default.release'))
+      source.snap = hotel2Ledger({ balance, dispute: true, closeTime: '2026-11-16T15:29:31Z' })
+      expect(summary(await svc.tick(ENG))['default.release']).toMatch(/^REFUSE:.*L2/)
+      source.snap.closeTime = '2026-11-17T11:00:01Z' // past disputeWindowEnds too: the release is still blocked
+      const r = summary(await svc.tick(ENG))
+      expect(r['default.chargebackEntry']).toBe('SIGN')
+      expect(r['default.release']).toMatch(/^REFUSE:.*L2/)
+    }
   })
 
   it('R12: a dispute is NOT_BONDED unless Credential and bond are on the ledger (with the deposit once checked in); a late bond starts no clock', async () => {

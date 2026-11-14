@@ -274,6 +274,8 @@ export class CosignerService {
     if (s.type === 'party.dispute/1') {
       const isPrincipalDispute = (p: Statement) => p.type === 'party.dispute/1' && p.attester.account === parties.principal
       if (isPrincipalDispute(s) && posted.some(isPrincipalDispute)) throw new Error('ALREADY_DISPUTED: the guest already has a receipted dispute on this deal; one dispute per deal')
+      // A dispute filed after the arbiter ruled on the hotel's claim would re-date the case and void that ruling.
+      if (isPrincipalDispute(s) && posted.some((p) => p.type === 'party.ruling/1' && p.attester.account === parties.arbiter)) throw new Error('ALREADY_RULED: the arbiter has already ruled on this deal; a later dispute cannot reopen it')
       const phase = (s.claim as { phase?: unknown }).phase
       const checkIn = Date.parse(st.record.timers?.checkIn ?? '')
       const received = Date.parse(ledger.closeTime)
@@ -294,7 +296,7 @@ export class CosignerService {
         if (nIssued !== nReceived) throw new Error(`NIGHT_MISMATCH: issued in night ${nIssued + 1} (${s.issuedAt}), received in night ${nReceived + 1} (${ledger.closeTime})`)
       }
       // The ruling clock starts only on an open dispute: the Credential and the bond must already be on the ledger.
-      if (isPrincipalDispute(s) && !this.disputeBonded(st, posted, assets, ledger)) throw new Error('NOT_BONDED: post the ENG/DISPUTE Credential and the bond (room, plus the deposit once checked in, plus minDisputeBond in the account) before the dispute statement')
+      if (isPrincipalDispute(s) && !this.disputeBonded(st, posted, assets, ledger, phase)) throw new Error('NOT_BONDED: post the ENG/DISPUTE Credential and the bond (room, plus the deposit once checked in, plus minDisputeBond in the account) before the dispute statement')
     }
     if (s.type === 'party.checkin/1' && s.attester.account === parties.counterparty && (s.claim as { status?: unknown }).status !== 'checked_in') {
       const checkedIn = posted.some((p) => p.type === 'party.checkin/1' && p.attester.account === parties.counterparty && (p.claim as { status?: unknown }).status === 'checked_in')
@@ -302,9 +304,10 @@ export class CosignerService {
     }
     if (s.type === 'party.checkin/1' && (s.claim as { status?: unknown }).status === 'checked_in') {
       const entryDispute = posted.some((p) => p.type === 'party.dispute/1' && p.attester.account === parties.principal && (p.claim as { phase?: unknown }).phase === 'entry')
-      if (entryDispute && parties.principal && this.disputeBonded(st, posted, assets, ledger)) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
+      if (entryDispute && parties.principal && this.disputeBonded(st, posted, assets, ledger, 'entry')) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
     }
     if (s.type === 'party.claim/1') {
+      if (s.attester.account === parties.counterparty && posted.some((p) => p.type === 'party.claim/1' && p.attester.account === parties.counterparty)) throw new Error('ALREADY_CLAIMED: the hotel already has a receipted claim on this deal; one claim per deal')
       checkClaimTotal(s, assets)
       const c = s.claim as { items: Array<{ amount: { value: string } }>; total: { currency: string; value: string } }
       const asset = Object.values(assets).find((a) => a.code === c.total.currency)!
@@ -372,9 +375,9 @@ export class CosignerService {
 
   /**
    * As the policy's def.disputeOpen, at this ledger: the principal's ENG/DISPUTE Credential is on the account and the
-   * balance covers booked + (the first confirmation's deposit, once checked in) + minDisputeBond.
+   * balance covers booked + (the first confirmation's deposit, once checked in — never for an entry dispute) + minDisputeBond.
    */
-  private disputeBonded(st: EngagementState, posted: Statement[], assets: Record<string, AssetDef>, ledger: LedgerSnapshot): boolean {
+  private disputeBonded(st: EngagementState, posted: Statement[], assets: Record<string, AssetDef>, ledger: LedgerSnapshot, phase: unknown): boolean {
     const { parties, account, amount } = st.record
     const asset = Object.values(assets).find((a) => a.code === (amount?.asset ?? st.record.asset))
     if (!asset || !amount) return false
@@ -382,7 +385,7 @@ export class CosignerService {
     if (!facts.credentialExists(parties.principal!, account, 'ENG/DISPUTE')) return false
     const bond = [...st.layers].reverse().map((l) => (l.params as { minDisputeBond?: unknown } | undefined)?.minDisputeBond).find((b) => typeof b === 'string') as string | undefined
     let need = parseAmount(amount.value, asset).add(bond ? parseAmount(bond, asset) : zero(asset.code))
-    if (this.checkedIn(st, posted, assets, ledger)) {
+    if (phase !== 'entry' && this.checkedIn(st, posted, assets, ledger)) {
       const conf = posted.find((p) => p.type === 'party.confirmation/1' && p.attester.account === parties.counterparty)!
       need = need.add(parseAmount((conf.claim as { deposit: { value: string } }).deposit.value, asset))
     }
