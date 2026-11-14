@@ -476,7 +476,6 @@ export class DemoOrchestrator {
     const hotel = await this.fund('hotel')
     const service = await this.fund('service') // pre-creates accounts; fee recipient and AccountDelete destination
     const arbiter = xrpl.Wallet.generate(); this.w.arbiter = arbiter // signers only (never funded)
-    const backupArbiter = xrpl.Wallet.generate(); this.w.backupArbiter = backupArbiter
     const cosigner = xrpl.Wallet.generate(); this.w.cosigner = cosigner
 
     must(await sendSimple(this.client, issuer, { TransactionType: 'AccountSet', Account: issuer.address, SetFlag: ASF_DEFAULT_RIPPLE }), 'DefaultRipple')
@@ -493,10 +492,10 @@ export class DemoOrchestrator {
     const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
     const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates: [template], policies: [baseline, policy], dataDir })
     this.svc = svc
-    const cast: HotelCast = { issuer, guest, hotel, arbiter, backupArbiter, service, currency: CUR }
+    const cast: HotelCast = { issuer, guest, hotel, arbiter, service, currency: CUR }
 
     // eng.provision/1: every signer proves possession of its key; the SignerList is the same for every path's account.
-    const roles: Array<[string, Wallet, number]> = [['principal', guest, 3], ['counterparty', hotel, 3], ['arbiter', arbiter, 4], ['backupArbiter', backupArbiter, 2], ['cosigner', cosigner, 2]]
+    const roles: Array<[string, Wallet, number]> = [['principal', guest, 3], ['counterparty', hotel, 3], ['arbiter', arbiter, 4], ['cosigner', cosigner, 2]]
     const coord = new ProvisioningCoordinator()
     const session = coord.createSession({
       engagementId: this.engagementId, template: 'settlement-vault/hotel@2', account: '(one per path)', asset: 'RLUSD', quorum: 7,
@@ -523,7 +522,7 @@ export class DemoOrchestrator {
       engagementId: this.engagementId, account: h.accounts.happy?.address ?? '', explorer: this.explorer, quorum: plan.quorum,
       signers: plan.signerEntries.map(([address, weight]) => ({ role: roleOf[address] ?? '?', address, weight, proofVerified: true, as: ({ principal: 'guest', counterparty: 'hotel' } as Record<string, string>)[roleOf[address]] })),
       mandate: { purpose: 'Lisbon hotel stay (web demo)', budget: DEMO_HOTEL_BOOKING.room, dailyCap: DEMO_HOTEL_BOOKING.room, approvalOver: '0.00', vendors: [{ label: 'Hotel', address: hotel.address }] },
-      accounts: { issuer: issuer.address, guest: guest.address, hotel: hotel.address, arbiter: arbiter.address, backupArbiter: backupArbiter.address, service: service.address, cosigner: cosigner.address },
+      accounts: { issuer: issuer.address, guest: guest.address, hotel: hotel.address, arbiter: arbiter.address, service: service.address, cosigner: cosigner.address },
       openTx: '', balance: null, session: { id: session.sessionId },
       hotel: {
         ...this.hotelStatus(), paths: HOTEL_PATHS, pooled, accounts: Object.fromEntries(Object.entries(h.accounts).map(([p, w]) => [p, w!.address])),

@@ -7,7 +7,7 @@ import type { Statement, StatementBody, Template } from '@eng/core'
 import { Assets, TxFacts, type DecideInput } from '@eng/policy'
 import {
   LEDGER_INDEX, W, b1Approval, b1Challenge, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, closeBatch, confirmation,
-  checkin, claim, concession, dispute, hotel2Close, hotel2Confirmation, hotel2Input, hotel2Ledger, ruling,
+  checkin, claim, concession, dispute, hotel2Close, hotel2Confirmation, hotel2Engagement, hotel2Input, hotel2Ledger, ruling,
   historyEntry, hotelEngagement, hotelLedger, hotelMandate, inflight, memo, policies, review, statement, templates,
   r2Category, r2Challenge, r2Engagement, r2Ledger, r2Mandate, r2Payment,
 } from '../packages/policy/test/fixtures.ts'
@@ -40,7 +40,7 @@ const hotel = (over: Partial<DecideInput> & { payouts?: Array<{ to: string; valu
 const refundTx = () => closeBatch([{ to: W.dana.address, value: '412' }], { tickets: true, memos: [memo('eng/basis', 'default.refund')] })
 const releaseTx = () => closeBatch([{ to: W.atlas.address, value: '409.94' }, { to: W.service.address, value: '2.06' }], { tickets: true, memos: [memo('eng/basis', 'default.release')] })
 
-// hotel@2 (deposit, entry disputes, claims, backup ruling): mirrors packages/policy/test/hotel2.test.ts
+// hotel@2 (deposit, entry/stay disputes, claims, chargeback-style defaults): mirrors packages/policy/test/hotel2.test.ts
 const h2 = (over: Partial<DecideInput> & { stage: string }): DecideInput => hotel2Input(over)
 const h2basis = (b: string) => [memo('eng/basis', b)]
 const H2 = { hotel: W.atlas.address, guest: W.dana.address, fee: W.service.address }
@@ -78,20 +78,6 @@ export function policyCases(): PolicyCase[] {
     stage: 'default.release', statements: [hotel2Confirmation(), checkin('checked_in'), ...extra], ledger: hotel2Ledger({ balance }),
     proposedTx: hotel2Close([{ to: H2.hotel, value: '409.94' }, { to: H2.fee, value: '2.06' }, { to: H2.guest, value: '150' }], { tickets: true, memos: h2basis('default.release') }),
   })
-  const H2_RULED = [{ to: H2.hotel, value: '467.65' }, { to: H2.fee, value: '2.35' }, { to: H2.guest, value: '102.00' }]
-  const H2_NOFEE = [{ to: H2.hotel, value: '470.00' }, { to: H2.guest, value: '102.00' }]
-  const h2Backup = (closeTime: string, o: { extra?: Statement[]; disputes?: Statement[]; tx?: Record<string, unknown>; ruled?: Array<{ to: string; value: string }>; rulingAt?: string } = {}): DecideInput => h2({
-    stage: 'ruling.backup', proposedTx: o.tx ?? hotel2Close(H2_RULED, { memos: h2basis('ruling.backup') }),
-    statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'minibar', amount: '58.00' }]), ...(o.disputes ?? [dispute('settlement')]), ruling(W.backupArbiter, o.ruled ?? H2_RULED, o.rulingAt), ...(o.extra ?? [])],
-    ledger: hotel2Ledger({ balance: '572', dispute: true, closeTime }),
-  })
-  const h2ClaimOnly = (closeTime: string): DecideInput => {
-    const cp = [{ to: H2.hotel, value: '467.65' }, { to: H2.fee, value: '2.35' }, { to: H2.guest, value: '92.00' }]
-    return h2({
-      stage: 'ruling.backup', proposedTx: hotel2Close(cp, { memos: h2basis('ruling.backup') }),
-      statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'minibar', amount: '58.00' }]), ruling(W.backupArbiter, cp)], ledger: hotel2Ledger({ balance: '562', closeTime }),
-    })
-  }
   const h2RulingDefault = (amount: string): DecideInput => h2({
     stage: 'ruling.default', proposedTx: hotel2Close([{ to: H2.hotel, value: '467.65' }, { to: H2.fee, value: '2.35' }, { to: H2.guest, value: '92.00' }], { memos: h2basis('ruling.default') }),
     statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'damage', amount }])], ledger: hotel2Ledger({ balance: '562' }),
@@ -105,18 +91,41 @@ export function policyCases(): PolicyCase[] {
     const c = hotel2Confirmation({ deposit: '100.00' })
     return statement(W.atlas, { kind: 'COUNTERPARTY', type: 'party.confirmation/1', engagementId: 'eng_hotel2_fixture', subject: c.subject, claim: c.claim, observedAt: '2026-11-11T16:00:00Z', issuedAt: '2026-11-11T16:00:00Z' })
   })()
-  const h2EntryLate = (stage: 'ruling.backup' | 'refund.conceded'): DecideInput => {
-    const d = dispute('entry')
-    const payouts = [{ to: H2.guest, value: '422' }]
-    return h2({
-      stage, proposedTx: hotel2Close(payouts, { memos: h2basis(stage) }),
-      statements: [hotel2Confirmation(), d, h2CheckinAt('checked_in', '2026-11-11T21:00:00Z'), stage === 'ruling.backup' ? ruling(W.backupArbiter, payouts) : concession(d.id)],
-      ledger: hotel2Ledger({ balance: '422', dispute: true, closeTime: stage === 'ruling.backup' ? '2026-11-21T00:00:00Z' : '2026-11-12T10:00:00Z' }),
-    })
-  }
   // Automatic endings return extra money to the guest: a tfPartialPayment residual sweep (resolved from the balance).
   const H2_SWEEP = { to: H2.guest, value: '0', partial: true }
   const H2_ROOM = [{ to: H2.hotel, value: '409.94' }, { to: H2.fee, value: '2.06' }]
+  const h2EntryLate = (stage: 'default.chargebackEntry' | 'refund.conceded'): DecideInput => {
+    const d = dispute('entry')
+    const cb = stage === 'default.chargebackEntry'
+    return h2({
+      stage, proposedTx: hotel2Close([cb ? { to: H2.guest, value: '0', partial: true } : { to: H2.guest, value: '422' }], { tickets: cb, memos: h2basis(stage) }),
+      statements: [hotel2Confirmation(), d, h2CheckinAt('checked_in', '2026-11-11T21:00:00Z'), ...(cb ? [] : [concession(d.id)])],
+      ledger: hotel2Ledger({ balance: '422', dispute: true, closeTime: cb ? '2026-11-21T00:00:00Z' : '2026-11-12T10:00:00Z' }),
+    })
+  }
+  // Chargeback-style defaults: the arbiter missed its ruling deadline (5 days from the dispute) with no receipted ruling.
+  const h2Arbiter = (at: string) => ruling(W.arbiter, [{ to: H2.guest, value: '1.00' }], at)
+  const h2Cb = (stage: string, payouts: Array<{ to: string; value: string; partial?: boolean }>) => hotel2Close(payouts, { tickets: true, memos: h2basis(stage) })
+  const h2CbEntry = (closeTime: string, extra: Statement[] = [], o: { disputes?: Statement[]; balance?: string; open?: boolean } = {}): DecideInput => h2({
+    stage: 'default.chargebackEntry', proposedTx: h2Cb('default.chargebackEntry', [H2_SWEEP]),
+    statements: [hotel2Confirmation(), ...(o.disputes ?? [dispute('entry')]), ...extra],
+    ledger: hotel2Ledger({ balance: o.balance ?? '422', dispute: o.open ?? true, closeTime }),
+  })
+  const h2CbClaim = (closeTime: string, extra: Statement[] = [], o: { disputes?: Statement[]; tx?: Record<string, unknown> } = {}): DecideInput => h2({
+    stage: 'default.chargebackClaim', proposedTx: o.tx ?? h2Cb('default.chargebackClaim', [...H2_ROOM, H2_SWEEP]),
+    statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'minibar', amount: '58.00' }]), ...(o.disputes ?? [dispute('settlement')]), ...extra],
+    ledger: hotel2Ledger({ balance: '572', dispute: true, closeTime }),
+  })
+  // 3-night stay, room 400, nightly 133.33; nights begin at the scheduled check-in 11-11T14:00 + i·24h
+  const h2StayVariant = (merchant: string, f: string) => h2Cb('default.chargebackStay', [{ to: H2.hotel, value: merchant }, { to: H2.fee, value: f }, H2_SWEEP])
+  const H2_NIGHT1 = h2StayVariant('132.66335', '0.66665')
+  const H2_NIGHT2 = h2StayVariant('265.3267', '1.3333')
+  const h2CbStay = (disputeAt: string | null, tx: Record<string, unknown> = H2_NIGHT1, o: { nights?: number; nightly?: string; extra?: Statement[]; stage?: string } = {}): DecideInput => h2({
+    stage: o.stage ?? 'default.chargebackStay', proposedTx: tx,
+    engagement: hotel2Engagement({ amount: { asset: 'RLUSD', value: '400.00' }, terms: { nights: o.nights ?? 3, nightly: o.nightly ?? '133.33' } }),
+    statements: [hotel2Confirmation({ total: '400.00' }), checkin('checked_in'), ...(disputeAt ? [dispute('stay', disputeAt)] : []), ...(o.extra ?? [])],
+    ledger: hotel2Ledger({ balance: disputeAt ? '560' : '550', dispute: disputeAt != null, closeTime: '2026-11-20T00:00:00Z' }),
+  })
   const h2RefundSweep = hotel2Close([H2_SWEEP], { tickets: true, memos: h2basis('default.refund') })
   const h2NoShowSweep = (statements: Statement[], balance: string, dispute = false): DecideInput => h2({
     stage: 'default.noshow', statements, ledger: hotel2Ledger({ closeTime: H2_AFTER, balance, dispute }),
@@ -257,20 +266,30 @@ export function policyCases(): PolicyCase[] {
     { name: 'hotel2.default.release.reissued-confirmation-payout', description: 'Paying only the re-issued deposit (100) back to the guest is refused', input: { ...h2Release([h2Reissued]), proposedTx: hotel2Close([{ to: H2.hotel, value: '459.69' }, { to: H2.fee, value: '2.31' }, { to: H2.guest, value: '100' }], { tickets: true, memos: h2basis('default.release') }) }, expectFailing: ['L6'] },
     { name: 'hotel2.default.release.at-window-end', description: 'Exactly at disputeWindowEnds: refused (strict deadline)', input: { ...h2Release(), ledger: hotel2Ledger({ balance: '562', closeTime: '2026-11-17T11:00:00Z' }) }, expectFailing: ['L1'] },
     { name: 'hotel2.default.release.after-window-end', description: 'One second after disputeWindowEnds: signs', input: { ...h2Release(), ledger: hotel2Ledger({ balance: '562', closeTime: '2026-11-17T11:00:01Z' }) }, expectFailing: [] },
-    // ruling.backup
-    { name: 'hotel2.ruling.backup.before-window', description: '1 s before the ruling window elapses', input: h2Backup('2026-11-21T09:59:59Z'), expectFailing: ['U1'] },
-    { name: 'hotel2.ruling.backup.at-window-end', description: 'Exactly at the end of the ruling window: refused', input: h2Backup('2026-11-21T10:00:00Z'), expectFailing: ['U1'] },
-    { name: 'hotel2.ruling.backup.ok', description: 'After the window, tx matches the backup arbiter ruling', input: h2Backup('2026-11-21T10:00:01Z'), expectFailing: [] },
-    { name: 'hotel2.ruling.backup.primary-ruled', description: 'The primary arbiter has ruled', input: h2Backup('2026-11-21T10:00:01Z', { extra: [ruling(W.arbiter, H2_RULED)] }), expectFailing: ['U2'] },
-    { name: 'hotel2.ruling.backup.backdated-dispute', description: 'Dispute backdated to 11-02 is floored at deliveryBy: backup cannot rule right after filing', input: h2Backup('2026-11-16T10:05:00Z', { disputes: [dispute('settlement', '2026-11-02T00:00:00Z')], rulingAt: '2026-11-16T10:01:00Z' }), expectFailing: ['U1'] },
-    { name: 'hotel2.ruling.backup.settlement-dispute-own-filing', description: 'Window runs from the settlement dispute, not an older entry-phase attestation', input: h2Backup('2026-11-17T00:00:00Z', { disputes: [dispute('entry'), dispute('settlement')], rulingAt: '2026-11-16T10:01:00Z' }), expectFailing: ['U1'] },
-    { name: 'hotel2.ruling.backup.extra-payee', description: 'Tx pays an account the ruling does not name', input: h2Backup('2026-11-21T10:00:01Z', { tx: hotel2Close([{ to: H2.hotel, value: '467.65' }, { to: H2.fee, value: '2.35' }, { to: H2.guest, value: '101.00' }, { to: W.arbiter.address, value: '1.00' }], { memos: h2basis('ruling.backup') }) }), expectFailing: ['U4', 'U5'] },
-    { name: 'hotel2.ruling.backup.duplicate-payee', description: 'Ruling names the hotel twice', input: h2Backup('2026-11-21T10:00:01Z', { ruled: [{ to: H2.hotel, value: '467.65' }, { to: H2.hotel, value: '0' }, { to: H2.guest, value: '102.00' }] }), expectFailing: ['U4'] },
-    { name: 'hotel2.ruling.backup.no-fee', description: 'Ruling with no service fee on what the hotel receives', input: h2Backup('2026-11-21T10:00:01Z', { ruled: H2_NOFEE, tx: hotel2Close(H2_NOFEE, { memos: h2basis('ruling.backup') }) }), expectFailing: ['U6'] },
-    { name: 'hotel2.ruling.backup.entry-dispute-late-checkin', description: 'A checked_in after a bonded entry dispute (no deposit paid) does not stop the dispute counting', input: h2EntryLate('ruling.backup'), expectFailing: [] },
     { name: 'hotel2.refund.conceded.late-checkin', description: 'The hotel can still concede an entry dispute after posting checked_in without the deposit', input: h2EntryLate('refund.conceded'), expectFailing: [] },
-    { name: 'hotel2.ruling.backup.claim-only-at-end', description: 'Claim-only branch: exactly at disputeWindowEnds + rulingWindow is refused', input: h2ClaimOnly('2026-11-22T11:00:00Z'), expectFailing: ['U1'] },
-    { name: 'hotel2.ruling.backup.claim-only-after', description: 'Claim-only branch: one second later signs', input: h2ClaimOnly('2026-11-22T11:00:01Z'), expectFailing: [] },
+    // chargeback-style defaults (arbiter missed its ruling deadline)
+    { name: 'hotel2.chargeback.entry.ok', description: 'Bonded entry dispute, deadline passed, no ruling: everything (room + bond) to the guest', input: h2CbEntry('2026-11-16T20:00:01Z'), expectFailing: [] },
+    { name: 'hotel2.chargeback.entry.before-deadline', description: '1 s before the ruling deadline', input: h2CbEntry('2026-11-16T19:59:59Z'), expectFailing: ['E1'] },
+    { name: 'hotel2.chargeback.entry.at-deadline', description: 'Exactly at the ruling deadline: refused (strict)', input: h2CbEntry('2026-11-16T20:00:00Z'), expectFailing: ['E1'] },
+    { name: 'hotel2.chargeback.entry.ruled', description: 'The arbiter\'s ruling is receipted: the chargeback never applies', input: h2CbEntry('2027-03-01T00:00:00Z', [h2Arbiter('2026-11-14T09:00:00Z')]), expectFailing: ['E2'] },
+    { name: 'hotel2.chargeback.entry.no-dispute', description: 'No dispute open', input: h2CbEntry('2026-11-16T20:00:01Z', [], { disputes: [], balance: '412', open: false }), expectFailing: ['E1'] },
+    { name: 'hotel2.chargeback.entry.late-checkin', description: 'A checked_in after a bonded entry dispute (no deposit paid) does not stop the dispute counting', input: h2EntryLate('default.chargebackEntry'), expectFailing: [] },
+    { name: 'hotel2.chargeback.claim.ok', description: 'Settlement dispute past the deadline: room to the hotel less fee, claim ignored, deposit + bond swept to the guest', input: h2CbClaim('2026-11-21T10:00:01Z'), expectFailing: [] },
+    { name: 'hotel2.chargeback.claim.before-deadline', description: '1 s before the ruling deadline', input: h2CbClaim('2026-11-21T09:59:59Z'), expectFailing: ['G1'] },
+    { name: 'hotel2.chargeback.claim.hotel-short', description: 'Hotel leg 1 short of the room', input: h2CbClaim('2026-11-21T10:00:01Z', [], { tx: h2Cb('default.chargebackClaim', [{ to: H2.hotel, value: '408.94' }, { to: H2.fee, value: '2.06' }, H2_SWEEP]) }), expectFailing: ['G4'] },
+    { name: 'hotel2.chargeback.claim.hotel-sweeps', description: 'The residual sweep goes to the hotel instead of the guest', input: h2CbClaim('2026-11-21T10:00:01Z', [], { tx: h2Cb('default.chargebackClaim', [{ to: H2.hotel, value: '0', partial: true }, { to: H2.fee, value: '2.06' }, { to: H2.guest, value: '160' }]) }), expectFailing: ['G5'] },
+    { name: 'hotel2.chargeback.claim.ruled', description: 'The arbiter\'s ruling is receipted', input: h2CbClaim('2026-11-21T10:00:01Z', [h2Arbiter('2026-11-18T09:00:00Z')]), expectFailing: ['G2'] },
+    { name: 'hotel2.chargeback.claim.entry-dispute', description: 'An entry dispute does not open the claim chargeback', input: h2CbClaim('2026-11-21T10:00:01Z', [], { disputes: [dispute('entry')] }), expectFailing: ['G1'] },
+    { name: 'hotel2.chargeback.stay.night1', description: 'Dispute in night 1 of 3: the night-1 variant pays the hotel 133.33 less fee, the rest to the guest', input: h2CbStay('2026-11-11T20:00:00Z'), expectFailing: [] },
+    { name: 'hotel2.chargeback.stay.night2-wrong-variant', description: 'Dispute in night 2: the night-1 variant is refused', input: h2CbStay('2026-11-12T20:00:00Z'), expectFailing: ['Y4'] },
+    { name: 'hotel2.chargeback.stay.night2', description: 'Dispute in night 2: the night-2 variant signs', input: h2CbStay('2026-11-12T20:00:00Z', H2_NIGHT2), expectFailing: [] },
+    { name: 'hotel2.chargeback.stay.boundary', description: 'A dispute exactly at checkIn + 24 h counts in night 2', input: h2CbStay('2026-11-12T14:00:00Z', H2_NIGHT2), expectFailing: [] },
+    { name: 'hotel2.chargeback.stay.last-night', description: 'Dispute in the last night: no stay variant applies', input: h2CbStay('2026-11-13T15:00:00Z', h2StayVariant('397.99005', '1.99995')), expectFailing: ['Y1'] },
+    { name: 'hotel2.chargeback.stay.last-night-claim', description: 'Dispute in the last night: the claim chargeback pays the whole room', input: h2CbStay('2026-11-13T15:00:00Z', h2Cb('default.chargebackClaim', [{ to: H2.hotel, value: '398.00' }, { to: H2.fee, value: '2.00' }, H2_SWEEP]), { stage: 'default.chargebackClaim' }), expectFailing: [] },
+    { name: 'hotel2.chargeback.stay.mid-stay-claim', description: 'A mid-stay dispute does not open the claim chargeback', input: h2CbStay('2026-11-11T20:00:00Z', h2Cb('default.chargebackClaim', [{ to: H2.hotel, value: '398.00' }, { to: H2.fee, value: '2.00' }, H2_SWEEP]), { stage: 'default.chargebackClaim' }), expectFailing: ['G1'] },
+    { name: 'hotel2.chargeback.stay.over-cap', description: 'A 15-night stay has no stay variants', input: h2CbStay('2026-11-11T20:00:00Z', h2StayVariant('26.5267', '0.1333'), { nights: 15, nightly: '26.66' }), expectFailing: ['Y1'] },
+    { name: 'hotel2.chargeback.stay.ruled', description: 'The arbiter\'s ruling is receipted', input: h2CbStay('2026-11-11T20:00:00Z', H2_NIGHT1, { extra: [h2Arbiter('2026-11-13T09:00:00Z')] }), expectFailing: ['Y2'] },
+    { name: 'hotel2.chargeback.stay.no-dispute', description: 'No dispute open', input: h2CbStay(null), expectFailing: ['Y1', 'Y4'] },
     // ruling.default (advisory)
     { name: 'hotel2.ruling.default.ok', description: 'Unanswered 58.00 claim paid exactly after the window', input: h2RulingDefault('58.00'), expectFailing: [] },
     { name: 'hotel2.ruling.default.claim-over-deposit', description: 'Claim above the deposit', input: h2RulingDefault('160.00'), expectFailing: ['D4', 'D5'] },
@@ -286,7 +305,7 @@ export function templateCases(): TemplateCase[] {
   const mut = (f: (t: Template) => void) => { const t = h(); f(t); return t }
   return [
     { name: 'hotel.ok', description: 'Shipped hotel template', template: h(), options: { preCreateFundingDrops: '6000000' }, expectErrors: [] },
-    { name: 'hotel2.ok', description: 'Shipped hotel@2 template (deposit, backup arbiter)', template: structuredClone(templates.hotel2), options: { preCreateFundingDrops: '7000000' }, expectErrors: [] },
+    { name: 'hotel2.ok', description: 'Shipped hotel@2 template (deposit, accredited arbiter, chargeback defaults with 13 per-night stay variants)', template: structuredClone(templates.hotel2), options: { preCreateFundingDrops: '25000000' }, expectErrors: [] },
     { name: 'procurement.ok', description: 'Shipped owner-wallet procurement template', template: structuredClone(templates.procurement), expectErrors: [] },
     { name: 'shopping.ok', description: 'Shipped owner-wallet consumer-shopping template', template: structuredClone(templates.shopping), expectErrors: [] },
     { name: 'V1.service-at-quorum', description: 'Co-signer weight reaches quorum alone', template: mut((t) => { t.roles.cosigner.weight = 5 }), expectErrors: ['V1', 'V2'] },
@@ -294,10 +313,11 @@ export function templateCases(): TemplateCase[] {
     { name: 'V3.stalls-without-service', description: 'No arbiter: every winning set needs the service', template: mut((t) => { delete (t.roles as Record<string, unknown>).arbiter; delete (t.outcomes as Record<string, unknown>)['settle.ruling'] }), expectErrors: ['V3'] },
     { name: 'V5.presigned-without-final', description: 'Principal + counterparty alone reach quorum', template: mut((t) => { t.roles.principal.weight = 3 }), expectErrors: ['V5', 'V12'] },
     { name: 'V7.blueprint-order', description: 'AccountDelete not last', template: mut((t) => { t.blueprints['close.refundAll'].steps = ['pay.principal', 'account.delete', 'trustline.remove'] }), expectErrors: ['V7'] },
-    { name: 'V11.equal-arbiters', description: 'Two equal-weight arbiters can collude', template: mut((t) => { t.roles.arbiter2 = { weight: 3, kind: 'arbiter', operatedBy: 'external' } }), expectErrors: ['V11'] },
+    { name: 'V11.equal-arbiters', description: 'Two equal-weight arbiters can collude', template: mut((t) => { t.roles.arbiter2 = { weight: 3, kind: 'arbiter', operatedBy: 'external', accreditation: 'service' } }), expectErrors: ['V11'] },
+    { name: 'V15.arbiter-not-accredited', description: 'An arbiter role that does not opt into the service accreditation gate', template: mut((t) => { delete t.roles.arbiter.accreditation }), expectErrors: ['V15'] },
     { name: 'E4.backup-arbiter', description: 'P3·C3·A1 4·A2 2·S2·Q7 passes with disclosures', template: mut((t) => {
       t.quorum = 7
-      t.roles = { principal: { weight: 3, kind: 'principal', operatedBy: 'external' }, counterparty: { weight: 3, kind: 'counterparty', operatedBy: 'external' }, arbiter: { weight: 4, kind: 'arbiter', operatedBy: 'external' }, arbiter2: { weight: 2, kind: 'arbiter', operatedBy: 'external' }, cosigner: { weight: 2, kind: 'cosigner', operatedBy: 'service' } }
+      t.roles = { principal: { weight: 3, kind: 'principal', operatedBy: 'external' }, counterparty: { weight: 3, kind: 'counterparty', operatedBy: 'external' }, arbiter: { weight: 4, kind: 'arbiter', operatedBy: 'external', accreditation: 'service' }, arbiter2: { weight: 2, kind: 'arbiter', operatedBy: 'external', accreditation: 'service' }, cosigner: { weight: 2, kind: 'cosigner', operatedBy: 'service' } }
     }), expectErrors: [] },
     { name: 'V13.window-unknown-timer', description: 'An attestation window names a timer the engagement does not carry', template: (() => { const t = structuredClone(templates.hotel2); t.attestationWindows = { ...t.attestationWindows, 'party.claim/1': 'claimByTypo' }; return t })(), expectErrors: ['V13'] },
     { name: 'V13.window-not-a-type', description: 'An attestation window key is not a statement type', template: (() => { const t = structuredClone(templates.hotel2); t.attestationWindows = { ...t.attestationWindows, 'claim#': 'claimBy' }; return t })(), expectErrors: ['V13'] },

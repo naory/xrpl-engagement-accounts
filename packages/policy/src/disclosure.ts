@@ -13,7 +13,6 @@ export interface HotelOffer {
   room: string
   deposit: string
   arbiter: ArbiterOffer
-  backupArbiter?: ArbiterOffer
   /** Deadline overrides in seconds, keyed by template timer name (defaults come from the template). */
   timers?: Record<string, number>
 }
@@ -22,12 +21,12 @@ export interface DealTerms {
   template: string
   policy: string
   money: { asset: string; room: string; deposit: string; bond: string; feeBps: number }
-  deadlines: Array<{ timer: string; seconds: number; from: string; onExpire: string; description?: string }>
+  deadlines: Array<{ timer: string; seconds: number; from: string; onExpire: string | string[]; description?: string }>
   /** Minimal sets of roles that can move the money together. */
   whoCanMoveMoney: Array<{ roles: string[]; weight: number; includesGuest: boolean; includesCosigner: boolean; plain: string }>
   /** What happens automatically when a deadline passes with nobody acting. */
   silence: Array<{ timer: string; outcome: string; description?: string }>
-  arbiters: { arbiter: ArbiterOffer; backupArbiter?: ArbiterOffer }
+  arbiters: { arbiter: ArbiterOffer }
   /** Flat facts the norms refer to by `term`. */
   facts: Record<string, number | string | boolean>
 }
@@ -61,7 +60,7 @@ export interface Deviation {
   actualText: string
 }
 
-const ROLE_NAMES: Record<string, string> = { principal: 'you', counterparty: 'the hotel', arbiter: 'the arbiter', backupArbiter: 'the backup arbiter', cosigner: 'the policy co-signer' }
+const ROLE_NAMES: Record<string, string> = { principal: 'you', counterparty: 'the hotel', arbiter: 'the arbiter', cosigner: 'the policy co-signer' }
 const roleName = (r: string): string => ROLE_NAMES[r] ?? r
 const listWords = (xs: string[]): string => xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`
 
@@ -83,9 +82,11 @@ export function dealTerms(o: { template: Template; policy: PolicyDoc; offer: Hot
     const weight = roles.reduce((s, r) => s + (t.roles[r]?.weight ?? 0), 0)
     return { roles, weight, includesGuest: roles.some((r) => kindOf(r) === 'principal'), includesCosigner: roles.some((r) => isService(t, r)), plain: `${listWords(roles.map(roleName))} together` }
   })
+  // A timer may resolve to several mutually exclusive endings (e.g. the ruling deadline: one chargeback per dispute kind).
   const silence = Object.entries(t.timers ?? {})
-    .filter(([, d]) => t.outcomes[d.onExpire])
-    .map(([timer, d]) => ({ timer, outcome: d.onExpire, ...(t.outcomes[d.onExpire].description ? { description: t.outcomes[d.onExpire].description } : {}) }))
+    .flatMap(([timer, d]) => (Array.isArray(d.onExpire) ? d.onExpire : [d.onExpire]).map((outcome) => ({ timer, outcome })))
+    .filter(({ outcome }) => t.outcomes[outcome])
+    .map(({ timer, outcome }) => ({ timer, outcome, ...(t.outcomes[outcome].description ? { description: t.outcomes[outcome].description } : {}) }))
 
   const merchantRoles = Object.keys(t.roles).filter((r) => kindOf(r) === 'counterparty')
   const guestRoles = Object.keys(t.roles).filter((r) => kindOf(r) === 'principal')
@@ -99,10 +100,6 @@ export function dealTerms(o: { template: Template; policy: PolicyDoc; offer: Hot
     // Guest + hotel alone reaching quorum: the agreed policy could be bypassed.
     guestAndHotelBypassPolicy: whoCanMoveMoney.some((s) => s.roles.every((r) => merchantRoles.includes(r) || guestRoles.includes(r))),
   }
-  if (offer.backupArbiter) {
-    facts['backupArbiter.accredited'] = offer.backupArbiter.accredited
-    facts['backupArbiter.appointedBy'] = offer.backupArbiter.appointedBy
-  }
   for (const d of deadlines) facts[`timers.${d.timer}`] = d.seconds
 
   return {
@@ -110,7 +107,7 @@ export function dealTerms(o: { template: Template; policy: PolicyDoc; offer: Hot
     policy: `${p.policyId}@${p.version}`,
     money: { asset: t.asset.code, room: offer.room, deposit: offer.deposit, bond, feeBps },
     deadlines, whoCanMoveMoney, silence,
-    arbiters: { arbiter: offer.arbiter, ...(offer.backupArbiter ? { backupArbiter: offer.backupArbiter } : {}) },
+    arbiters: { arbiter: offer.arbiter },
     facts,
   }
 }

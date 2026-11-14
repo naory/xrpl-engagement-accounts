@@ -29,7 +29,6 @@ describe('hotel stay simulated transcript', () => {
     ['entryConceded', 'refund.conceded'],
     ['silence', 'default.release'],
     ['claimUnanswered', 'ruling.default'],
-    ['backupRuling', 'ruling.backup'],
     ['partialDeposit', 'default.noshow'],
   ] as Array<[HotelPath, string]>)('%s closes with %s SIGN', (path, stage) => {
     const s = outcome(path, stage)
@@ -47,16 +46,6 @@ describe('hotel stay simulated transcript', () => {
     expect(s.payouts!.length).toBeGreaterThan(0)
     // the open no-show default is refused while the entry dispute is open (H13)
     expect(t.paths.entryRuled.find((x) => x.stage === 'default.noshow')).toMatchObject({ decision: 'REFUSE', failing: expect.arrayContaining(['N4']) })
-  })
-
-  it('backupRuling: the backup arbiter is refused before the ruling window (U1), then signed', () => {
-    const steps = t.paths.backupRuling
-    const refused = steps.findIndex((s) => s.stage === 'ruling.backup' && s.decision === 'REFUSE')
-    const signed = steps.findIndex((s) => s.stage === 'ruling.backup' && s.decision === 'SIGN')
-    expect(refused).toBeGreaterThanOrEqual(0)
-    expect(steps[refused].failing).toEqual(['U1'])
-    expect(steps[refused].rules!.find((r) => r.id === 'U1')).toMatchObject({ result: 'fail', reason: 'NOT_DUE' })
-    expect(signed).toBeGreaterThan(refused)
   })
 
   it('unconfirmed: tick order is kept, the refund SIGN comes before the no-show refusal it put in flight (B9)', () => {

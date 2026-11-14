@@ -16,8 +16,8 @@ type Json = Record<string, unknown>
 type Client = InstanceType<typeof xrpl.Client>
 type Wallet = InstanceType<typeof xrpl.Wallet>
 
-export type HotelPath = 'happy' | 'unconfirmed' | 'noshow' | 'entryConceded' | 'entryRuled' | 'silence' | 'claimUnanswered' | 'backupRuling' | 'partialDeposit'
-export const HOTEL_PATHS: HotelPath[] = ['happy', 'unconfirmed', 'noshow', 'entryConceded', 'entryRuled', 'silence', 'claimUnanswered', 'backupRuling', 'partialDeposit']
+export type HotelPath = 'happy' | 'unconfirmed' | 'noshow' | 'entryConceded' | 'entryRuled' | 'silence' | 'claimUnanswered' | 'partialDeposit'
+export const HOTEL_PATHS: HotelPath[] = ['happy', 'unconfirmed', 'noshow', 'entryConceded', 'entryRuled', 'silence', 'claimUnanswered', 'partialDeposit']
 
 export interface HotelStepResult {
   step: string
@@ -52,7 +52,6 @@ export interface HotelCast {
   hotel: Wallet
   /** Signers only (never funded). */
   arbiter: Wallet
-  backupArbiter: Wallet
   /** Pre-creates engagement accounts; the fee account and AccountDelete destination. */
   service: Wallet
   /** Hex currency code of the booking asset (RLUSD). */
@@ -78,7 +77,7 @@ const ACCOUNT_DELETE_MIN_AGE = 256
 const FEE_BPS = 50n
 const TEMPLATE = 'settlement-vault/hotel@2'
 
-type Role = 'principal' | 'counterparty' | 'arbiter' | 'backupArbiter'
+type Role = 'principal' | 'counterparty' | 'arbiter'
 type Payout = { to: string; value: string }
 /** A pre-signed payout: a fixed amount, or a residual sweep (tfPartialPayment) of whatever is left. */
 type PresignPayout = { to: string; value?: string; partial?: boolean }
@@ -177,7 +176,7 @@ export class HotelFlow {
       const funderSeq = Number(((await accountInfo(client, cast.guest.address))!.account_data as Json).Sequence)
       const built = buildOpenBatch({
         eng: eng.address, funder: cast.guest.address, currency: cast.currency, issuer: cast.issuer.address, amount: this.booking.room,
-        signerEntries: [[cast.guest.address, 3], [cast.hotel.address, 3], [cast.arbiter.address, 4], [cast.backupArbiter.address, 2], [svc.address, 2]],
+        signerEntries: [[cast.guest.address, 3], [cast.hotel.address, 3], [cast.arbiter.address, 4], [svc.address, 2]],
         quorum: 7, seq, funderSeq, ticketCount: TICKET_COUNT, memos: [memo('eng/open', `${this.id}|template=${TEMPLATE}`)], fees,
       })
       this.tickets = built.tickets
@@ -197,7 +196,7 @@ export class HotelFlow {
     })
     this.record = {
       engagementId: this.id, template: TEMPLATE, account: eng.address, asset: 'RLUSD',
-      parties: { principal: cast.guest.address, counterparty: cast.hotel.address, arbiter: cast.arbiter.address, backupArbiter: cast.backupArbiter.address, cosigner: svc.address },
+      parties: { principal: cast.guest.address, counterparty: cast.hotel.address, arbiter: cast.arbiter.address, cosigner: svc.address },
       fee: { bps: Number(FEE_BPS), to: cast.service.address }, deleteTo: cast.service.address,
       amount: { asset: 'RLUSD', value: this.booking.room },
       timers: {
@@ -314,23 +313,19 @@ export class HotelFlow {
   }
 
   /**
-   * A ruling closes the account. Primary arbiter: arbiter + one party (no co-signer; an optional advisory stage is
-   * recorded, e.g. `ruling.default`). Backup arbiter: backup + one party + co-signer (`ruling.backup`).
+   * A ruling closes the account: arbiter + one party, no co-signer (an optional advisory stage is recorded, e.g.
+   * `ruling.default`).
    */
-  async ruling(by: 'arbiter' | 'backupArbiter', payouts: Payout[], opts: { party?: 'principal' | 'counterparty'; advisory?: string } = {}): Promise<HotelStepResult> {
+  async ruling(payouts: Payout[], opts: { party?: 'principal' | 'counterparty'; advisory?: string } = {}): Promise<HotelStepResult> {
     const { cast, svc } = this.o
-    const arb = by === 'arbiter' ? cast.arbiter : cast.backupArbiter
-    let st = this.rulings.get(by)
+    const arb = cast.arbiter
+    let st = this.rulings.get('arbiter')
     if (!st) {
-      st = this.stmt(arb, 'ARBITER', 'party.ruling/1', { bookingId: this.bookingId }, { payouts, rationale: by === 'arbiter' ? 'primary ruling' : 'backup ruling after the primary ruling window' })
+      st = this.stmt(arb, 'ARBITER', 'party.ruling/1', { bookingId: this.bookingId }, { payouts, rationale: 'arbiter ruling' })
       await this.post(st)
-      this.rulings.set(by, st)
+      this.rulings.set('arbiter', st)
     }
     const party = opts.party === 'counterparty' ? cast.hotel : cast.guest
-    if (by === 'backupArbiter') {
-      const tx = await this.liveClose(payouts, 'ruling.backup', 3)
-      return this.cosigned('ruling:backupArbiter', 'ruling.backup', tx, [arb, party])
-    }
     const tx = await this.liveClose(payouts, 'settle.ruling', 2)
     const blobs = [multisignBlob(arb, tx), multisignBlob(party, tx)]
     const adv = opts.advisory ? await svc.decide({ engagementId: this.id, stage: opts.advisory, txBlob: blobs[0] }) : undefined
@@ -355,7 +350,7 @@ export class HotelFlow {
   /** Submit a close signed only by `roles` (expected below quorum: tefBAD_QUORUM). */
   async quorumProbe(roles: Role[]): Promise<HotelStepResult> {
     const { cast } = this.o
-    const w: Record<Role, Wallet> = { principal: cast.guest, counterparty: cast.hotel, arbiter: cast.arbiter, backupArbiter: cast.backupArbiter }
+    const w: Record<Role, Wallet> = { principal: cast.guest, counterparty: cast.hotel, arbiter: cast.arbiter }
     const tx = await this.liveClose([{ to: cast.guest.address, value: await this.balance() }], 'probe', roles.length)
     const r = this.track(`probe ${roles.join('+')}`, await submit(this.o.client, combine(roles.map((x) => multisignBlob(w[x], tx))), { waitLedgers: 5 }))
     return { step: `probe:${roles.join('+')}`, tx: r.hash, final: r.final }
@@ -407,7 +402,7 @@ export class HotelFlow {
         add(await this.openDispute('entry'))
         await this.waitPast('entryDisputeBy')
         add(await this.tickAndSubmit()) // H13: no-show while the entry dispute is open
-        add(await this.ruling('arbiter', this.split(room - deposit, deposit + bond))) // H5: downgrade, partial refund + bond back
+        add(await this.ruling(this.split(room - deposit, deposit + bond))) // H5: downgrade, partial refund + bond back
         break
       case 'silence':
         add(await this.confirm())
@@ -424,7 +419,7 @@ export class HotelFlow {
         add(await this.postClaim([{ kind: 'minibar', amount: b.claim }]))
         await this.waitPast('disputeWindowEnds')
         add(await this.tickAndSubmit()) // H11: release refused while a claim is posted
-        add(await this.ruling('arbiter', this.split(room + claim, deposit - claim), { party: 'counterparty', advisory: 'ruling.default' })) // H7
+        add(await this.ruling(this.split(room + claim, deposit - claim), { party: 'counterparty', advisory: 'ruling.default' })) // H7
         break
       case 'partialDeposit':
         add(await this.confirm())
@@ -433,20 +428,6 @@ export class HotelFlow {
         await this.waitPast(this.o.timers.entryDisputeBy >= this.o.timers.checkInBy ? 'entryDisputeBy' : 'checkInBy')
         add(await this.tickAndSubmit()) // H15: the sweep no-show returns the partial deposit; the exact one is refused
         break
-      case 'backupRuling': {
-        add(await this.confirm())
-        await this.waitPast('checkIn')
-        add(await this.checkIn())
-        await this.waitPast('deliveryBy')
-        add(await this.postClaim([{ kind: 'minibar', amount: b.claim }]))
-        add(await this.openDispute('settlement'))
-        const payouts = this.split(room, deposit + bond)
-        add(await this.ruling('backupArbiter', payouts)) // H9: before rulingDueBy
-        add(await this.quorumProbe(['arbiter', 'backupArbiter'])) // H14
-        await this.waitPast('disputeOpenedAt', this.rulingWindowSecs())
-        add(await this.ruling('backupArbiter', payouts)) // H8
-        break
-      }
     }
     return steps
   }
@@ -486,7 +467,7 @@ export class HotelFlow {
   /** The pinned policy's params.rulingWindow (the flow only uses it to know how long to wait). */
   private rulingWindowSecs(): number { return this.o.rulingWindowSecs ?? 60 }
 
-  /** As the policy's def.disputeOpenedAt: the dispute's issuedAt, but no earlier than deliveryBy (settlement) / checkIn (entry). */
+  /** As the policy's def.disputeOpenedAt: the dispute's issuedAt, but no earlier than deliveryBy (settlement) / checkIn (entry, stay). */
   private disputeOpenedAt(): number {
     const d = this.dispute!
     const floor = Date.parse(this.record!.timers![(d.claim as { phase: string }).phase === 'settlement' ? 'deliveryBy' : 'checkIn'])

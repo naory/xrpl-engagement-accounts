@@ -12,7 +12,7 @@
         "roles": {
           "principal": {"weight":2,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":2,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":1,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 5,
@@ -77,17 +77,16 @@
     },
     {
       "name": "hotel2.ok",
-      "description": "Shipped hotel@2 template (deposit, backup arbiter)",
+      "description": "Shipped hotel@2 template (deposit, accredited arbiter, chargeback defaults with 13 per-night stay variants)",
       "template": {
         "templateId": "settlement-vault/hotel@2",
         "class": "escrow",
-        "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, arbiter and backup arbiter (hotel stay escrow)",
+        "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, an accredited arbiter and chargeback-style defaults when the arbiter misses its ruling deadline (hotel stay escrow)",
         "asset": {"code":"RLUSD"},
         "roles": {
           "principal": {"weight":3,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":3,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external"},
-          "backupArbiter": {"weight":2,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":2,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 7,
@@ -113,13 +112,6 @@
             "policyStage": null,
             "enforcement": "none",
             "requires": "ruling"
-          },
-          "ruling.backup": {
-            "description": "If the arbiter misses its deadline, the backup arbiter rules, with one party and the co-signer.",
-            "signers": [["backupArbiter","principal","cosigner"],["backupArbiter","counterparty","cosigner"]],
-            "blueprint": "close.split",
-            "policyStage": "ruling.backup",
-            "enforcement": "ledger"
           },
           "default.refund": {
             "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account.",
@@ -156,6 +148,34 @@
             "blueprint": "close.releaseWithDeposit",
             "policyStage": "default.release",
             "enforcement": "final-signature"
+          },
+          "default.chargebackEntry": {
+            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.refundAll",
+            "policyStage": "default.chargebackEntry",
+            "enforcement": "final-signature"
+          },
+          "default.chargebackClaim": {
+            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "policyStage": "default.chargebackClaim",
+            "enforcement": "final-signature"
+          },
+          "default.chargebackStay": {
+            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "variants": {"perNight":true,"max":13},
+            "policyStage": "default.chargebackStay",
+            "enforcement": "final-signature"
           }
         },
         "timers": {
@@ -190,10 +210,10 @@
             "onExpire": "default.release"
           },
           "rulingDueBy": {
-            "description": "How long the arbiter has to rule once a dispute is open. After this, the backup arbiter may rule.",
+            "description": "How long the arbiter has to rule once a dispute is open. If it misses this deadline, the chargeback-style default for your dispute applies: the money in dispute comes back to you.",
             "from": "disputeOpened",
             "durationSecs": 432000,
-            "onExpire": "escalate"
+            "onExpire": ["default.chargebackEntry","default.chargebackClaim","default.chargebackStay"]
           }
         },
         "attestationWindows": {
@@ -220,23 +240,15 @@
         "fees": {"serviceFeeBps":50,"paidBy":"counterparty"},
         "policyRef": "pol_hotel@2.0.0"
       },
-      "options": {"preCreateFundingDrops":"7000000"},
+      "options": {"preCreateFundingDrops":"25000000"},
       "expect": {
         "ok": true,
         "errors": [],
         "warnings": [],
-        "disclosures": ["V10","V10","V10","V11"],
-        "minimalWinningSets": [
-          ["counterparty","arbiter"],
-          ["principal","arbiter"],
-          ["arbiter","backupArbiter","cosigner"],
-          ["counterparty","backupArbiter","cosigner"],
-          ["principal","backupArbiter","cosigner"],
-          ["principal","counterparty","backupArbiter"],
-          ["principal","counterparty","cosigner"]
-        ],
-        "ticketsNeeded": 21,
-        "reserveDrops": "5600000"
+        "disclosures": ["V10"],
+        "minimalWinningSets": [["counterparty","arbiter"],["principal","arbiter"],["principal","counterparty","cosigner"]],
+        "ticketsNeeded": 109,
+        "reserveDrops": "23200000"
       }
     },
     {
@@ -342,7 +354,7 @@
         "roles": {
           "principal": {"weight":2,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":2,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":5,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 5,
@@ -416,7 +428,7 @@
         "roles": {
           "principal": {"weight":2,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":2,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":5,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":5,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":1,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 5,
@@ -556,7 +568,7 @@
         "roles": {
           "principal": {"weight":3,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":2,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":1,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 5,
@@ -630,7 +642,7 @@
         "roles": {
           "principal": {"weight":2,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":2,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":1,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 5,
@@ -704,9 +716,9 @@
         "roles": {
           "principal": {"weight":2,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":2,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":1,"kind":"cosigner","operatedBy":"service"},
-          "arbiter2": {"weight":3,"kind":"arbiter","operatedBy":"external"}
+          "arbiter2": {"weight":3,"kind":"arbiter","operatedBy":"external","accreditation":"service"}
         },
         "quorum": 5,
         "outcomes": {
@@ -776,6 +788,80 @@
       }
     },
     {
+      "name": "V15.arbiter-not-accredited",
+      "description": "An arbiter role that does not opt into the service accreditation gate",
+      "template": {
+        "templateId": "settlement-vault/hotel@1",
+        "class": "escrow",
+        "description": "Prepaid booking with confirmation deadline, dispute window and arbiter (docs/use-cases/hotel-booking.md)",
+        "asset": {"code":"RLUSD"},
+        "roles": {
+          "principal": {"weight":2,"kind":"principal","operatedBy":"external"},
+          "counterparty": {"weight":2,"kind":"counterparty","operatedBy":"external"},
+          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external"},
+          "cosigner": {"weight":1,"kind":"cosigner","operatedBy":"service"}
+        },
+        "quorum": 5,
+        "outcomes": {
+          "settle.agreed": {
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.split",
+            "policyStage": "settle",
+            "enforcement": "ledger"
+          },
+          "settle.ruling": {
+            "signers": [["arbiter","principal"],["arbiter","counterparty"]],
+            "blueprint": "close.split",
+            "policyStage": null,
+            "enforcement": "none",
+            "requires": "ruling"
+          },
+          "default.refund": {
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.refundAll",
+            "policyStage": "default.refund",
+            "enforcement": "final-signature"
+          },
+          "default.release": {
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseAll",
+            "policyStage": "default.release",
+            "enforcement": "final-signature"
+          }
+        },
+        "timers": {
+          "confirmBy": {"from":"open","durationSecs":7200,"onExpire":"default.refund"},
+          "disputeWindowEnds": {"from":"deliveryBy","durationSecs":259200,"onExpire":"default.release"},
+          "rulingDueBy": {"from":"disputeOpened","durationSecs":432000,"onExpire":"escalate"}
+        },
+        "blueprints": {
+          "close.split": {
+            "steps": ["pay.counterparty?","pay.serviceFee?","pay.principal?","trustline.remove","account.delete"],
+            "closes": true
+          },
+          "close.releaseAll": {"steps":["pay.counterparty","pay.serviceFee","trustline.remove","account.delete"],"closes":true},
+          "close.refundAll": {"steps":["pay.principal","trustline.remove","account.delete"],"closes":true}
+        },
+        "reserveObjects": {"trustlines":1,"signerList":1},
+        "fees": {"serviceFeeBps":50,"paidBy":"counterparty"},
+        "policyRef": "pol_hotel@1.1.0"
+      },
+      "options": {},
+      "expect": {
+        "ok": false,
+        "errors": ["V15"],
+        "warnings": [],
+        "disclosures": ["V10"],
+        "minimalWinningSets": [["counterparty","arbiter"],["principal","arbiter"],["principal","counterparty","cosigner"]],
+        "ticketsNeeded": 9,
+        "reserveDrops": "3200000"
+      }
+    },
+    {
       "name": "E4.backup-arbiter",
       "description": "P3·C3·A1 4·A2 2·S2·Q7 passes with disclosures",
       "template": {
@@ -786,8 +872,8 @@
         "roles": {
           "principal": {"weight":3,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":3,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external"},
-          "arbiter2": {"weight":2,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
+          "arbiter2": {"weight":2,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":2,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 7,
@@ -864,13 +950,12 @@
       "template": {
         "templateId": "settlement-vault/hotel@2",
         "class": "escrow",
-        "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, arbiter and backup arbiter (hotel stay escrow)",
+        "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, an accredited arbiter and chargeback-style defaults when the arbiter misses its ruling deadline (hotel stay escrow)",
         "asset": {"code":"RLUSD"},
         "roles": {
           "principal": {"weight":3,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":3,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external"},
-          "backupArbiter": {"weight":2,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":2,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 7,
@@ -896,13 +981,6 @@
             "policyStage": null,
             "enforcement": "none",
             "requires": "ruling"
-          },
-          "ruling.backup": {
-            "description": "If the arbiter misses its deadline, the backup arbiter rules, with one party and the co-signer.",
-            "signers": [["backupArbiter","principal","cosigner"],["backupArbiter","counterparty","cosigner"]],
-            "blueprint": "close.split",
-            "policyStage": "ruling.backup",
-            "enforcement": "ledger"
           },
           "default.refund": {
             "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account.",
@@ -939,6 +1017,34 @@
             "blueprint": "close.releaseWithDeposit",
             "policyStage": "default.release",
             "enforcement": "final-signature"
+          },
+          "default.chargebackEntry": {
+            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.refundAll",
+            "policyStage": "default.chargebackEntry",
+            "enforcement": "final-signature"
+          },
+          "default.chargebackClaim": {
+            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "policyStage": "default.chargebackClaim",
+            "enforcement": "final-signature"
+          },
+          "default.chargebackStay": {
+            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "variants": {"perNight":true,"max":13},
+            "policyStage": "default.chargebackStay",
+            "enforcement": "final-signature"
           }
         },
         "timers": {
@@ -973,10 +1079,10 @@
             "onExpire": "default.release"
           },
           "rulingDueBy": {
-            "description": "How long the arbiter has to rule once a dispute is open. After this, the backup arbiter may rule.",
+            "description": "How long the arbiter has to rule once a dispute is open. If it misses this deadline, the chargeback-style default for your dispute applies: the money in dispute comes back to you.",
             "from": "disputeOpened",
             "durationSecs": 432000,
-            "onExpire": "escalate"
+            "onExpire": ["default.chargebackEntry","default.chargebackClaim","default.chargebackStay"]
           }
         },
         "attestationWindows": {
@@ -1008,18 +1114,10 @@
         "ok": false,
         "errors": ["V13"],
         "warnings": [],
-        "disclosures": ["V10","V10","V10","V11"],
-        "minimalWinningSets": [
-          ["counterparty","arbiter"],
-          ["principal","arbiter"],
-          ["arbiter","backupArbiter","cosigner"],
-          ["counterparty","backupArbiter","cosigner"],
-          ["principal","backupArbiter","cosigner"],
-          ["principal","counterparty","backupArbiter"],
-          ["principal","counterparty","cosigner"]
-        ],
-        "ticketsNeeded": 21,
-        "reserveDrops": "5600000"
+        "disclosures": ["V10"],
+        "minimalWinningSets": [["counterparty","arbiter"],["principal","arbiter"],["principal","counterparty","cosigner"]],
+        "ticketsNeeded": 109,
+        "reserveDrops": "23200000"
       }
     },
     {
@@ -1028,13 +1126,12 @@
       "template": {
         "templateId": "settlement-vault/hotel@2",
         "class": "escrow",
-        "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, arbiter and backup arbiter (hotel stay escrow)",
+        "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, an accredited arbiter and chargeback-style defaults when the arbiter misses its ruling deadline (hotel stay escrow)",
         "asset": {"code":"RLUSD"},
         "roles": {
           "principal": {"weight":3,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":3,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external"},
-          "backupArbiter": {"weight":2,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":2,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 7,
@@ -1060,13 +1157,6 @@
             "policyStage": null,
             "enforcement": "none",
             "requires": "ruling"
-          },
-          "ruling.backup": {
-            "description": "If the arbiter misses its deadline, the backup arbiter rules, with one party and the co-signer.",
-            "signers": [["backupArbiter","principal","cosigner"],["backupArbiter","counterparty","cosigner"]],
-            "blueprint": "close.split",
-            "policyStage": "ruling.backup",
-            "enforcement": "ledger"
           },
           "default.refund": {
             "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account.",
@@ -1103,6 +1193,34 @@
             "blueprint": "close.releaseWithDeposit",
             "policyStage": "default.release",
             "enforcement": "final-signature"
+          },
+          "default.chargebackEntry": {
+            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.refundAll",
+            "policyStage": "default.chargebackEntry",
+            "enforcement": "final-signature"
+          },
+          "default.chargebackClaim": {
+            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "policyStage": "default.chargebackClaim",
+            "enforcement": "final-signature"
+          },
+          "default.chargebackStay": {
+            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "variants": {"perNight":true,"max":13},
+            "policyStage": "default.chargebackStay",
+            "enforcement": "final-signature"
           }
         },
         "timers": {
@@ -1137,10 +1255,10 @@
             "onExpire": "default.release"
           },
           "rulingDueBy": {
-            "description": "How long the arbiter has to rule once a dispute is open. After this, the backup arbiter may rule.",
+            "description": "How long the arbiter has to rule once a dispute is open. If it misses this deadline, the chargeback-style default for your dispute applies: the money in dispute comes back to you.",
             "from": "disputeOpened",
             "durationSecs": 432000,
-            "onExpire": "escalate"
+            "onExpire": ["default.chargebackEntry","default.chargebackClaim","default.chargebackStay"]
           }
         },
         "attestationWindows": {
@@ -1173,18 +1291,10 @@
         "ok": false,
         "errors": ["V13"],
         "warnings": [],
-        "disclosures": ["V10","V10","V10","V11"],
-        "minimalWinningSets": [
-          ["counterparty","arbiter"],
-          ["principal","arbiter"],
-          ["arbiter","backupArbiter","cosigner"],
-          ["counterparty","backupArbiter","cosigner"],
-          ["principal","backupArbiter","cosigner"],
-          ["principal","counterparty","backupArbiter"],
-          ["principal","counterparty","cosigner"]
-        ],
-        "ticketsNeeded": 21,
-        "reserveDrops": "5600000"
+        "disclosures": ["V10"],
+        "minimalWinningSets": [["counterparty","arbiter"],["principal","arbiter"],["principal","counterparty","cosigner"]],
+        "ticketsNeeded": 109,
+        "reserveDrops": "23200000"
       }
     },
     {
@@ -1193,13 +1303,12 @@
       "template": {
         "templateId": "settlement-vault/hotel@2",
         "class": "escrow",
-        "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, arbiter and backup arbiter (hotel stay escrow)",
+        "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, an accredited arbiter and chargeback-style defaults when the arbiter misses its ruling deadline (hotel stay escrow)",
         "asset": {"code":"RLUSD"},
         "roles": {
           "principal": {"weight":3,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":3,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external"},
-          "backupArbiter": {"weight":2,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":2,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 7,
@@ -1225,13 +1334,6 @@
             "policyStage": null,
             "enforcement": "none",
             "requires": "ruling"
-          },
-          "ruling.backup": {
-            "description": "If the arbiter misses its deadline, the backup arbiter rules, with one party and the co-signer.",
-            "signers": [["backupArbiter","principal","cosigner"],["backupArbiter","counterparty","cosigner"]],
-            "blueprint": "close.split",
-            "policyStage": "ruling.backup",
-            "enforcement": "ledger"
           },
           "default.refund": {
             "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account.",
@@ -1267,6 +1369,34 @@
             "signers": [["principal","counterparty","cosigner"]],
             "blueprint": "close.releaseWithDeposit",
             "policyStage": "default.release",
+            "enforcement": "final-signature"
+          },
+          "default.chargebackEntry": {
+            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.refundAll",
+            "policyStage": "default.chargebackEntry",
+            "enforcement": "final-signature"
+          },
+          "default.chargebackClaim": {
+            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "policyStage": "default.chargebackClaim",
+            "enforcement": "final-signature"
+          },
+          "default.chargebackStay": {
+            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "variants": {"perNight":true,"max":13},
+            "policyStage": "default.chargebackStay",
             "enforcement": "final-signature"
           }
         },
@@ -1302,10 +1432,10 @@
             "onExpire": "default.release"
           },
           "rulingDueBy": {
-            "description": "How long the arbiter has to rule once a dispute is open. After this, the backup arbiter may rule.",
+            "description": "How long the arbiter has to rule once a dispute is open. If it misses this deadline, the chargeback-style default for your dispute applies: the money in dispute comes back to you.",
             "from": "disputeOpened",
             "durationSecs": 432000,
-            "onExpire": "escalate"
+            "onExpire": ["default.chargebackEntry","default.chargebackClaim","default.chargebackStay"]
           }
         },
         "attestationWindows": {
@@ -1337,18 +1467,10 @@
         "ok": false,
         "errors": ["V14"],
         "warnings": [],
-        "disclosures": ["V10","V10","V10","V11"],
-        "minimalWinningSets": [
-          ["counterparty","arbiter"],
-          ["principal","arbiter"],
-          ["arbiter","backupArbiter","cosigner"],
-          ["counterparty","backupArbiter","cosigner"],
-          ["principal","backupArbiter","cosigner"],
-          ["principal","counterparty","backupArbiter"],
-          ["principal","counterparty","cosigner"]
-        ],
-        "ticketsNeeded": 21,
-        "reserveDrops": "5600000"
+        "disclosures": ["V10"],
+        "minimalWinningSets": [["counterparty","arbiter"],["principal","arbiter"],["principal","counterparty","cosigner"]],
+        "ticketsNeeded": 109,
+        "reserveDrops": "23200000"
       }
     },
     {
@@ -1357,13 +1479,12 @@
       "template": {
         "templateId": "settlement-vault/hotel@2",
         "class": "escrow",
-        "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, arbiter and backup arbiter (hotel stay escrow)",
+        "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, an accredited arbiter and chargeback-style defaults when the arbiter misses its ruling deadline (hotel stay escrow)",
         "asset": {"code":"RLUSD"},
         "roles": {
           "principal": {"weight":3,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":3,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external"},
-          "backupArbiter": {"weight":2,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":4,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":2,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 7,
@@ -1389,13 +1510,6 @@
             "policyStage": null,
             "enforcement": "none",
             "requires": "ruling"
-          },
-          "ruling.backup": {
-            "description": "If the arbiter misses its deadline, the backup arbiter rules, with one party and the co-signer.",
-            "signers": [["backupArbiter","principal","cosigner"],["backupArbiter","counterparty","cosigner"]],
-            "blueprint": "close.split",
-            "policyStage": "ruling.backup",
-            "enforcement": "ledger"
           },
           "default.refund": {
             "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account.",
@@ -1432,6 +1546,34 @@
             "blueprint": "close.releaseWithDeposit",
             "policyStage": "default.release",
             "enforcement": "final-signature"
+          },
+          "default.chargebackEntry": {
+            "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.refundAll",
+            "policyStage": "default.chargebackEntry",
+            "enforcement": "final-signature"
+          },
+          "default.chargebackClaim": {
+            "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "policyStage": "default.chargebackClaim",
+            "enforcement": "final-signature"
+          },
+          "default.chargebackStay": {
+            "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.",
+            "presigned": true,
+            "finalSigner": "cosigner",
+            "signers": [["principal","counterparty","cosigner"]],
+            "blueprint": "close.releaseWithDeposit",
+            "variants": {"perNight":true,"max":13},
+            "policyStage": "default.chargebackStay",
+            "enforcement": "final-signature"
           }
         },
         "timers": {
@@ -1466,10 +1608,10 @@
             "onExpire": "default.release"
           },
           "rulingDueBy": {
-            "description": "How long the arbiter has to rule once a dispute is open. After this, the backup arbiter may rule.",
+            "description": "How long the arbiter has to rule once a dispute is open. If it misses this deadline, the chargeback-style default for your dispute applies: the money in dispute comes back to you.",
             "from": "disputeOpened",
             "durationSecs": 432000,
-            "onExpire": "escalate"
+            "onExpire": ["default.chargebackEntry","default.chargebackClaim","default.chargebackStay"]
           }
         },
         "attestationWindows": {
@@ -1501,18 +1643,10 @@
         "ok": false,
         "errors": ["V14"],
         "warnings": [],
-        "disclosures": ["V10","V10","V10","V11"],
-        "minimalWinningSets": [
-          ["counterparty","arbiter"],
-          ["principal","arbiter"],
-          ["arbiter","backupArbiter","cosigner"],
-          ["counterparty","backupArbiter","cosigner"],
-          ["principal","backupArbiter","cosigner"],
-          ["principal","counterparty","backupArbiter"],
-          ["principal","counterparty","cosigner"]
-        ],
-        "ticketsNeeded": 21,
-        "reserveDrops": "5600000"
+        "disclosures": ["V10"],
+        "minimalWinningSets": [["counterparty","arbiter"],["principal","arbiter"],["principal","counterparty","cosigner"]],
+        "ticketsNeeded": 109,
+        "reserveDrops": "23200000"
       }
     },
     {
@@ -1526,7 +1660,7 @@
         "roles": {
           "principal": {"weight":2,"kind":"principal","operatedBy":"external"},
           "counterparty": {"weight":2,"kind":"counterparty","operatedBy":"external"},
-          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external"},
+          "arbiter": {"weight":3,"kind":"arbiter","operatedBy":"external","accreditation":"service"},
           "cosigner": {"weight":1,"kind":"cosigner","operatedBy":"service"}
         },
         "quorum": 5,

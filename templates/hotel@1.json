@@ -6,7 +6,7 @@
   "roles": {
     "principal":    { "weight": 2, "kind": "principal",    "operatedBy": "external" },
     "counterparty": { "weight": 2, "kind": "counterparty", "operatedBy": "external" },
-    "arbiter":      { "weight": 3, "kind": "arbiter",      "operatedBy": "external" },
+    "arbiter":      { "weight": 3, "kind": "arbiter",      "operatedBy": "external", "accreditation": "service" },
     "cosigner":     { "weight": 1, "kind": "cosigner",     "operatedBy": "service" }
   },
   "quorum": 5,

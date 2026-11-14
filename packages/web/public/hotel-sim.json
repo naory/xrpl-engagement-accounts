@@ -170,29 +170,61 @@
       "title": "Deposit and any extra go back in full",
       "message": "The hotel gets the room price less the fee; the whole deposit, plus anything else in the account, returns to the guest."
     },
-    "U1": {
-      "title": "Primary arbiter's time ran out",
-      "message": "The backup arbiter may only rule once the primary arbiter's ruling window has passed without a ruling."
+    "E1": {
+      "title": "Arbiter missed its deadline on an arrival dispute",
+      "message": "Only for the guest's one open, bonded dispute about a problem on arrival (no room, wrong room), once the arbiter's ruling deadline, counted from the dispute, has passed."
     },
-    "U2": {
-      "title": "Primary arbiter hasn't ruled",
-      "message": "If the primary arbiter already ruled, the backup steps aside."
+    "E2": {
+      "title": "Arbiter hasn't ruled",
+      "message": "Once the arbiter's ruling is on record (received by the co-signer), the automatic default never applies: the arbiter and the winning party close the deal instead."
     },
-    "U3": {
-      "title": "Backup arbiter has ruled",
-      "message": "There must be a signed ruling from the backup arbiter."
+    "E3": {
+      "title": "Valid refund",
+      "message": "The entry chargeback pays the guest back and closes the account, in one transaction."
     },
-    "U4": {
-      "title": "Pays exactly what was ruled",
-      "message": "The transaction must pay exactly the amounts in the backup arbiter's ruling, to exactly those people."
+    "E4": {
+      "title": "Everything goes back to the guest",
+      "message": "Like a card chargeback, the guest gets back everything in the account: the room price, any deposit and the dispute bond, with no fee."
     },
-    "U5": {
-      "title": "Valid ruling payout",
-      "message": "A ruling splits the money and closes the account, in one transaction."
+    "G1": {
+      "title": "Arbiter missed its deadline on a claim or stay dispute",
+      "message": "Only for a stay that happened, with the guest's one open, bonded dispute filed after checkout (against the hotel's claim or the stay) or in the stay's last night, once the arbiter's ruling deadline has passed."
     },
-    "U6": {
-      "title": "Correct service fee",
-      "message": "The service takes 0.5% of whatever the hotel receives."
+    "G2": {
+      "title": "Arbiter hasn't ruled",
+      "message": "Once the arbiter's ruling is on record (received by the co-signer), the automatic default never applies: the arbiter and the winning party close the deal instead."
+    },
+    "G3": {
+      "title": "Valid payout",
+      "message": "The claim chargeback pays the hotel, the fee and the guest, and closes the account, in one transaction."
+    },
+    "G4": {
+      "title": "Hotel gets the room, nothing more",
+      "message": "The hotel's claim is rejected: the hotel is paid exactly the room price, less the service's 0.5% fee."
+    },
+    "G5": {
+      "title": "Everything else goes back to the guest",
+      "message": "The guest's payment is the one that sweeps up whatever is left: the whole deposit, the dispute bond and anything extra."
+    },
+    "Y1": {
+      "title": "Arbiter missed its deadline on a mid-stay dispute",
+      "message": "Only for the guest's one open, bonded dispute filed during the stay, before its last night, once the arbiter's ruling deadline has passed. Stays longer than 14 nights have no such ending: the dispute waits for the arbiter."
+    },
+    "Y2": {
+      "title": "Arbiter hasn't ruled",
+      "message": "Once the arbiter's ruling is on record (received by the co-signer), the automatic default never applies: the arbiter and the winning party close the deal instead."
+    },
+    "Y3": {
+      "title": "Valid payout",
+      "message": "The stay chargeback pays the hotel, the fee and the guest, and closes the account, in one transaction."
+    },
+    "Y4": {
+      "title": "Hotel gets only the nights used",
+      "message": "The hotel is paid for the nights up to and including the one in which the guest disputed (each night's share of the room price), less the service's 0.5% fee. A night counts once it has begun, from the scheduled check-in time. Of the per-night versions signed in advance, only the one for that night can be used."
+    },
+    "Y5": {
+      "title": "Everything else goes back to the guest",
+      "message": "The guest's payment is the one that sweeps up whatever is left: the remaining nights, the whole deposit, the dispute bond and anything extra."
     },
     "D1": {
       "title": "Hotel posted a claim",
@@ -220,7 +252,6 @@
     "guest": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
     "hotel": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
     "arbiter": "rJpA1KgqyhwRfeGJa3x55UZG8ruwiP94RJ",
-    "backupArbiter": "rGnMqScHjKZWTq8RUshJYNvMuzVcGGkBP9",
     "service": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
     "cosigner": "rKVRKq2PVRgqG3UTHWR5pEc8x8c7s2Degj"
   },
@@ -3102,371 +3133,6 @@
           }
         ],
         "at": "2026-11-17T12:00:00Z"
-      }
-    ],
-    "backupRuling": [
-      {
-        "step": "open",
-        "final": "tesSUCCESS",
-        "at": "2026-11-01T09:00:00Z"
-      },
-      {
-        "step": "confirm",
-        "stage": "confirm",
-        "decision": "SIGN",
-        "failing": [],
-        "rules": [
-          {
-            "id": "B1",
-            "result": "n/a"
-          },
-          {
-            "id": "B2",
-            "result": "n/a"
-          },
-          {
-            "id": "B3",
-            "result": "n/a"
-          },
-          {
-            "id": "B4",
-            "result": "n/a"
-          },
-          {
-            "id": "B5",
-            "result": "n/a"
-          },
-          {
-            "id": "B6",
-            "result": "n/a"
-          },
-          {
-            "id": "B7",
-            "result": "n/a"
-          },
-          {
-            "id": "B8",
-            "result": "n/a"
-          },
-          {
-            "id": "B9",
-            "result": "n/a"
-          },
-          {
-            "id": "B10",
-            "result": "n/a"
-          },
-          {
-            "id": "B11",
-            "result": "n/a"
-          },
-          {
-            "id": "C1",
-            "result": "pass"
-          },
-          {
-            "id": "C2",
-            "result": "pass"
-          },
-          {
-            "id": "C4",
-            "result": "pass"
-          },
-          {
-            "id": "C5",
-            "result": "pass"
-          }
-        ],
-        "receipt": {
-          "statementId": "att:1040F54F4D1F5806EBDFA847D9BF3CE3A10C4C653B02074B563938502E4B7508",
-          "statementType": "party.confirmation/1",
-          "receivedAt": "2026-11-01T09:30:00Z",
-          "ledgerIndex": 99000450
-        },
-        "at": "2026-11-01T09:30:00Z"
-      },
-      {
-        "step": "checkin attestation",
-        "final": "RECEIPTED",
-        "receipt": {
-          "statementId": "att:E69A5E170F28C66C73FFAEDB17BEBA6CBAC434D44854E14580A1CA7C6A28AD93",
-          "statementType": "party.checkin/1",
-          "receivedAt": "2026-11-11T15:00:00Z",
-          "ledgerIndex": 99221400
-        },
-        "at": "2026-11-11T15:00:00Z"
-      },
-      {
-        "step": "default.release pre-signed",
-        "final": "STORED",
-        "at": "2026-11-11T15:00:00Z"
-      },
-      {
-        "step": "deposit",
-        "final": "tesSUCCESS",
-        "at": "2026-11-11T15:00:00Z"
-      },
-      {
-        "step": "checkin",
-        "stage": "checkin",
-        "decision": "SIGN",
-        "failing": [],
-        "rules": [
-          {
-            "id": "B1",
-            "result": "n/a"
-          },
-          {
-            "id": "B2",
-            "result": "n/a"
-          },
-          {
-            "id": "B3",
-            "result": "n/a"
-          },
-          {
-            "id": "B4",
-            "result": "n/a"
-          },
-          {
-            "id": "B5",
-            "result": "n/a"
-          },
-          {
-            "id": "B6",
-            "result": "n/a"
-          },
-          {
-            "id": "B7",
-            "result": "n/a"
-          },
-          {
-            "id": "B8",
-            "result": "n/a"
-          },
-          {
-            "id": "B9",
-            "result": "n/a"
-          },
-          {
-            "id": "B10",
-            "result": "n/a"
-          },
-          {
-            "id": "B11",
-            "result": "n/a"
-          },
-          {
-            "id": "K1",
-            "result": "pass"
-          },
-          {
-            "id": "K2",
-            "result": "pass"
-          }
-        ],
-        "at": "2026-11-11T15:00:00Z"
-      },
-      {
-        "step": "claim",
-        "final": "RECEIPTED",
-        "receipt": {
-          "statementId": "att:E59F1B5E805F5B79A1487ADED95274632C8BC8B04353D4027CAC4F7B0F098FA8",
-          "statementType": "party.claim/1",
-          "receivedAt": "2026-11-14T15:00:00Z",
-          "ledgerIndex": 99286200
-        },
-        "at": "2026-11-14T15:00:00Z"
-      },
-      {
-        "step": "dispute (settlement)",
-        "final": "tesSUCCESS",
-        "receipt": {
-          "statementId": "att:CF0438A27850E7DB2D53EBCF58E282E89CB6CBFAAA2D3CC64BD97F343D6F3F2B",
-          "statementType": "party.dispute/1",
-          "receivedAt": "2026-11-15T10:00:00Z",
-          "ledgerIndex": 99303300
-        },
-        "at": "2026-11-15T10:00:00Z"
-      },
-      {
-        "step": "ruling:backupArbiter",
-        "stage": "ruling.backup",
-        "decision": "REFUSE",
-        "failing": [
-          "U1"
-        ],
-        "rules": [
-          {
-            "id": "B1",
-            "result": "pass"
-          },
-          {
-            "id": "B2",
-            "result": "pass"
-          },
-          {
-            "id": "B3",
-            "result": "pass"
-          },
-          {
-            "id": "B4",
-            "result": "pass"
-          },
-          {
-            "id": "B5",
-            "result": "pass"
-          },
-          {
-            "id": "B6",
-            "result": "pass"
-          },
-          {
-            "id": "B7",
-            "result": "pass"
-          },
-          {
-            "id": "B8",
-            "result": "pass"
-          },
-          {
-            "id": "B9",
-            "result": "pass"
-          },
-          {
-            "id": "B10",
-            "result": "pass"
-          },
-          {
-            "id": "B11",
-            "result": "n/a"
-          },
-          {
-            "id": "U1",
-            "result": "fail",
-            "reason": "NOT_DUE"
-          },
-          {
-            "id": "U2",
-            "result": "pass"
-          },
-          {
-            "id": "U3",
-            "result": "pass"
-          },
-          {
-            "id": "U4",
-            "result": "pass"
-          },
-          {
-            "id": "U5",
-            "result": "pass"
-          },
-          {
-            "id": "U6",
-            "result": "pass"
-          }
-        ],
-        "at": "2026-11-16T10:00:00Z"
-      },
-      {
-        "step": "probe:arbiter+backupArbiter",
-        "tx": "064935A7A7980382F16B06C9324BD8D51CBAFCCB6F39D091ED1CFA8449681B72",
-        "final": "tefBAD_QUORUM",
-        "at": "2026-11-16T10:00:00Z"
-      },
-      {
-        "step": "ruling:backupArbiter",
-        "stage": "ruling.backup",
-        "decision": "SIGN",
-        "failing": [],
-        "rules": [
-          {
-            "id": "B1",
-            "result": "pass"
-          },
-          {
-            "id": "B2",
-            "result": "pass"
-          },
-          {
-            "id": "B3",
-            "result": "pass"
-          },
-          {
-            "id": "B4",
-            "result": "pass"
-          },
-          {
-            "id": "B5",
-            "result": "pass"
-          },
-          {
-            "id": "B6",
-            "result": "pass"
-          },
-          {
-            "id": "B7",
-            "result": "pass"
-          },
-          {
-            "id": "B8",
-            "result": "pass"
-          },
-          {
-            "id": "B9",
-            "result": "pass"
-          },
-          {
-            "id": "B10",
-            "result": "pass"
-          },
-          {
-            "id": "B11",
-            "result": "n/a"
-          },
-          {
-            "id": "U1",
-            "result": "pass"
-          },
-          {
-            "id": "U2",
-            "result": "pass"
-          },
-          {
-            "id": "U3",
-            "result": "pass"
-          },
-          {
-            "id": "U4",
-            "result": "pass"
-          },
-          {
-            "id": "U5",
-            "result": "pass"
-          },
-          {
-            "id": "U6",
-            "result": "pass"
-          }
-        ],
-        "tx": "553F90049675D44CC17116012F4DBF9A925360E51C8BE928E0700B19F1595648",
-        "final": "tesSUCCESS",
-        "payouts": [
-          {
-            "to": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
-            "value": "398"
-          },
-          {
-            "to": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
-            "value": "2"
-          },
-          {
-            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
-            "value": "110"
-          }
-        ],
-        "at": "2026-11-20T10:00:00Z"
       }
     ],
     "partialDeposit": [

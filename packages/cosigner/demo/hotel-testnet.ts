@@ -81,9 +81,8 @@ async function main() {
   const hotel = await fund(client, 'hotel (counterparty)')
   const service = await fund(client, 'service (fee, AccountDelete destination, pre-create)')
   const arbiter = xrpl.Wallet.generate() // signs only
-  const backupArbiter = xrpl.Wallet.generate() // signs only
   const cosigner = xrpl.Wallet.generate() // signs only
-  Object.assign(results.accounts, { arbiter: arbiter.address, backupArbiter: backupArbiter.address, cosigner: cosigner.address })
+  Object.assign(results.accounts, { arbiter: arbiter.address, cosigner: cosigner.address })
 
   must(await sendSimple(client, issuer, { TransactionType: 'AccountSet', Account: issuer.address, SetFlag: ASF_DEFAULT_RIPPLE }), 'issuer DefaultRipple')
   for (const w of [guest, hotel, service]) must(await sendSimple(client, w, { TransactionType: 'TrustSet', Account: w.address, LimitAmount: iou(CUR, issuer.address, '10000000') }), `trust line ${w.address}`)
@@ -101,7 +100,7 @@ async function main() {
   const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(client), templates: [template], policies: [baseline, policy], dataDir })
   log(`co-signer ${cosigner.address}; policy layer pol_hotel@2.0.0-demo ${layerHash(policy)} (rulingWindow 60s)`)
 
-  const cast: HotelCast = { issuer, guest, hotel, arbiter, backupArbiter, service, currency: CUR }
+  const cast: HotelCast = { issuer, guest, hotel, arbiter, service, currency: CUR }
   const onTx = (label: string, r: SubmitResult) => results.txs.push({ label, hash: r.hash, final: r.final })
   const flows = Object.fromEntries(HOTEL_PATHS.map((p) => [p, new HotelFlow({
     client, fees, svc, cast, timers: DEMO_HOTEL_TIMERS, policyLayers: [layerHash(policy)], rulingWindowSecs: 60, runId: RUN,
@@ -169,13 +168,8 @@ async function main() {
       `advisory ruling.default SIGN; tesSUCCESS; payouts ${payouts.map((x) => `${x.value}→${label(x.to)}`).join(', ')}; account deleted`,
       `advisory ${fmt(s)}; payouts ${showPay(s)}; deleted=${gone}`, ok, { tx: s?.tx, path: 'claimUnanswered' })
   }
-  await closed('H8', 'Claim disputed, primary arbiter silent past rulingDueBy → backup + guest + co-signer ruling', 'backupRuling', S('backupRuling', 'ruling:backupArbiter', 1),
-    want(m(room), m(deposit) + m(bond)), 'ruling.backup SIGN; tesSUCCESS')
-  {
-    const s = S('backupRuling', 'ruling:backupArbiter', 0)
-    record('H9', 'Backup ruling before rulingDueBy', 'REFUSE incl. U1 (NOT_DUE); nothing submitted', `${fmt(s)}; ${reasons(s, ['U1'])}`,
-      s?.decision === 'REFUSE' && !!s.failing?.includes('U1') && !s.tx, { path: 'backupRuling' })
-  }
+  // H8, H9, H14 (the backup-arbiter checks) are gone with the backup arbiter; the chargeback paths that replace them
+  // ("arbiter silent → chargeback") arrive with the HotelFlow arbiterSilent/staySilent paths.
   {
     const s = S('happy', 'probe:principal+counterparty')
     record('H10', 'Guest + hotel alone (weight 6 < quorum 7)', 'tefBAD_QUORUM', fmt(s), s?.final === 'tefBAD_QUORUM', { tx: s?.tx, path: 'happy' })
@@ -197,10 +191,6 @@ async function main() {
     const s = S('entryRuled', 'tick default.noshow')
     record('H13', 'default.noshow while an entry dispute is open (past checkInBy and entryDisputeBy)', 'REFUSE incl. N4 (DISPUTE_OPEN)', `${fmt(s)}; ${reasons(s, ['N4'])}`,
       s?.decision === 'REFUSE' && !!s.failing?.includes('N4'), { path: 'entryRuled' })
-  }
-  {
-    const s = S('backupRuling', 'probe:arbiter+backupArbiter')
-    record('H14', 'Arbiter + backup arbiter alone (weight 6 < quorum 7)', 'tefBAD_QUORUM', fmt(s), s?.final === 'tefBAD_QUORUM', { tx: s?.tx, path: 'backupRuling' })
   }
 
   {

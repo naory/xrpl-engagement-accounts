@@ -524,9 +524,9 @@ describe('co-signer closes the last silence/timing wins', () => {
     // A refusal is still recordable (it does not deny the dispute).
     await svc.ingest(ENG, checkin('refused'))
     source.snap.closeTime = '2026-11-21T00:00:00Z'
-    const payouts = [{ to: W.dana.address, value: '422' }]
-    const r = ruling(W.backupArbiter, payouts, '2026-11-20T23:59:00Z')
-    const d = await svc.decide({ engagementId: ENG, stage: 'ruling.backup', tx: hotel2Close(payouts, { memos: [memo('eng/basis', 'ruling.backup')] }), statements: [r] })
+    // the arbiter never ruled: past its deadline the entry chargeback returns everything (room + bond) to the guest
+    const sweep = [{ to: W.dana.address, value: '0', partial: true }]
+    const d = await svc.decide({ engagementId: ENG, stage: 'default.chargebackEntry', tx: hotel2Close(sweep, { tickets: true, memos: [memo('eng/basis', 'default.chargebackEntry')] }) })
     expect(d.failing).toEqual([])
   })
 

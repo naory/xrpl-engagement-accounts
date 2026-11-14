@@ -1,25 +1,26 @@
 {
   "templateId": "settlement-vault/hotel@2",
   "class": "escrow",
-  "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, arbiter and backup arbiter (hotel stay escrow)",
+  "description": "Prepaid booking with deposit, check-in/no-show handling, dispute windows, an accredited arbiter and chargeback-style defaults when the arbiter misses its ruling deadline (hotel stay escrow)",
   "asset": { "code": "RLUSD" },
   "roles": {
-    "principal":     { "weight": 3, "kind": "principal",    "operatedBy": "external" },
-    "counterparty":  { "weight": 3, "kind": "counterparty", "operatedBy": "external" },
-    "arbiter":       { "weight": 4, "kind": "arbiter",      "operatedBy": "external" },
-    "backupArbiter": { "weight": 2, "kind": "arbiter",      "operatedBy": "external" },
-    "cosigner":      { "weight": 2, "kind": "cosigner",     "operatedBy": "service" }
+    "principal":    { "weight": 3, "kind": "principal",    "operatedBy": "external" },
+    "counterparty": { "weight": 3, "kind": "counterparty", "operatedBy": "external" },
+    "arbiter":      { "weight": 4, "kind": "arbiter",      "operatedBy": "external", "accreditation": "service" },
+    "cosigner":     { "weight": 2, "kind": "cosigner",     "operatedBy": "service" }
   },
   "quorum": 7,
   "outcomes": {
     "settle.agreed":   { "description": "Guest and hotel agree on how to split the money; the co-signer checks it against the policy.", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.split", "policyStage": "settle", "enforcement": "ledger" },
     "refund.conceded": { "description": "The hotel admits a problem at check-in; everything goes back to the guest.", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.refundAll", "policyStage": "refund.conceded", "enforcement": "ledger" },
     "settle.ruling":   { "description": "The arbiter rules on a dispute and signs with one party. The co-signer is not involved.", "signers": [["arbiter", "principal"], ["arbiter", "counterparty"]], "blueprint": "close.split", "policyStage": null, "enforcement": "none", "requires": "ruling" },
-    "ruling.backup":   { "description": "If the arbiter misses its deadline, the backup arbiter rules, with one party and the co-signer.", "signers": [["backupArbiter", "principal", "cosigner"], ["backupArbiter", "counterparty", "cosigner"]], "blueprint": "close.split", "policyStage": "ruling.backup", "enforcement": "ledger" },
     "default.refund":  { "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.refundAll", "policyStage": "default.refund", "enforcement": "final-signature" },
     "default.noshow":  { "description": "The guest never checked in and never disputed: the hotel is paid the room automatically, and anything else in the account goes back to the guest.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseAll", "policyStage": "default.noshow", "enforcement": "final-signature" },
     "default.noshowSweep": { "description": "The same no-show, signed a second time for when the account holds more than the room price (say a partial deposit and a refused check-in): the hotel is paid the room and the extra goes back to the guest. The co-signer completes whichever version fits the money in the account.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseWithDeposit", "policyStage": "default.noshow", "enforcement": "final-signature" },
-    "default.release": { "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseWithDeposit", "policyStage": "default.release", "enforcement": "final-signature" }
+    "default.release": { "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseWithDeposit", "policyStage": "default.release", "enforcement": "final-signature" },
+    "default.chargebackEntry": { "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.refundAll", "policyStage": "default.chargebackEntry", "enforcement": "final-signature" },
+    "default.chargebackClaim": { "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseWithDeposit", "policyStage": "default.chargebackClaim", "enforcement": "final-signature" },
+    "default.chargebackStay": { "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the remaining nights are refunded. The hotel gets the nights before your dispute (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter.", "presigned": true, "finalSigner": "cosigner", "signers": [["principal", "counterparty", "cosigner"]], "blueprint": "close.releaseWithDeposit", "variants": { "perNight": true, "max": 13 }, "policyStage": "default.chargebackStay", "enforcement": "final-signature" }
   },
   "timers": {
     "confirmBy":         { "description": "The hotel must confirm the booking within this time after you book.", "from": "open",          "durationSecs": 7200,   "onExpire": "default.refund" },
@@ -27,7 +28,7 @@
     "entryDisputeBy":    { "description": "How long you have, from the check-in time, to dispute a problem on arrival (no room, wrong room).", "from": "checkIn",       "durationSecs": 75600,  "onExpire": "none" },
     "claimBy":           { "description": "How long the hotel has after checkout to claim against your deposit.", "from": "deliveryBy",    "durationSecs": 86400,  "onExpire": "none" },
     "disputeWindowEnds": { "description": "How long you have after checkout to dispute a claim or a problem with the stay. After this, silence counts as agreement.", "from": "deliveryBy",    "durationSecs": 259200, "onExpire": "default.release" },
-    "rulingDueBy":       { "description": "How long the arbiter has to rule once a dispute is open. After this, the backup arbiter may rule.", "from": "disputeOpened", "durationSecs": 432000, "onExpire": "escalate" }
+    "rulingDueBy":       { "description": "How long the arbiter has to rule once a dispute is open. If it misses this deadline, the chargeback-style default for your dispute applies: the money in dispute comes back to you.", "from": "disputeOpened", "durationSecs": 432000, "onExpire": ["default.chargebackEntry", "default.chargebackClaim", "default.chargebackStay"] }
   },
   "attestationWindows": {
     "party.confirmation/1": "confirmBy",

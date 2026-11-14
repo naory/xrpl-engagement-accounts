@@ -10,7 +10,8 @@ if (cmd !== 'validate-template' || files.length === 0) {
 let failed = 0
 for (const f of files) {
   const t = JSON.parse(fs.readFileSync(f, 'utf8')) as Template
-  const r = validateTemplate(t, { preCreateFundingDrops: 7_000_000n })
+  // 25 XRP covers hotel@2 at its 14-night cap (109 Tickets: 23.2 XRP reserve + fee headroom); all of it returns at close.
+  const r = validateTemplate(t, { preCreateFundingDrops: 25_000_000n })
   console.log(`\n${r.ok ? '✅' : '❌'} ${t.templateId}  (${f})`)
   console.log(`   minimal winning sets: ${r.minimalWinningSets.map((s) => `{${s.join(', ')}}`).join('  ')}`)
   console.log(`   tickets needed: ${r.ticketsNeeded}, reserve: ${Number(r.reserveDrops) / 1e6} XRP`)

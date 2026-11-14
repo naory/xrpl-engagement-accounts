@@ -37,8 +37,9 @@ export const W = {
   arbiter: wallet('arbiter'),
   engHotel: wallet('eng-hotel'),
   // hotel@2
-  backupArbiter: wallet('backup-arbiter'),
   engHotel2: wallet('eng-hotel2'),
+  /** The engagement service's arbiter accreditor (issues ENG/ARBITER). */
+  accreditor: wallet('accreditor'),
 }
 
 export const RLUSD_HEX = '524C555344000000000000000000000000000000'
@@ -49,6 +50,7 @@ export function withIssuer(p: PolicyDoc, issuer = W.issuer.address): PolicyDoc {
   const c = structuredClone(p)
   for (const a of Object.values(c.assets ?? {})) if (a.kind === 'IOU') a.issuer = issuer
   if (c.params && 'kybIssuers' in c.params) c.params.kybIssuers = [W.kybIssuer.address]
+  if (c.params && 'arbiterIssuers' in c.params) c.params.arbiterIssuers = [W.accreditor.address]
   return c
 }
 
@@ -160,6 +162,11 @@ export function historyEntry(value: string, closeTime: string, to = W.vendorA.ad
   return { hash: createHash('sha256').update(value + closeTime).digest('hex').toUpperCase(), ledgerIndex: LEDGER_INDEX - 100, closeTime, payouts: [{ to, asset: 'RLUSD', value }] }
 }
 
+/** The arbiter's accepted, unexpired ENG/ARBITER credential from the service accreditor (policy params.arbiterIssuers). */
+export function arbiterAccreditation(subject = W.arbiter.address): LedgerSnapshot['credentials'][number] {
+  return { issuer: W.accreditor.address, subject, type: 'ENG/ARBITER', accepted: true, expiration: null }
+}
+
 // ── Hotel: escrow ────────────────────────────────────────────────────────────
 export function hotelEngagement(over: Partial<EngagementRecord> = {}): EngagementRecord {
   return {
@@ -188,7 +195,7 @@ export function hotelLedger(over: { balance?: string; dispute?: boolean; closeTi
     reserveIncDrops: '200000',
     accounts: { [W.engHotel.address]: { exists: true, masterDisabled: true, regularKey: null, ownerObjects: { trustlines: 1, signerList: true, tickets: [101, 102, 103, 104, 105, 106, 107, 108, 109], other: 0 } } },
     balances: { [W.engHotel.address]: { RLUSD: over.balance ?? '412' } },
-    credentials: over.dispute ? [{ issuer: W.dana.address, subject: W.engHotel.address, type: 'ENG/DISPUTE', accepted: false, expiration: null }] : [],
+    credentials: [arbiterAccreditation(), ...(over.dispute ? [{ issuer: W.dana.address, subject: W.engHotel.address, type: 'ENG/DISPUTE', accepted: false, expiration: null }] : [])],
     history: {},
   }
 }
@@ -229,7 +236,7 @@ export function confirmation(city: string, mandateId: string): Statement {
   })
 }
 
-// ── Hotel@2: stay escrow (deposit, entry disputes, claims, backup arbiter) ────
+// ── Hotel@2: stay escrow (deposit, entry/stay disputes, claims, chargeback-style defaults) ────
 const ENG2 = 'eng_hotel2_fixture'
 type Wallet = InstanceType<typeof xrpl.Wallet>
 const rlusd = (value: string) => ({ currency: 'RLUSD', value })
@@ -241,10 +248,12 @@ export function hotel2Engagement(over: Partial<EngagementRecord> = {}): Engageme
     template: 'settlement-vault/hotel@2',
     account: W.engHotel2.address,
     asset: 'RLUSD',
-    parties: { principal: W.dana.address, counterparty: W.atlas.address, arbiter: W.arbiter.address, backupArbiter: W.backupArbiter.address, cosigner: W.cosigner.address },
+    parties: { principal: W.dana.address, counterparty: W.atlas.address, arbiter: W.arbiter.address, cosigner: W.cosigner.address },
     fee: { bps: 50, to: W.service.address },
     deleteTo: W.service.address,
     amount: { asset: 'RLUSD', value: '412.00' },
+    // 3 nights (11-11 → 11-14); nightly = floor(412 / 3) in the asset's minor units
+    terms: { nights: 3, nightly: '137.333333' },
     timers: {
       openedAt: '2026-11-01T09:00:00Z', confirmBy: '2026-11-01T11:00:00Z',
       checkIn: '2026-11-11T14:00:00Z', checkInBy: '2026-11-11T23:00:00Z', entryDisputeBy: '2026-11-12T11:00:00Z',
@@ -272,7 +281,7 @@ export function hotel2Ledger(over: { balance?: string; dispute?: boolean; closeT
       },
     },
     balances: { [W.engHotel2.address]: { RLUSD: over.balance ?? '412' } },
-    credentials: over.dispute ? [{ issuer: W.dana.address, subject: W.engHotel2.address, type: 'ENG/DISPUTE', accepted: false, expiration: null }] : [],
+    credentials: [arbiterAccreditation(), ...(over.dispute ? [{ issuer: W.dana.address, subject: W.engHotel2.address, type: 'ENG/DISPUTE', accepted: false, expiration: null }] : [])],
     history: {},
   }
 }
@@ -288,10 +297,10 @@ export function hotel2Mandate(): Statement {
   return hotel2MandateCache
 }
 
-export function hotel2Confirmation(over: { deposit?: string; city?: string } = {}): Statement {
+export function hotel2Confirmation(over: { deposit?: string; city?: string; total?: string } = {}): Statement {
   return statement(W.atlas, {
     kind: 'COUNTERPARTY', type: 'party.confirmation/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
-    claim: { mandateHash: hotel2Mandate().id, bookingId: 'ATL-60417', property: 'Casa Alfama', city: over.city ?? 'Lisbon', country: 'PT', checkIn: '2026-11-11', checkOut: '2026-11-14', total: rlusd('412.00'), deposit: rlusd(over.deposit ?? '150.00') },
+    claim: { mandateHash: hotel2Mandate().id, bookingId: 'ATL-60417', property: 'Casa Alfama', city: over.city ?? 'Lisbon', country: 'PT', checkIn: '2026-11-11', checkOut: '2026-11-14', total: rlusd(over.total ?? '412.00'), deposit: rlusd(over.deposit ?? '150.00') },
     ...at('2026-11-01T09:30:00Z'),
   })
 }
@@ -320,11 +329,11 @@ export function claim(items: Array<{ kind: string; amount: string }>): Statement
  * The guest's dispute attestation. Pair with `hotel2Ledger({ dispute: true })` for the Credential and a balance
  * that includes the 10.00 bond. `issuedAt` overrides the default posting time (e.g. to model backdating).
  */
-export function dispute(phase: 'entry' | 'settlement', issuedAt?: string): Statement {
+export function dispute(phase: 'entry' | 'stay' | 'settlement', issuedAt?: string): Statement {
   return statement(W.dana, {
     kind: 'PRINCIPAL', type: 'party.dispute/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
-    claim: { phase, reason: phase === 'entry' ? 'room not as booked' : 'claim disputed', bond: rlusd('10.00'), evidenceHashes: [] },
-    ...at(issuedAt ?? (phase === 'entry' ? '2026-11-11T20:00:00Z' : '2026-11-16T10:00:00Z')),
+    claim: { phase, reason: phase === 'entry' ? 'room not as booked' : phase === 'stay' ? 'problem during the stay' : 'claim disputed', bond: rlusd('10.00'), evidenceHashes: [] },
+    ...at(issuedAt ?? (phase === 'entry' ? '2026-11-11T20:00:00Z' : phase === 'stay' ? '2026-11-12T10:00:00Z' : '2026-11-16T10:00:00Z')),
   })
 }
 

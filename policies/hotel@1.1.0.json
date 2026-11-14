@@ -9,7 +9,7 @@
     "RLUSD": { "code": "RLUSD", "kind": "IOU", "currency": "524C555344000000000000000000000000000000", "issuer": "rRLUSDissuerPlaceholderXXXXXXXXXX", "decimals": 6 }
   },
   "constraints": { "allowedRails": ["xrpl"], "allowedAssets": ["RLUSD"] },
-  "params": { "serviceFeeBps": 50, "minDisputeBond": "10.00" },
+  "params": { "serviceFeeBps": 50, "minDisputeBond": "10.00", "arbiterCredentialType": "ENG/ARBITER", "arbiterIssuers": ["rArbiterAccreditorPlaceholderXXXXXX"] },
   "definitions": {
     "balance": "ledger.balance(eng.account, 'RLUSD')",
     "booked": "amt(eng.amount.value, 'RLUSD')",
