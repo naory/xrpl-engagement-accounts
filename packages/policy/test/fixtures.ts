@@ -297,10 +297,10 @@ export function hotel2Mandate(): Statement {
   return hotel2MandateCache
 }
 
-export function hotel2Confirmation(over: { deposit?: string; city?: string; total?: string } = {}): Statement {
+export function hotel2Confirmation(over: { deposit?: string; depositCurrency?: string; city?: string; total?: string } = {}): Statement {
   return statement(W.atlas, {
     kind: 'COUNTERPARTY', type: 'party.confirmation/1', engagementId: ENG2, subject: { bookingId: 'ATL-60417' },
-    claim: { mandateHash: hotel2Mandate().id, bookingId: 'ATL-60417', property: 'Casa Alfama', city: over.city ?? 'Lisbon', country: 'PT', checkIn: '2026-11-11', checkOut: '2026-11-14', total: rlusd(over.total ?? '412.00'), deposit: rlusd(over.deposit ?? '150.00') },
+    claim: { mandateHash: hotel2Mandate().id, bookingId: 'ATL-60417', property: 'Casa Alfama', city: over.city ?? 'Lisbon', country: 'PT', checkIn: '2026-11-11', checkOut: '2026-11-14', total: rlusd(over.total ?? '412.00'), deposit: { currency: over.depositCurrency ?? 'RLUSD', value: over.deposit ?? '150.00' } },
     ...at('2026-11-01T09:30:00Z'),
   })
 }

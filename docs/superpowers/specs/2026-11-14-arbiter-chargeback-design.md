@@ -62,11 +62,14 @@ quorum. The `backupArbiter` role, `ruling.backup` outcome/stage (U1–U7) and ba
 
 ### 4.2 Accreditation gate (co-signer registration)
 - `pol_hotel@2.0.0` params gain `arbiterCredentialType: "ENG/ARBITER"` and `arbiterIssuers: [<service accreditor
-  account>]` — pinned with the policy by its hash (no separate trust list).
+  account>]` — pinned with the policy by its hash (no separate trust list) — and `disputeCredentialType:
+  "ENG/DISPUTE"`, the Credential the co-signer requires on the account (with the bond) before it receipts a guest
+  dispute.
 - `register()` becomes async: at a fresh snapshot it requires the arbiter to hold an **accepted, unexpired**
   `ENG/ARBITER` from a listed issuer; the arbiter ≠ guest and ≠ hotel; and, if the guest's mandate lists
   `allowedArbiters`, the arbiter is among them. Otherwise it throws `NOT_NEUTRAL: <codes>` and registers nothing.
-  The co-signer then never co-signs anything (no settlement, no defaults) for that engagement.
+  The co-signer then never co-signs anything (no settlement, no defaults) for that engagement. If the ledger can't
+  be read, nothing is registered either, and the HTTP front answers 503 (retry) rather than 400.
 - The template validator requires every `arbiter`-kind role to declare `"accreditation": "service"` (V15), so
   every arbiter template opts into the gate.
 
@@ -87,7 +90,8 @@ New presigned outcomes (guest + hotel sign; co-signer adds the final signature o
   deal's value.
 - Ticket cost grows with the stay (≈ 6 Tickets per stay variant); all reserve returns at close. Per-deal variant
   count means the template declares the stay variant as per-night (`"variants": { "perNight": true, "max": 13 }`)
-  and the validator/ticket count accounts for the cap.
+  and the validator/ticket count accounts for the cap; policy lint L9 keeps `maxStayVariantNights` = max + 1, and
+  the demo's Ticket plan reads the cap from the template.
 
 ### 4.4 Pre-booking check
 The norms profile drops the backup-arbiter norms and adds a minimum ruling deadline (3 days). `dealTerms` picks
@@ -103,22 +107,35 @@ up the chargeback outcomes' descriptions automatically ("If nobody acts").
 2. **Night anchor.** Nights start at the **scheduled** check-in time (`timers.checkIn`, known at booking), not the
    hotel's recorded check-in; night *i* begins at `checkIn + i·24h`, and checkout (`deliveryBy`) ends the last
    night. All Tickets (including every stay variant's) are created in the open Batch, sized from `nights`.
-3. **One dispute per deal, and its kind is fixed by when it's filed.** Once the guest is checked in (check-in
-   recorded **and** deposit in), an `entry` dispute is refused at ingest — the guest must file a `stay` dispute
-   (so a guest can't stay a night and then claim the full entry refund). Before check-in counts, only `entry`
-   applies. After checkout, `settlement`. A second dispute on the same deal is refused (`ALREADY_DISPUTED`).
+3. **One dispute per deal, and its kind is fixed by when it's filed.** The guest counts as checked in once the
+   hotel's `checked_in` is receipted, the guest's own acknowledgement (a principal `party.checkin/1`
+   `checked_in`: it has the keys) is receipted, and the deposit is in — the deposit stated in the booking's asset
+   (RLUSD); a confirmation stating it in anything else doesn't count at all (C5), so the booking is refunded rather
+   than half-confirmed. Once the guest has acknowledged the check-in, an `entry` dispute is refused at ingest
+   (`ACKNOWLEDGED`), whatever the deposit — the guest's own statement that it has the keys contradicts an arrival
+   dispute — and the guest must file a `stay` dispute once the deposit is in (so a guest can't stay a night and
+   then claim the full entry refund). Before that, only `entry` applies; a hotel that never records the check-in,
+   or records it too late for the guest to acknowledge, leaves the guest the entry dispute. After checkout,
+   `settlement`. A second dispute on the same deal is refused (`ALREADY_DISPUTED`).
 4. **Precedence.** An open dispute already blocks refund/no-show/release (N4, L2 and the refund's confirmation
    rule). The chargeback variants are mutually exclusive by the dispute's phase and its receipt night. A hotel
    claim posted after a mid-stay dispute is still receipted (the arbiter may award it) but the chargeback default
    ignores it — the deposit goes back to the guest.
-5. **The arbiter's clock and notice.** The deadline runs from the co-signer's **receipt** of the dispute statement
-   (backdating is already bounded by STALE_ISSUED). The arbiter learns of disputes from the co-signer
+5. **The arbiter's clock and notice.** The deadline runs from the dispute statement's `issuedAt` (floored at the
+   scheduled check-in, or at checkout for a settlement dispute), which the co-signer bounds to its receipt:
+   `STALE_ISSUED` refuses one issued more than 300 s before the receipt ledger, and `NIGHT_MISMATCH` refuses a stay
+   dispute issued in another night than the one it is receipted in, so the night and the clock are effectively the
+   receipt's. The window is the deal's `terms.rulingWindow`, else the policy's `rulingWindow`; `register()`
+   refuses (`INVALID_TERMS`) a window that doesn't parse or lies outside the policy's `minRulingWindow` /
+   `maxRulingWindow` (3 and 7 days), and per-night terms that don't match the booked stay (`nights` from the
+   stay dates, `nightly` = floor(room ÷ nights)), so the deadline and the nightly split disclosed are the ones enforced. The arbiter learns of disputes from the co-signer
    (`GET /v1/engagements/:id/attestations`) and the on-ledger dispute credential; a ruling counts only once the
    arbiter's `party.ruling/1` is **receipted** before the deadline. A receipted ruling blocks the chargeback
    indefinitely: the winning party + arbiter can always close, the losing party can't block them.
 6. **Who signs, and if they don't.** Same as the check-in order rule: the entry chargeback is pre-signed at open with
-   the refund/no-show; the claim and stay variants at check-in **before** the deposit is paid. A guest who won't
-   sign doesn't get the keys (refused check-in → no-show).
+   the refund/no-show; at check-in the hotel records the check-in, the guest acknowledges it (it has the keys), and
+   then both pre-sign the claim and stay variants **before** the deposit is paid. A guest who won't acknowledge or
+   won't sign doesn't get the keys (refused check-in → no-show).
 7. **Positive residual.** Every chargeback runs only with a bonded dispute open, so the residual sweep to the guest
    is at least the bond (> 0). B11 still refuses any variant whose fixed legs exceed the balance.
 8. **Rounding.** nightly = floor(room ÷ nights) in the asset's minor units; for *k* < nights the hotel's leg is
@@ -133,6 +150,9 @@ up the chargeback outcomes' descriptions automatically ("If nobody acts").
 - **Hidden ties** between an arbiter and the hotel: the accreditor's responsibility.
 - **Arbiter fees**: a term of accreditation, not code.
 - **Guests who block receiving** push an outcome to the arbiter (already documented in the hotel spec).
+- **A squeezed acknowledgement window**: the guest's acknowledgement is bound by `checkInBy`, so a hotel that posts
+  its check-in just before `checkInBy` leaves the guest seconds to acknowledge. The guest who can't keeps the entry
+  dispute (§4.5.3), so the hotel gains nothing by it.
 
 ## 6. Goals / non-goals
 

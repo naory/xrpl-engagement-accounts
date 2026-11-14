@@ -28,7 +28,10 @@
     "serviceFeeBps": 50,
     "minDisputeBond": "10.00",
     "rulingWindow": "432000s",
+    "minRulingWindow": "259200s",
+    "maxRulingWindow": "604800s",
     "arbiterCredentialType": "ENG/ARBITER",
+    "disputeCredentialType": "ENG/DISPUTE",
     "arbiterIssuers": [
       "rArbiterAccreditorPlaceholderXXXXXX"
     ],
@@ -39,8 +42,8 @@
     "booked": "amt(eng.amount.value, 'RLUSD')",
     "deposit": "amt(def.conf.claim.deposit.value, 'RLUSD')",
     "balance": "ledger.balance(eng.account, 'RLUSD')",
-    "confirmed": "def.conf != null && def.conf.claim.mandateHash == eng.mandateId && def.conf.claim.city == mandate.constraints.city && def.conf.claim.checkIn == mandate.constraints.checkIn && def.conf.claim.checkOut == mandate.constraints.checkOut && amt(def.conf.claim.total.value, 'RLUSD') == def.booked && def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
-    "checkedIn": "def.conf != null && att.list('party.checkin/1', 'counterparty').exists(c, c.claim.status == 'checked_in') && att.list('party.checkin/1', 'principal').exists(c, c.claim.status == 'checked_in') && def.balance >= def.booked + def.deposit",
+    "confirmed": "def.conf != null && def.conf.claim.mandateHash == eng.mandateId && def.conf.claim.city == mandate.constraints.city && def.conf.claim.checkIn == mandate.constraints.checkIn && def.conf.claim.checkOut == mandate.constraints.checkOut && amt(def.conf.claim.total.value, 'RLUSD') == def.booked && def.conf.claim.deposit.currency == 'RLUSD' && def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
+    "checkedIn": "def.conf != null && def.conf.claim.deposit.currency == 'RLUSD' && att.list('party.checkin/1', 'counterparty').exists(c, c.claim.status == 'checked_in') && att.list('party.checkin/1', 'principal').exists(c, c.claim.status == 'checked_in') && def.balance >= def.booked + def.deposit",
     "disputes": "att.list('party.dispute/1', 'principal')",
     "disputeOpen": "size(def.disputes) > 0 && (def.disputes.exists(d, d.claim.phase == 'entry') ? def.balance >= def.booked + amt(params.minDisputeBond, 'RLUSD') : def.conf != null && def.balance >= def.booked + def.deposit + amt(params.minDisputeBond, 'RLUSD'))",
     "entryDispute": "def.disputeOpen && def.disputes.exists(d, d.claim.phase == 'entry')",
@@ -89,10 +92,10 @@
         },
         {
           "id": "C5",
-          "title": "Deposit within the guest's limit",
+          "title": "Deposit in the booking's currency and within the guest's limit",
           "reason": "DEPOSIT_OVER_CAP",
-          "check": "def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
-          "message": "The security deposit the hotel asks for must not exceed the maximum the guest agreed to. Otherwise the confirmation doesn't count."
+          "check": "def.conf.claim.deposit.currency == 'RLUSD' && def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
+          "message": "The security deposit the hotel asks for must be in the booking's currency (RLUSD) and must not exceed the maximum the guest agreed to. Otherwise the confirmation doesn't count, so the guest can never be treated as checked in on it and the booking is refunded."
         }
       ]
     },
@@ -237,7 +240,7 @@
           "title": "No open dispute",
           "reason": "DISPUTE_OPEN",
           "check": "!def.disputeOpen",
-          "message": "If the guest filed a dispute (with its bond), the automatic endings wait for the arbiter. Silence can't override a raised flag."
+          "message": "If the guest filed a dispute (with its bond), the automatic endings wait for the arbiter. Silence can't override a raised flag. A guest dispute counts only once the co-signer has receipted it, and the co-signer receipts one only when the guest's dispute credential (ENG/DISPUTE) and the bond are already on the account; after that it stays open while the money stays in."
         },
         {
           "id": "N5",
@@ -284,7 +287,7 @@
           "title": "No open dispute",
           "reason": "DISPUTE_OPEN",
           "check": "!def.disputeOpen",
-          "message": "If the guest filed a dispute (with its bond), the release waits for the arbiter. Silence can't override a raised flag."
+          "message": "If the guest filed a dispute (with its bond), the release waits for the arbiter. Silence can't override a raised flag. A guest dispute counts only once the co-signer has receipted it, and the co-signer receipts one only when the guest's dispute credential (ENG/DISPUTE) and the bond are already on the account; after that it stays open while the money stays in."
         },
         {
           "id": "L3",

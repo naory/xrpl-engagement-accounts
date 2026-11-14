@@ -5,6 +5,7 @@
 import xrpl from 'xrpl'
 import { Amount, formatAmount, newNonce, parseAmount, signStatement, type AssetDef, type Statement, type StatementBody } from '@eng/core'
 import type { EngagementRecord } from '@eng/policy'
+import hotel2 from '../../../../templates/hotel@2.json' with { type: 'json' }
 import type { CosignerService, DecideResponse, Receipt, TickResult } from '../service.ts'
 import {
   ASF_DISABLE_MASTER, TF_ALL_OR_NOTHING, TF_SET_NO_RIPPLE,
@@ -70,8 +71,11 @@ export const DEMO_HOTEL_BOOKING: HotelBooking = { room: '400', deposit: '100', b
 /** A deal's Ticket plan: each pre-signed default's [start, end) slice of the Tickets reserved at open, and their count. */
 export interface HotelTicketPlan { slices: Record<string, readonly [number, number]>; count: number }
 
-/** hotel@2's default.chargebackStay variants.max: stays of more than max + 1 (14) nights get no stay variants. */
-const STAY_VARIANT_MAX = 13
+/**
+ * hotel@2's default.chargebackStay variants.max, read from the template: stays of more than max + 1 (14) nights get no
+ * stay variants. Lint L9 keeps the policy's maxStayVariantNights at max + 1.
+ */
+const STAY_VARIANT_MAX: number = (hotel2.outcomes['default.chargebackStay'] as { variants: { max: number } }).variants.max
 
 /**
  * Tickets reserved at open (spec §5.4), sized from the stay: outer + inner Tickets of each pre-signed default — refund 4,

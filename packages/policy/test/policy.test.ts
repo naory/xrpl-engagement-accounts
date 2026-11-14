@@ -414,6 +414,22 @@ describe('lint', () => {
     expect(l8[0].message).toMatch(/title/)
     expect(l8[1].message).toMatch(/message/)
   })
+  it('L9: the per-night variant cap matches the policy, and the ruling window lies within its bounds (R30, R31)', () => {
+    const cap: PolicyDoc = structuredClone(policies.hotel2)
+    cap.params!.maxStayVariantNights = 15
+    expect(lintPolicy(cap, templates.hotel2).map((f) => `${f.id} ${f.where}`)).toEqual(['L9 default.chargebackStay'])
+    const t = structuredClone(templates.hotel2)
+    t.outcomes['default.chargebackStay'].variants!.max = 12
+    expect(lintPolicy(policies.hotel2, t).map((f) => f.id)).toEqual(['L9'])
+    const win: PolicyDoc = structuredClone(policies.hotel2)
+    win.params!.rulingWindow = '60s'
+    expect(lintPolicy(win, templates.hotel2).map((f) => `${f.id} ${f.where}`)).toEqual(['L9 params.rulingWindow'])
+    win.params!.minRulingWindow = '30s'
+    win.params!.maxRulingWindow = '120s'
+    expect(lintPolicy(win, templates.hotel2)).toEqual([])
+    win.params!.maxRulingWindow = 'two minutes'
+    expect(lintPolicy(win, templates.hotel2).map((f) => `${f.id} ${f.where}`)).toEqual(['L9 params.maxRulingWindow'])
+  })
   it('flags floats, unknown statement types, duplicate ids and missing stages', () => {
     const bad: PolicyDoc = structuredClone(policies.procurement)
     bad.stages.spend.rules.push({ id: 'X1', reason: 'R', check: 'minor(def.spendNow) < 1.5' })

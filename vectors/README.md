@@ -8,8 +8,8 @@ implementation disagrees with that expectation, so a vector can't silently recor
 | File | Spec | Cases | What to compare |
 |---|---|---|---|
 | `statements.json` | [attestations](../docs/spec/attestations.md) §3–§4 | 6 | JCS bytes, digest, `id`, signature verification (including tampered and wrong-key) |
-| `templates.json` | [policy](../docs/spec/policy.md), [hotel](../docs/use-cases/hotel-booking.md) §2 (V1–V12) | 16 | `ok`, error / warning / disclosure ids, minimal winning sets, tickets needed, reserve |
-| `policy.json` | [policy](../docs/spec/policy.md) §3–§8 | 155 | `decision`, `failing`, per-rule `results` (layer, id, result, reason), statements used / rejected, `inputsHash`, `effectiveHash` |
+| `templates.json` | [policy](../docs/spec/policy.md), [hotel](../docs/use-cases/hotel-booking.md) §2 (V1–V12) | 17 | `ok`, error / warning / disclosure ids, minimal winning sets, tickets needed, reserve |
+| `policy.json` | [policy](../docs/spec/policy.md) §3–§8 | 158 | `decision`, `failing`, per-rule `results` (layer, id, result, reason), statements used / rejected, `inputsHash`, `effectiveHash` |
 
 ## Normative and non-normative fields
 

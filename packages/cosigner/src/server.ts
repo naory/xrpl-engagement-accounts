@@ -25,7 +25,7 @@ import path from 'node:path'
 import xrpl from 'xrpl'
 import type { Template } from '@eng/core'
 import type { PolicyDoc } from '@eng/policy'
-import { CosignerService } from './service.ts'
+import { CosignerService, LedgerUnavailableError } from './service.ts'
 import { signerProviderFromEnv, type SignerProvider } from './keys.ts'
 import { XrplLedgerSource } from './snapshot.ts'
 
@@ -159,6 +159,8 @@ export function createServer(svc: CosignerService, opts: ServerOptions = {}): ht
       return send(404, { error: 'not found' })
     } catch (e) {
       if (e instanceof BodyTooLarge) return send(413, { error: e.message })
+      // register() could not read the ledger (retryable); a refusal of the deal itself (NOT_NEUTRAL, INVALID_TERMS) stays 400.
+      if (e instanceof LedgerUnavailableError) return send(503, { error: e.message })
       return send(400, { error: String((e as Error).message ?? e) })
     }
   })

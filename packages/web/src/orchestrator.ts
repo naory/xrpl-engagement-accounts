@@ -497,6 +497,9 @@ export class DemoOrchestrator {
     policy.version = '2.0.0-web'
     policy.assets!.RLUSD.issuer = issuer.address
     policy.params!.rulingWindow = '60s'
+  // The demo's own ruling-window bounds around its 60 s window (the stock policy allows 3–7 days; register() checks them).
+  policy.params!.minRulingWindow = '30s'
+  policy.params!.maxRulingWindow = '120s'
     policy.params!.arbiterIssuers = [accreditor.address]
     this.policy = policy
     const template = this.read<Template>('templates/hotel@2.json')

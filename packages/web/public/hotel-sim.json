@@ -59,8 +59,8 @@
       "message": "The confirmed total must equal the room price the guest paid in."
     },
     "C5": {
-      "title": "Deposit within the guest's limit",
-      "message": "The security deposit the hotel asks for must not exceed the maximum the guest agreed to. Otherwise the confirmation doesn't count."
+      "title": "Deposit in the booking's currency and within the guest's limit",
+      "message": "The security deposit the hotel asks for must be in the booking's currency (RLUSD) and must not exceed the maximum the guest agreed to. Otherwise the confirmation doesn't count, so the guest can never be treated as checked in on it and the booking is refunded."
     },
     "K1": {
       "title": "Guest checked in",
@@ -128,7 +128,7 @@
     },
     "N4": {
       "title": "No open dispute",
-      "message": "If the guest filed a dispute (with its bond), the automatic endings wait for the arbiter. Silence can't override a raised flag."
+      "message": "If the guest filed a dispute (with its bond), the automatic endings wait for the arbiter. Silence can't override a raised flag. A guest dispute counts only once the co-signer has receipted it, and the co-signer receipts one only when the guest's dispute credential (ENG/DISPUTE) and the bond are already on the account; after that it stays open while the money stays in."
     },
     "N5": {
       "title": "The room price is in the account",
@@ -152,7 +152,7 @@
     },
     "L2": {
       "title": "No open dispute",
-      "message": "If the guest filed a dispute (with its bond), the release waits for the arbiter. Silence can't override a raised flag."
+      "message": "If the guest filed a dispute (with its bond), the release waits for the arbiter. Silence can't override a raised flag. A guest dispute counts only once the co-signer has receipted it, and the co-signer receipts one only when the guest's dispute credential (ENG/DISPUTE) and the bond are already on the account; after that it stays open while the money stays in."
     },
     "L3": {
       "title": "Room and deposit are in the account",
