@@ -176,8 +176,13 @@ describe('hotel@2 — default.release', () => {
     it('a ruling by someone other than the arbiter does not count', () => {
       expect(failing(at('2026-11-22T11:00:01Z', [ruling(W.atlas, [{ to: hotel, value: '470.00' }], '2026-11-20T09:00:00Z')]))).toEqual([])
     })
-    it('a dispute on file (even without its bond) keeps it blocked: the dispute decides', () => {
-      expect(failing(at('2026-11-22T11:00:01Z', [dispute('settlement')]))).toEqual(['L5'])
+    it('only an open (bonded) dispute keeps it blocked; an unbonded dispute statement does not (R9)', () => {
+      expect(failing(at('2026-11-22T11:00:01Z', [dispute('settlement')]))).toEqual([])
+      const bonded = { ...at('2026-11-22T11:00:01Z', [dispute('settlement')]), ledger: hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-22T11:00:01Z' }) }
+      expect(failing(bonded)).toContain('L5')
+    })
+    it('a ruling dated before the claim does not keep it blocked (R11)', () => {
+      expect(failing(at('2026-11-22T11:00:01Z', [ruling(W.arbiter, [{ to: hotel, value: '470.00' }], '2026-11-14T14:59:59Z')]))).toEqual([])
     })
     it('uses the deal\'s pinned ruling window (3 days → lapses after 11-20T11:00)', () => {
       const engagement = hotel2Engagement({ terms: { nights: 3, nightly: '137.333333', rulingWindow: '259200s' } })
@@ -295,8 +300,17 @@ describe('hotel@2 — chargeback-style defaults when the arbiter misses its ruli
     it('refuses with no dispute open (G1)', () => {
       expect(failing(input('2026-11-21T10:00:01Z', [], { disputes: [], balance: '562', open: false }))).toContain('G1')
     })
-    it('refuses for an entry dispute (G1)', () => {
-      expect(failing(input('2026-11-21T10:00:01Z', [], { disputes: [dispute('entry')] }))).toEqual(['G1'])
+    it('an entry dispute by a guest checked in at decision time falls to the claim chargeback (R10)', () => {
+      // entry dispute 11-11T20:00 → due after 11-16T20:00; checked in with the deposit (412 + 150 + bond 10)
+      expect(failing(input('2026-11-16T20:00:00Z', [], { disputes: [dispute('entry')] }))).toEqual(['G1'])
+      expect(failing(input('2026-11-16T20:00:01Z', [], { disputes: [dispute('entry')] }))).toEqual([])
+    })
+    it('an entry dispute by a guest not checked in (no deposit) stays on the entry track (G1)', () => {
+      expect(failing(input('2026-11-21T10:00:01Z', [], { disputes: [dispute('entry')], balance: '422' }))).toContain('G1')
+    })
+    it('a ruling dated before the dispute opened does not block it (R11)', () => {
+      expect(failing(input('2026-11-21T10:00:01Z', [arbiterRuled('2026-11-16T09:59:59Z')]))).toEqual([])
+      expect(failing(input('2026-11-21T10:00:01Z', [arbiterRuled('2026-11-16T10:00:00Z')]))).toEqual(['G2'])
     })
   })
 

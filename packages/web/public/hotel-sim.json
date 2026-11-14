@@ -164,7 +164,7 @@
     },
     "L5": {
       "title": "No deposit claim standing",
-      "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on. But the hotel must make its case: if the guest didn't dispute and the arbiter hasn't ruled on the claim by the ruling deadline (counted from the end of the guest's dispute window), the claim lapses and the deposit goes back to the guest."
+      "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on. But the hotel must make its case: if the guest has no open (bonded) dispute and the arbiter hasn't ruled on the claim by the ruling deadline (counted from the end of the guest's dispute window), the claim lapses and the deposit goes back to the guest."
     },
     "L6": {
       "title": "Deposit and any extra go back in full",
@@ -188,7 +188,7 @@
     },
     "G1": {
       "title": "Arbiter missed its deadline on a claim or stay dispute",
-      "message": "Only for a stay that happened, with the guest's one open, bonded dispute filed after checkout (against the hotel's claim or the stay) or in the stay's last night, once the arbiter's ruling deadline has passed."
+      "message": "Only for a stay that happened, with the guest's one open, bonded dispute filed after checkout (against the hotel's claim or the stay), in the stay's last night, or on arrival by a guest who then checked in and paid the deposit, once the arbiter's ruling deadline has passed."
     },
     "G2": {
       "title": "Arbiter hasn't ruled",

@@ -47,12 +47,13 @@
     "conceded": "def.entryDispute && att.list('party.concession/1', 'counterparty').exists(c, def.disputes.exists(d, d.claim.phase == 'entry' && d.id == c.claim.disputeRef))",
     "claim": "att.latest('party.claim/1', 'counterparty')",
     "claimTotal": "amt(def.claim.claim.total.value, 'RLUSD')",
-    "arbiterRuling": "att.latest('party.ruling/1', 'arbiter')",
     "settlementDisputes": "def.disputes.filter(d, d.claim.phase == 'settlement')",
     "entryDisputes": "def.disputes.filter(d, d.claim.phase == 'entry')",
     "stayDisputes": "def.disputes.filter(d, d.claim.phase == 'stay')",
     "disputeOpenedAt": "size(def.settlementDisputes) > 0 ? (timestamp(def.settlementDisputes[0].issuedAt) > timestamp(eng.timers.deliveryBy) ? timestamp(def.settlementDisputes[0].issuedAt) : timestamp(eng.timers.deliveryBy)) : size(def.stayDisputes) > 0 ? (timestamp(def.stayDisputes[0].issuedAt) > timestamp(eng.timers.checkIn) ? timestamp(def.stayDisputes[0].issuedAt) : timestamp(eng.timers.checkIn)) : (timestamp(def.entryDisputes[0].issuedAt) > timestamp(eng.timers.checkIn) ? timestamp(def.entryDisputes[0].issuedAt) : timestamp(eng.timers.checkIn))",
     "rulingWindow": "has(eng.terms) && has(eng.terms.rulingWindow) ? duration(eng.terms.rulingWindow) : duration(params.rulingWindow)",
+    "arbiterRulings": "size(def.disputes) > 0 ? att.list('party.ruling/1', 'arbiter').filter(r, timestamp(r.issuedAt) >= def.disputeOpenedAt) : def.claim != null ? att.list('party.ruling/1', 'arbiter').filter(r, timestamp(r.issuedAt) >= timestamp(def.claim.issuedAt)) : []",
+    "arbiterRuling": "size(def.arbiterRulings) > 0 ? dyn(def.arbiterRulings[size(def.arbiterRulings) - 1]) : dyn(null)",
     "rulingDue": "def.disputeOpen && now > def.disputeOpenedAt + def.rulingWindow",
     "stayDispute": "size(def.stayDisputes) > 0 ? dyn(def.stayDisputes[0]) : dyn(null)",
     "stayNight": "def.stayDispute == null ? 0 : nightsElapsed(timestamp(eng.timers.checkIn), timestamp(def.stayDispute.issuedAt)) + 1",
@@ -303,8 +304,8 @@
           "id": "L5",
           "title": "No deposit claim standing",
           "reason": "CLAIM_POSTED",
-          "check": "def.claim == null || (now > timestamp(eng.timers.disputeWindowEnds) + def.rulingWindow && size(def.disputes) == 0 && def.arbiterRuling == null)",
-          "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on. But the hotel must make its case: if the guest didn't dispute and the arbiter hasn't ruled on the claim by the ruling deadline (counted from the end of the guest's dispute window), the claim lapses and the deposit goes back to the guest."
+          "check": "def.claim == null || (now > timestamp(eng.timers.disputeWindowEnds) + def.rulingWindow && !def.disputeOpen && def.arbiterRuling == null)",
+          "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on. But the hotel must make its case: if the guest has no open (bonded) dispute and the arbiter hasn't ruled on the claim by the ruling deadline (counted from the end of the guest's dispute window), the claim lapses and the deposit goes back to the guest."
         },
         {
           "id": "L6",
@@ -355,8 +356,8 @@
           "id": "G1",
           "title": "Arbiter missed its deadline on a claim or stay dispute",
           "reason": "NOT_DUE",
-          "check": "def.checkedIn && size(def.disputes) == 1 && def.rulingDue && (size(def.settlementDisputes) == 1 || (def.stayDispute != null && def.stayNight >= eng.terms.nights))",
-          "message": "Only for a stay that happened, with the guest's one open, bonded dispute filed after checkout (against the hotel's claim or the stay) or in the stay's last night, once the arbiter's ruling deadline has passed."
+          "check": "def.checkedIn && size(def.disputes) == 1 && def.rulingDue && (size(def.settlementDisputes) == 1 || def.entryDispute || (def.stayDispute != null && def.stayNight >= eng.terms.nights))",
+          "message": "Only for a stay that happened, with the guest's one open, bonded dispute filed after checkout (against the hotel's claim or the stay), in the stay's last night, or on arrival by a guest who then checked in and paid the deposit, once the arbiter's ruling deadline has passed."
         },
         {
           "id": "G2",

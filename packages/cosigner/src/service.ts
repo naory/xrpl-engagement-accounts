@@ -225,6 +225,11 @@ export class CosignerService {
       if (received > deadline) throw new Error(`LATE: ${s.type} after ${window}`)
     }
     if (s.type === 'party.ruling/1' && attester === st.record.parties.arbiter) {
+      // A ruling is about a case: a receipted guest dispute or hotel claim. Otherwise an arbiter could pre-block defaults.
+      const { parties } = st.record
+      const posted = [...st.attestations.values()].map((a) => a.statement)
+      const hasCase = posted.some((p) => (p.type === 'party.dispute/1' && p.attester.account === parties.principal) || (p.type === 'party.claim/1' && p.attester.account === parties.counterparty))
+      if (!hasCase) throw new Error('NO_CASE: no receipted dispute or claim for the arbiter to rule on')
       // A ruling counts only if receipted by the deal's ruling deadline, so a late one can't block a due default.
       const due = this.rulingDeadline(st)
       if (due != null && received > due) throw new Error(`LATE: party.ruling/1 after the ruling deadline (${new Date(due).toISOString()})`)
@@ -276,6 +281,10 @@ export class CosignerService {
         if (!Number.isNaN(checkIn) && received < checkIn) throw new Error(`TOO_EARLY: an entry dispute can be filed from checkIn (${st.record.timers!.checkIn})`)
         if (this.checkedIn(st, posted, assets, ledger)) throw new Error('NOT_ENTRY: the guest is checked in (check-in recorded and deposit in); file a stay dispute instead')
       }
+      if (phase === 'settlement') {
+        const deliveryBy = Date.parse(st.record.timers?.deliveryBy ?? '')
+        if (!Number.isNaN(deliveryBy) && received < deliveryBy) throw new Error(`TOO_EARLY: a settlement dispute can be filed from checkout (deliveryBy ${st.record.timers!.deliveryBy})`)
+      }
       if (phase === 'stay') {
         if (!this.checkedIn(st, posted, assets, ledger)) throw new Error('NOT_CHECKED_IN: a stay dispute needs a recorded check-in with the deposit in; before that, file an entry dispute')
         // The stay chargeback is timed from issuedAt; it must fall in the same night (from the scheduled checkIn) as the receipt.
@@ -284,6 +293,8 @@ export class CosignerService {
         const nReceived = nightsElapsed(checkIn, received)
         if (nIssued !== nReceived) throw new Error(`NIGHT_MISMATCH: issued in night ${nIssued + 1} (${s.issuedAt}), received in night ${nReceived + 1} (${ledger.closeTime})`)
       }
+      // The ruling clock starts only on an open dispute: the Credential and the bond must already be on the ledger.
+      if (isPrincipalDispute(s) && !this.disputeBonded(st, posted, assets, ledger)) throw new Error('NOT_BONDED: post the ENG/DISPUTE Credential and the bond (room, plus the deposit once checked in, plus minDisputeBond in the account) before the dispute statement')
     }
     if (s.type === 'party.checkin/1' && s.attester.account === parties.counterparty && (s.claim as { status?: unknown }).status !== 'checked_in') {
       const checkedIn = posted.some((p) => p.type === 'party.checkin/1' && p.attester.account === parties.counterparty && (p.claim as { status?: unknown }).status === 'checked_in')
@@ -291,7 +302,7 @@ export class CosignerService {
     }
     if (s.type === 'party.checkin/1' && (s.claim as { status?: unknown }).status === 'checked_in') {
       const entryDispute = posted.some((p) => p.type === 'party.dispute/1' && p.attester.account === parties.principal && (p.claim as { phase?: unknown }).phase === 'entry')
-      if (entryDispute && parties.principal && this.disputeBonded(st, assets, ledger)) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
+      if (entryDispute && parties.principal && this.disputeBonded(st, posted, assets, ledger)) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
     }
     if (s.type === 'party.claim/1') {
       checkClaimTotal(s, assets)
@@ -349,15 +360,22 @@ export class CosignerService {
     return undefined
   }
 
-  /** At this ledger: the principal's ENG/DISPUTE Credential is on the account and the balance covers booked + minDisputeBond. */
-  private disputeBonded(st: EngagementState, assets: Record<string, AssetDef>, ledger: LedgerSnapshot): boolean {
+  /**
+   * As the policy's def.disputeOpen, at this ledger: the principal's ENG/DISPUTE Credential is on the account and the
+   * balance covers booked + (the first confirmation's deposit, once checked in) + minDisputeBond.
+   */
+  private disputeBonded(st: EngagementState, posted: Statement[], assets: Record<string, AssetDef>, ledger: LedgerSnapshot): boolean {
     const { parties, account, amount } = st.record
     const asset = Object.values(assets).find((a) => a.code === (amount?.asset ?? st.record.asset))
     if (!asset || !amount) return false
     const facts = new LedgerFacts(ledger, new Assets(assets))
     if (!facts.credentialExists(parties.principal!, account, 'ENG/DISPUTE')) return false
     const bond = [...st.layers].reverse().map((l) => (l.params as { minDisputeBond?: unknown } | undefined)?.minDisputeBond).find((b) => typeof b === 'string') as string | undefined
-    const need = parseAmount(amount.value, asset).add(bond ? parseAmount(bond, asset) : zero(asset.code))
+    let need = parseAmount(amount.value, asset).add(bond ? parseAmount(bond, asset) : zero(asset.code))
+    if (this.checkedIn(st, posted, assets, ledger)) {
+      const conf = posted.find((p) => p.type === 'party.confirmation/1' && p.attester.account === parties.counterparty)!
+      need = need.add(parseAmount((conf.claim as { deposit: { value: string } }).deposit.value, asset))
+    }
     return facts.balance(account, asset.code).cmp(need) >= 0
   }
 
@@ -412,6 +430,21 @@ export class CosignerService {
 
     const facts = new TxFacts(tx, { eng: st.record, template: st.template, assets: new Assets(this.assetsOf(st.layers)), ledger: emptyLedger(st.record.account) })
     if (!facts.matchesBlueprint(o.blueprint)) throw new Error(`BLUEPRINT: blob does not match ${o.blueprint}`)
+    // A chargeback blob must match its slot: its eng/basis names the outcome, and a per-night variant #k pays the
+    // hotel (with the fee) exactly k nights, so the stored name says what the transaction does.
+    if (base.startsWith('default.chargeback') || o.variants?.perNight) {
+      const basis = facts.memo('eng/basis')
+      if (basis !== base) throw new Error(`SLOT_MISMATCH: blob's eng/basis is ${JSON.stringify(basis)}, expected ${base}`)
+      if (variant !== undefined) {
+        const code = st.template.asset.code
+        const asset = this.assetsOf(st.layers)[code]
+        let nightly
+        try { nightly = parseAmount(String(st.record.terms!.nightly), asset) } catch { throw new Error(`SLOT_MISMATCH: the deal's terms.nightly ${JSON.stringify(st.record.terms!.nightly)} is not an amount`) }
+        const hotel = facts.payouts.to(st.record.parties.counterparty!, code).add(facts.payouts.to(st.record.fee!.to, code))
+        const want = nightly.minor * BigInt(variant)
+        if (hotel.minor !== want) throw new Error(`SLOT_MISMATCH: ${outcome} pays the hotel and fee ${hotel.minor} minor units, ${variant} nights are ${want}`)
+      }
+    }
 
     // Store the canonical multisign form (outer SigningPubKey '', no TxnSignature) — exactly what the
     // signatures cover — and prove now that the co-signer's signature will combine with it.
