@@ -344,7 +344,7 @@ The single-use lifecycle (§3) depends on closing the account in the same atomic
 1. Payout(s): RLUSD to the merchant and/or a refund to Dana
 2. `TrustSet` removing the RLUSD trust line (zero balance, default flags)
 3. `EscrowFinish`/`EscrowCancel` and removal of any other *blocking* objects (trust lines, escrows, checks, payment channels)
-4. `AccountDelete` → destination: the service (or the sponsor, see 16.2)
+4. `AccountDelete` → destination: the service (or the sponsor, see [§14.2](#142-xls-68-sponsored-fees-and-reserves))
 
 `AccountDelete` itself removes Offers, the SignerList, Tickets, DepositPreauth, NFT offers, DID, Oracle, **Credentials** and Delegate entries, so those don't need their own inner txs.
 
