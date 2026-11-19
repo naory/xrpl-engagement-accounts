@@ -1,5 +1,5 @@
 // XLS-68 Sponsored Fees and Reserves — pre-create and reclaim builders for the pre-created
-// account pool (README §16.2). The operating ("sponsor") account carries every XRP cost: the
+// account pool (README §14.2). The operating ("sponsor") account carries every XRP cost: the
 // base reserve (sponsored account creation), each owner-object reserve (the RLUSD trust line),
 // and transaction fees. A pooled engagement account therefore never needs to hold XRP, and on
 // AccountDelete the reserves are returned to the sponsor by ledger rule (Destination == Sponsor).
