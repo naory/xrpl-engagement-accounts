@@ -18,7 +18,7 @@ Which use cases from the [catalog](use-cases/catalog.md) the project supports, a
 |---|---|---|---|---|
 | **B1** Enterprise procurement agent | Owner wallet | **v1** | Built and live on Testnet: template, policy, co-signer, vectors; demo D1–D11 passed (11/11). x402 purchase via the settlement adapter, X1–X4 (4/4) ([walkthrough](demo/b1-procurement.md)) | — |
 | **R2** Personal shopping agent | Owner wallet | **v1** | Same class and engine as B1 | ✅ consumer policy (weekly cap + `merchant.category/1`), `owner-wallet/shopping@1` + `pol_shopping`, fixtures, 9 vectors |
-| **R1** Agent-booked hotel | Escrow | **v1** | Template, policy (confirm / settle / defaults) and vectors built. Mechanics proven on Testnet | Open-stage rules, facilitator store, arbiter flow, end-to-end Testnet run through the co-signer |
+| **R1** Agent-booked hotel | Escrow | **v1** | `settlement-vault/hotel@2`, `pol_hotel@2.0.0` and the hotel@2 vectors are built. `HotelFlow` (`packages/cosigner/src/hotel/flow.ts`) runs confirm, check-in, settle, a conceded refund, the residual-sweep defaults, the chargeback-style defaults and the accreditation gate through the co-signer. `npm run demo:hotel` checks that path as H1–H17 (`packages/cosigner/demo/hotel-testnet.ts`). The asset in that script is a test IOU the script itself issues (`currencyHex('RLUSD')`), not Ripple's RLUSD. | Facilitator store, and the `open` and `amend` stage rules ([policy spec §15](spec/policy.md#15-reference-implementation)). No arbiter-service package; the demo's arbiter is a key the script holds. |
 | **R6** Refundable pre-order deposit | Escrow | **v1** | Hotel-shaped: refund / apply / forfeit defaults | Template + policy (`production.started/1` corroborated, delivery events), vectors. Fixed terms only (no amendments) |
 | **R3** Second-hand purchase (P2P) | Escrow | v1.1 | — | Accredited carrier attester (`shipping.delivered/1`), inspection-window timer anchored on delivery (attestations §6) |
 | **B8** Digital asset sale with holdback | Escrow ×2 | v1.1 | — | Two engagements opened in one Batch, registry attester (`registry.transfer/1`) |
@@ -38,12 +38,12 @@ Which use cases from the [catalog](use-cases/catalog.md) the project supports, a
 | Component | State | Where |
 |---|---|---|
 | Ledger mechanics (pre-create, atomic open, ticketed defaults, settle-and-close) | ✅ proven on Testnet (21/21) | spike (kept local) |
-| Template validator (V1–V12, disclosures, reserve) | ✅ | `packages/core` |
+| Template validator (V1–V15, disclosures, reserve) | ✅ | `packages/core` |
 | Statement envelope (JCS, `ENGA\0`, XRPL keys) | ✅ | `packages/core` |
 | Policy engine `cel-eng/1`, attestation pipeline, lint | ✅ | `packages/policy` |
 | Baseline B1–B11, procurement (incl. W7 x402-challenge binding), hotel, and consumer-shopping (R2) policies | ✅ | `policies/` |
 | Co-signer service (pinned snapshots, in-flight, reservations, decision log, HTTP) | ✅ (loopback open; bearer-token auth + per-IP rate limit required off loopback) | `packages/cosigner` |
-| Conformance vectors (67) | ✅ | [`vectors/`](../vectors/README.md) |
+| Conformance vectors (181: 158 policy, of which 108 are hotel@2; 17 template; 6 statement) | ✅ | [`vectors/`](../vectors/README.md) |
 | B1 Testnet demo | ✅ D1–D11 passed (11/11) | [`b1-procurement.md`](demo/b1-procurement.md) |
 | x402 engagement purchase | ✅ via `x402-xrpl-settlement-adapter` (prepaid + exact), X1–X4 on Testnet; the reference `exact` facilitator can't carry engagement payments | [research](research/x402-multisig.md), [walkthrough](demo/x402-purchase.md) |
 | MPP engagement purchase (XRPL charge, push) | ✅ in process (5/5) via `x402-xrpl-settlement-adapter` + co-signer W7 (scheme `mpp`); live script `demo:mpp` ready; `xrpl-mpp-sdk` peers on xrpl<5 so the demo bridges the wire format | [research](research/mpp.md), [walkthrough](demo/mpp-purchase.md) |
