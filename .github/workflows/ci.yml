@@ -45,5 +45,5 @@ jobs:
           git diff --exit-code -- vectors \
             || (echo "::error::vectors/ changed after rebuild — commit the regenerated vectors" && exit 1)
 
-      - name: Dependency audit (advisory)
-        run: npm audit --audit-level=high || true
+      - name: Dependency audit
+        run: npm audit --audit-level=high
