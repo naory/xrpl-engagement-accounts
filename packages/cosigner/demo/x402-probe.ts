@@ -22,7 +22,7 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
-import { resolveTestnetEndpoint } from '@eng/core'
+import { resolveTestnetEndpoint } from '../src/index.ts'
 import { ASF_DISABLE_MASTER, accountInfo, combine, currentLedger, lookupTx, memo, multisignBlob, sendSimple, serverFees, sleep } from '../src/xrpl-io.ts'
 
 type Json = Record<string, unknown>

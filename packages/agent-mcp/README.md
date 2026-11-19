@@ -100,7 +100,7 @@ threshold), `propose_payment` to a payee outside the mandate (refused, no blob),
 
 Needs direct XRPL websocket egress. With no `XRPL_URL`, the demo tries
 `wss://testnet.xrpl-labs.com` and then `wss://s.altnet.rippletest.net:51233`
-(`resolveTestnetEndpoint` in `@eng/core`). `XRPL_URL=...` points it at Devnet or a
+(`resolveTestnetEndpoint` in `@eng/cosigner`). `XRPL_URL=...` points it at Devnet or a
 local rippled. Run it from a normal network, not a proxy-only sandbox.
 
 ## Roadmap

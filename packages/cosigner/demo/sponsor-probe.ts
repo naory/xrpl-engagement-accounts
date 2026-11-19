@@ -18,7 +18,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
-import { resolveTestnetEndpoint } from '@eng/core'
+import { resolveTestnetEndpoint } from '../src/index.ts'
 import { submit, serverFees, sleep } from '../src/xrpl-io.ts'
 import { buildSponsoredCreate, sponsorCosign, SPF_SPONSOR_FEE } from '../src/xls68.ts'
 

@@ -13,10 +13,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
-import { localSigner, resolveTestnetEndpoint, type Template } from '@eng/core'
+import { localSigner, type Template } from '@eng/core'
 import { layerHash, type PolicyDoc } from '@eng/policy'
 import {
-  CosignerService, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, HOTEL_PATHS, HotelFlow, XrplLedgerSource, hotelPathNights, hotelTerms,
+  CosignerService, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, HOTEL_PATHS, HotelFlow, XrplLedgerSource, hotelPathNights, hotelTerms, resolveTestnetEndpoint,
   type HotelCast, type HotelPath, type HotelStepResult,
 } from '../src/index.ts'
 import { ASF_DEFAULT_RIPPLE, accountInfo, currencyHex, iou, iouBalance, sendSimple, serverFees, sleep, type Fees, type SubmitResult } from '../src/xrpl-io.ts'

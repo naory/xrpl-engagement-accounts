@@ -14,10 +14,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AddressInfo } from 'node:net'
 import xrpl from 'xrpl'
-import { localSigner, parseAmount, signStatement, newNonce, resolveTestnetEndpoint, type Statement, type StatementBody, type Template } from '@eng/core'
+import { localSigner, parseAmount, signStatement, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
 import { intentHashOf, layerHash, type EngagementRecord, type PolicyDoc } from '@eng/policy'
 import {
-  CosignerService, XrplLedgerSource, createServer,
+  CosignerService, XrplLedgerSource, createServer, resolveTestnetEndpoint,
   ASF_DEFAULT_RIPPLE, ASF_DISABLE_MASTER, LSF_DISABLE_MASTER, TF_SET_NO_RIPPLE,
   accountInfo, addBatchSigner, buildOpenBatch, currencyHex, hex, iou, iouBalance, memo, sendSimple, serverFees, sleep, submit, innerResults,
 } from '@eng/cosigner'

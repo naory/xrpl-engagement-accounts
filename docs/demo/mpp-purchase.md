@@ -28,7 +28,7 @@ npm run demo:mpp
 Testnet. This page does not report a live pass: the repo has no committed
 `mpp-run-*.json` (that directory is gitignored).
 
-With no `XRPL_URL`, the script calls `resolveTestnetEndpoint` (`@eng/core`). That
+With no `XRPL_URL`, the script calls `resolveTestnetEndpoint` (`@eng/cosigner`). That
 tries `wss://testnet.xrpl-labs.com` and, if the connect fails or times out, falls
 back to `wss://s.altnet.rippletest.net:51233`. Set `XRPL_URL` to use a specific
 endpoint instead of that list.
@@ -118,7 +118,7 @@ The price in these cases is `800.00` of the fixture IOU. The network string is
 ## Live script (`npm run demo:mpp`)
 
 `b1-mpp-testnet.ts` needs `x402-xrpl-settlement-adapter` installed and a machine that
-can reach Testnet. With no `XRPL_URL`, `resolveTestnetEndpoint` tries
+can reach Testnet. With no `XRPL_URL`, `resolveTestnetEndpoint` (`@eng/cosigner`) tries
 `wss://testnet.xrpl-labs.com`, then `wss://s.altnet.rippletest.net:51233`.
 `XRPL_URL=wss://s.devnet.rippletest.net:51233` selects devnet (`xrpl:2` in the
 script). Every key is generated for that run. The account is left open; close is

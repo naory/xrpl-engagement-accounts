@@ -11,7 +11,7 @@ npm run demo:x402      # x402 engagement-account purchase (needs x402-xrpl-settl
 npm run probe:x402     # probe a hosted facilitator for engagement-account support
 ```
 
-With no `XRPL_URL`, the demo and probe scripts use `resolveTestnetEndpoint` (`@eng/core`): `wss://testnet.xrpl-labs.com`, then `wss://s.altnet.rippletest.net:51233` if that connect fails or times out. Set `XRPL_URL` to pin an endpoint, including Devnet (`XRPL_URL=wss://s.devnet.rippletest.net:51233`).
+With no `XRPL_URL`, the demo and probe scripts use `resolveTestnetEndpoint` (`@eng/cosigner`): `wss://testnet.xrpl-labs.com`, then `wss://s.altnet.rippletest.net:51233` if that connect fails or times out. Set `XRPL_URL` to pin an endpoint, including Devnet (`XRPL_URL=wss://s.devnet.rippletest.net:51233`).
 
 ## `b1-testnet.ts`: what it checks
 

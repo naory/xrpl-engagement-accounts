@@ -11,9 +11,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
-import { localSigner, parseAmount, signStatement, newNonce, resolveTestnetEndpoint, type Statement, type StatementBody, type Template } from '@eng/core'
+import { localSigner, parseAmount, signStatement, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
 import { intentHashOf, layerHash, type EngagementRecord, type PolicyDoc } from '@eng/policy'
-import { CosignerService, XrplLedgerSource, type DecideResponse } from '../src/index.ts'
+import { CosignerService, XrplLedgerSource, resolveTestnetEndpoint, type DecideResponse } from '../src/index.ts'
 import {
   ASF_DEFAULT_RIPPLE, ASF_DISABLE_MASTER, LSF_DISABLE_MASTER, TF_SET_NO_RIPPLE,
   accountInfo, addBatchSigner, buildCloseBatch, buildOpenBatch, combine, currencyHex, currentLedger, hex, inner, iou, iouBalance,
