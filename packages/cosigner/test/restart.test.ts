@@ -41,17 +41,17 @@ class Node {
     return new Node(file, ledger, await CosignerService.open(opts(ledger, store)), store)
   }
   async restart(): Promise<void> {
-    await this.svc.close()
-    await this.store.close()
+    await this.svc.close() // closes the store it was given
     this.store = await SqliteStateStore.open({ file: this.file })
     this.svc = await CosignerService.open(opts(this.ledger, this.store))
   }
-  async stop(): Promise<void> { await this.svc.close(); await this.store.close() }
+  async stop(): Promise<void> { await this.svc.close() }
 }
 
 const presign = (tx: Json, wallets = [W.dana, W.atlas]) => combine(wallets.map((w) => w.sign(structuredClone(tx) as never, true).tx_blob))
 const sweep = { to: W.dana.address, value: '0', partial: true }
 const claimCb = () => presign(hotel2Close([{ to: W.atlas.address, value: '409.94' }, { to: W.service.address, value: '2.06' }, sweep], { tickets: true, memos: [memo('eng/basis', 'default.chargebackClaim')] }))
+const releaseBlob = () => presign(hotel2Close([{ to: W.atlas.address, value: '409.94' }, { to: W.service.address, value: '2.06' }, { to: W.dana.address, value: '150' }], { tickets: true, memos: [memo('eng/basis', 'default.release')] }))
 const arbiterRuling = (t: string) => ruling(W.arbiter, [{ to: W.atlas.address, value: '470.00' }], t)
 
 /** The payouts a SIGN delivers: every Payment destination and amount in the signed blob, plus its outcome. */
@@ -167,9 +167,20 @@ describe('restart: in-flight spends (Review Focus 2)', () => {
       ledger.b1.accounts[W.engB1.address].sequence = 22
       ledger.b1.history[W.engB1.address].push({ ...historyEntry('600', '2026-11-18T09:33:05Z'), sequence: 21 })
       await node.restart()
-      await spend(node, '100', 22, 'inv:C')
+      const c = await spend(node, '100', 22, 'inv:C')
+      expect(c.decision).toBe('SIGN')
       expect(node.svc.inflightFor(B1).map((e) => e.outer.sequence)).not.toContain(21)
       expect(node.svc.engagement(B1)!.consumed).toEqual(expect.arrayContaining([invA.id]))
+      // The consumed invoice and the validated 600 survive another restart.
+      await node.restart()
+      expect(node.svc.engagement(B1)!.consumed).toEqual(expect.arrayContaining([invA.id]))
+      const replay = await node.svc.decide({ engagementId: B1, stage: 'spend', tx: pay('600', 23, 'inv:A'), statements: [invA] })
+      expect(replay.decision).toBe('REFUSE')
+      expect(replay.failing).toEqual(['W3', 'W6']) // W6: the invoice is already consumed (W3 too: the replay would exceed the cap)
+      // 9000 + 600 validated + 100 in flight leaves 300 of the 10000 cap: 400 is refused (it would fit if the 600 were lost), 300 fits.
+      const over = await spend(node, '400', 23, 'inv:D')
+      expect(over.failing).toEqual(['W3'])
+      expect((await spend(node, '300', 23, 'inv:E')).decision).toBe('SIGN')
     } finally { await node.stop() }
   })
 })
@@ -189,6 +200,29 @@ describe('restart: receipts and idempotency', () => {
       expect(node.svc.attestations(H2)).toEqual(receipts)
       expect(node.svc.statements(H2).filter((s) => s.type === 'party.dispute/1')).toEqual([first])
       expect((await node.svc.tick(H2)).map((r) => r.outcome)).toEqual(['default.chargebackClaim'])
+    } finally { await node.stop() }
+  })
+})
+
+describe('restart: quiet-tick refusal fingerprint', () => {
+  it('a quiet tick repeating the last logged refusal is not logged again after a restart', async () => {
+    const node = await Node.boot(new Ledger())
+    try {
+      const { svc, ledger } = node
+      await svc.register(hotel2Engagement(), hotel2Mandate())
+      await svc.ingest(H2, hotel2Confirmation())
+      ledger.h2.closeTime = '2026-11-11T15:01:00Z'
+      await svc.ingest(H2, checkin('checked_in'))
+      await svc.ingest(H2, guestCheckin())
+      ledger.h2 = hotel2Ledger({ balance: '562', closeTime: '2026-11-17T11:00:00Z' })
+      await svc.storePresigned(H2, 'default.release', releaseBlob())
+      const [a] = await svc.tick(H2, { quiet: true })
+      expect(a).toMatchObject({ decision: 'REFUSE', failing: ['L1'] })
+      const n = svc.decisions(H2).length
+      await node.restart()
+      const [b] = await node.svc.tick(H2, { quiet: true })
+      expect(b).toMatchObject({ decision: 'REFUSE', failing: ['L1'] })
+      expect(node.svc.decisions(H2)).toHaveLength(n)
     } finally { await node.stop() }
   })
 })
