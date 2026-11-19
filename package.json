@@ -38,7 +38,8 @@
     "pool:topup": "tsx packages/cosigner/src/pool-cli.ts topup",
     "pool:ensure": "tsx packages/cosigner/src/pool-cli.ts ensure",
     "pool:reclaim": "tsx packages/cosigner/src/pool-cli.ts reclaim",
-    "pool:gc": "tsx packages/cosigner/src/pool-cli.ts gc"
+    "pool:gc": "tsx packages/cosigner/src/pool-cli.ts gc",
+    "check-counts": "tsx scripts/check-counts.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -14,6 +14,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Offline, same flags as the local lychee 0.20.1 command. The action tag is
+      # pinned; lycheeVersion pins the binary the local check was run with.
+      - name: Link check (lychee 0.20.1, offline)
+        uses: lycheeverse/lychee-action@v2.7.0
+        with:
+          lycheeVersion: v0.20.1
+          fail: true
+          checkbox: false
+          output: /tmp/lychee.md
+          args: "--offline --include-fragments --exclude-path node_modules --no-progress '**/*.md'"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22.12.0"
@@ -24,13 +35,21 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # The JSON reporter is only so check-counts can read numTotalTests.
+      # The suite still runs once. x402 and MPP stay on their own steps.
       - name: Test (core, policy, co-signer, vectors)
-        run: npm test
+        run: npm test -- --reporter=default --reporter=json --outputFile=.vitest-report.json
 
-      - name: Validate templates (V1–V12)
+      - name: Check documented counts
+        run: npm run check-counts
+        env:
+          VITEST_JSON: .vitest-report.json
+
+      - name: Validate templates (V1–V15)
         run: npm run validate-templates
 
-      - name: Lint policies (L1–L7)
+      # Implemented rules are L1–L3, L5 and L7–L9. L4 and L6 are not implemented.
+      - name: Lint policies (L1–L3, L5, L7–L9)
         run: npm run lint-policies
 
       - name: x402 + MPP adapter integration

@@ -12,9 +12,19 @@ Requires **Node ≥ 22.12**.
 npm install
 npm test                 # core, policy, co-signer, conformance vectors
 npm run typecheck
-npm run validate-templates   # V1–V12 over templates/*.json
-npm run lint-policies        # L1–L8 over policies/*.json (L8: every rule has a plain-English title and message)
+npm run validate-templates   # V1–V15 over templates/*.json
+npm run lint-policies        # L1–L3, L5, L7–L9 over policies/*.json (L4 and L6 are not implemented)
+npm run check-counts         # documented test and vector counts match the repo
 ```
+
+Each documented count is written once. The marker is the comment
+`<!-- count:NAME -->`, then the digits, then `<!-- /count -->`.
+`npm run check-counts` compares those markers with the repo. The
+default-suite total is on the `npm test` line in the README. The vector
+counts are in [`vectors/README.md`](vectors/README.md). The `tests`
+marker is `npm test` only. `test:x402` and `test:mpp` are separate
+suites. When `vitest.sweep.config.ts` is present, those tests are their
+own marker (`tests-sweep`) and are not part of `tests`.
 
 The x402 demo and its test depend on `x402-xrpl-settlement-adapter` (a
 devDependency, installed by `npm install`):

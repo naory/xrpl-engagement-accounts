@@ -43,7 +43,7 @@ Which use cases from the [catalog](use-cases/catalog.md) the project supports, a
 | Policy engine `cel-eng/1`, attestation pipeline, lint | ✅ | `packages/policy` |
 | Baseline B1–B11, procurement (incl. W7 x402-challenge binding), hotel, and consumer-shopping (R2) policies | ✅ | `policies/` |
 | Co-signer service (pinned snapshots, in-flight, reservations, decision log, HTTP) | ✅ (loopback open; bearer-token auth + per-IP rate limit required off loopback) | `packages/cosigner` |
-| Conformance vectors (181: 158 policy, of which 108 are hotel@2; 17 template; 6 statement) | ✅ | [`vectors/`](../vectors/README.md) |
+| Conformance vectors | ✅ | counts in [`vectors/README.md`](../vectors/README.md) |
 | B1 Testnet demo | ✅ D1–D11 passed (11/11) | [`b1-procurement.md`](demo/b1-procurement.md) |
 | x402 engagement purchase | ✅ via `x402-xrpl-settlement-adapter` (prepaid + exact), X1–X4 on Testnet; the reference `exact` facilitator can't carry engagement payments | [research](research/x402-multisig.md), [walkthrough](demo/x402-purchase.md) |
 | MPP engagement purchase (XRPL charge, push) | ✅ in process (5/5) via `x402-xrpl-settlement-adapter` + co-signer W7 (scheme `mpp`); live script `demo:mpp` ready; `xrpl-mpp-sdk` peers on xrpl<5 so the demo bridges the wire format | [research](research/mpp.md), [walkthrough](demo/mpp-purchase.md) |

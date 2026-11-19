@@ -248,7 +248,7 @@ xrpl-engagement-accounts/
 ├── templates/           # hotel@1.json, hotel@2.json, procurement@1.json, shopping@1.json
 ├── policies/            # baseline@1.1.0, hotel@1.1.0, hotel@2.0.0, procurement@1.3.0, shopping@1.0.0
 ├── norms/               # hotel@1.json (pre-booking norms profile)
-├── vectors/             # 181 conformance vectors: 158 policy (108 hotel@2), 17 template, 6 statement
+├── vectors/             # conformance vectors (counts in vectors/README.md)
 ├── docs/
 │   ├── SCOPE.md         # supported use cases by tier, component status
 │   ├── pool.md
@@ -266,7 +266,7 @@ Stack: TypeScript (Node ≥ 22.12, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-ke
 
 ```bash
 npm install
-npm test                    # 603 tests: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.12)
+npm test                    # <!-- count:tests -->603<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.12). Not counted here: test:x402, test:mpp, and tests a sweep config excludes.
 npm run typecheck
 npm run validate-templates  # V1–V15 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)
 npm run lint-policies       # L1–L3, L5, L7–L9 for policies/*.json against their templates (L4 and L6 are not implemented)
@@ -293,7 +293,7 @@ npm run demo:privy          # same agent + co-signer flow with the co-signer key
 - **`cel-eng/1` policy engine:** Amount type, attestation pipeline, layered policies, definitions, cost budget, decision records, lint ([`packages/policy`](packages/policy), [spec](docs/spec/policy.md)).
 - **Baseline B1–B11** + procurement (W0–W7, including the x402 **W7** challenge binding), hotel, and consumer-shopping (R2) policies ([`policies/`](policies)).
 - **Co-signer service** ([`packages/cosigner`](packages/cosigner)): each decision reads the ledger at one pinned validated index; in-flight payments count toward rolling caps and single-use approvals are reserved while in flight; requests per engagement are serialised; every decision is a signed `cosigner.decision/1` record; advisory stages get a decision but no signature; HTTP API with bearer-token auth and per-IP rate limiting (required off loopback), readiness/liveness probes, and a `SignerProvider` seam for Privy or HSM/KMS custody.
-- **Conformance vectors:** 181 — 158 policy (108 hotel@2), 17 template, 6 statement ([`vectors/`](vectors/README.md)).
+- **Conformance vectors** — the case counts are in [`vectors/README.md`](vectors/README.md).
 - **R2 consumer-shopping scenario** — a second scenario on the **same owner-wallet engine** as B1: a weekly spend cap + a `merchant.category/1` classifier allowlist, with the rail-neutral payment-challenge binding reused. New `owner-wallet/shopping@1` template + `pol_shopping@1.0.0`, fixtures, and 9 conformance vectors. (Policy + vectors; no separate live Testnet run.)
 - **B1 procurement agent — live on Testnet, 11/11** (D1–D11): in-policy spends, approval bound to the payment intent, in-flight race, daily cap, consumed-statement replay, non-vendor payee, agent-alone `tefBAD_QUORUM`, smuggled `SetRegularKey`, and the owner-alone sweep + `AccountDelete`. Walkthrough: [`docs/demo/b1-procurement.md`](docs/demo/b1-procurement.md).
 - **x402 engagement purchase — live on Testnet, 4/4** (X1–X4). Settlement adapter [`x402-xrpl-settlement-adapter`](https://www.npmjs.com/package/x402-xrpl-settlement-adapter) published (0.3.0), `prepaid` + `exact` schemes, co-signer **W7** binding the co-signature to the merchant's x402 challenge. Walkthrough: [`docs/demo/x402-purchase.md`](docs/demo/x402-purchase.md).
