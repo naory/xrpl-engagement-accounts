@@ -328,7 +328,7 @@
     <select id="scenario">
       <option value="procurement">Procurement agent — owner wallet</option>
       <option value="hotel">Hotel stay — Research (hotel@2)</option>
-      <option value="bond">Bonded marketplace — Research</option>
+      <option value="bond">Bonded marketplace — collateral &amp; slashing</option>
       <option value="x402">x402 metered purchase — pay-per-use</option>
       <option value="mpp">MPP push payment — Stripe/Tempo rail</option>
     </select>
@@ -492,7 +492,7 @@
       signers:[{role:"agent",weight:2,as:"seller's delegate",note:"the seller stakes the bond and delegated signing to this agent"},{role:"buyer",weight:2},{role:"arbiter",weight:3},{role:"cosigner",weight:1}],
       quorum:5, quorumText:"5 of 8 weight",
       solo:"The seller can’t reclaim its own bond alone (weight 2 < 5). It comes back only when the buyer agrees, or the arbiter rules — the whole point of a bond.",
-      kind:"escrow", research:true,
+      kind:"escrow",
       actions:[
         {id:"release", title:"Deal delivered → release the bond", sub:"seller’s agent + buyer + co-signer return it", path:"bond_release", settles:true},
         {id:"slash", title:"Buyer harmed → arbiter slashes 70%", sub:"arbiter + buyer compensate the buyer", path:"bond_slash", settles:true},
