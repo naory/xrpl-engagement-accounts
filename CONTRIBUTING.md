@@ -55,6 +55,7 @@ change `vectors/` without it being committed.
 
 - Add or update tests with every behaviour change; policy changes need
   conformance-vector coverage.
+- When you add or remove tests or vectors, update the matching count marker. `npm run check-counts` checks it.
 - The whole default suite must pass (`npm test`) and typecheck cleanly.
 - Keys and seeds in tests are **test-only**, derived from public strings. Never
   commit a real key or seed, and never fund a fixture account.

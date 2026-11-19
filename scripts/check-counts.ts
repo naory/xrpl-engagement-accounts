@@ -215,7 +215,7 @@ function main(): void {
     }
     const hit = list[0]
     if (list.length === 1 && hit && !Number.isNaN(hit.value) && hit.value !== exp.value) {
-      problems.push(`${hit.file}:${hit.line}: count:${name} documents ${hit.value}, actual is ${exp.value} (${exp.how})`)
+      problems.push(`${hit.file}:${hit.line} count:${name} documents ${hit.value}, actual ${exp.value} -> update ${hit.file}:${hit.line} to ${exp.value}`)
     }
   }
 
