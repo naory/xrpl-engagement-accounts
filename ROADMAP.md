@@ -4,12 +4,12 @@ Forward plan for **xrpl-engagement-accounts**. What's built and verified lives i
 [README §12 "Built and verified"](README.md#12-roadmap) (B1 live on Testnet 11/11, x402 purchase
 4/4, hotel stay escrow 17/17, ledger mechanics 21/21, co-signer, policies, vectors, the published
 settlement adapter).
-This file tracks what's next, highest-leverage first.
+This file tracks what's next, highest-leverage first. Hotel, bonds, group pots and consumer use cases are [Research](#research). Procurement, x402 and MPP stay the product path.
 
 ## Next
 
 1. **Scenario-1 validation.** 5–10 conversations with XRPL institutions / agent-platform builders
-   on the bounded-agent-wallet, and one marketplace on bonds.
+   on the bounded-agent-wallet, and one marketplace on bonds ([Research](#research)).
 2. **Security test matrix.** Turn the README threat-model rows into explicit negative
    vectors/tests (building on D8/D10-style cases), ahead of an external review.
 3. **Adapter: `verifyExactPayload` unfunded-signer + `lsfDisableMaster` tests.** Align the reference
@@ -18,30 +18,13 @@ This file tracks what's next, highest-leverage first.
    `RegularKey` equals its address), from the t54 review. Feeds the upstream amendment's conformance
    set.
 
-Hotel stay → production-ready (the flow itself is built and live; these close its known gaps):
-
-- **Automatic endings return extra money to the guest** *(in progress)*. Pre-signed defaults are
-  signed for an exact balance, so any extra RLUSD (a partial deposit, stray funds) jams them. Each
-  ending sweeps the remainder back to the guest instead; a partial deposit then ends like real life —
-  no keys, a no-show, the partial deposit returned.
-- **Persistent co-signer state.** Receipts, stored statements and pre-signed defaults are in memory;
-  a restart drops them, so a restarted co-signer could complete a default over a claim it had
-  receipted. Needs a persistent store and a restart test.
-- **Outside accreditation bodies for arbiters.** Today the engagement service is the only accreditor
-  (`ENG/ARBITER`, `arbiterIssuers`); recognising outside bodies is an assumption to revisit with a real
-  business.
-- **Replacing a lapsed arbiter.** The backup arbiter is gone and a SignerList change needs quorum, so a
-  deal whose accreditation lapses mid-stay cannot swap arbiters; chargeback defaults cover silence only.
-- **Chargeback parameters.** Ruling window, split, 14-night cap and bond return are demo assumptions
-  pending a real business.
-
 Demo and agent tooling:
 
 - **`review_deal` MCP tool** — expose the pre-booking check (`dealTerms` + `checkNorms`) to any
   agent through `packages/agent-mcp`.
-- **Honest simulated mode everywhere.** The Hotel stay scenario replays real co-signer decisions;
+- **Honest simulated mode everywhere.** The Hotel stay scenario ([Research](#research)) replays real co-signer decisions;
   procurement, x402 and MPP still use hand-written simulated decisions, and the bonded-marketplace
-  scenario has no policy behind it.
+  scenario ([Research](#research)) has no policy behind it.
 - **Privy authorization key, live.** Verify the generated `privy-authorization-signature` against a
   Privy app that enforces it (mock-tested only so far).
 
@@ -51,10 +34,37 @@ Product build-out already queued:
 - **Indexer** — settlements → reputation records (reviews, rulings, bonds).
 - **x402 `engagement` scheme + facilitator** — verify `Signers` against the SignerList at a pinned
   ledger.
-- **Collateral bonds** — bond template + slashing by arbiter + harmed party; bond size as a trust
-  signal.
+
+## Research
+
+**Research: designed and tested on Testnet, not maintained for production or new features.**
+
+Hotel uses that sentence in full. Bonds, group pots and consumer use cases use the same Research label, and are not maintained for production or new features. Procurement, x402 and MPP stay the product path.
+
+**Hotel is frozen.** `settlement-vault/hotel@2` and the Hotel stay scenario in the web demo (`packages/web`) are Research. The stay was designed and run on Testnet (Done, below, records 17/17). **Process rule: no new hotel features are merged.**
+
+Known research issue — reserve at the 14-night cap. `npm run validate-templates` reports `tickets needed: 109, reserve: 23.2 XRP` for `settlement-vault/hotel@2`. The validator counts every pre-signed outcome, including 13 stay-chargeback variants (`templates/hotel@2.json` sets `default.chargebackStay.variants.max` to 13). A one-night stay books 31 Tickets and a 14-night stay books 109 (`packages/cosigner/test/hotel-flow.test.ts`). Reserve is 1 XRP plus 0.2 XRP for the trust line, the signer list and each Ticket (`packages/core/src/template.ts`), which is 23.2 XRP at 109 Tickets. The template check allows 25 XRP of pre-create funding for that reserve plus fee headroom (`packages/core/src/cli.ts`).
+
+The remainder sweep is already in `hotel@2`: `default.noshowSweep` and the other automatic endings return extra funds to the guest. It is not an open item under this freeze.
+
+These limits stay notes under the freeze:
+
+- **Co-signer state is in memory.** Receipts and pre-signed defaults are maps on the engagement (`packages/cosigner/src/service.ts`). A restart drops them, so a restarted co-signer could complete a default over a claim it had receipted.
+- **Accreditation issuer is a placeholder.** `pol_hotel@2.0.0` sets `arbiterIssuers` to `rArbiterAccreditorPlaceholderXXXXXX`. The chargeback design assumes that issuer is the engagement service. Recognising outside bodies remains an assumption.
+- **A lapsed arbiter is not replaced.** The backup arbiter is gone and a SignerList change needs quorum, so a deal whose accreditation lapses mid-stay cannot swap arbiters. Chargeback defaults cover silence only.
+- **Chargeback parameters.** Ruling window, split, 14-night cap and bond return are demo assumptions pending a real business.
+
+**Bonds** are Research: catalog card B5 and the bonded-marketplace scenario in `packages/web`. No bond template is in `templates/`. The web scenario has no bond policy (Demo and agent tooling, above).
+
+**Group pots** are Research: catalog card R7, the group trip kitty. No group-pot template is in `templates/`.
+
+**Consumer use cases** are Research: catalog cards R2–R6, including personal shopping on `owner-wallet/shopping@1`. R2 has a template, a policy and vectors. A separate consumer Testnet demo is not recorded here.
+
+The same label is in [`docs/SCOPE.md`](docs/SCOPE.md#product-status) and on the Hotel stay and bonded-marketplace scenarios in the web demo.
 
 ## Research track
+
+Ledger and rail notes for MPP, Smart Escrows, sponsored reserves and on-ledger cosign. MPP stays an agent-commerce path. The product label is the [Research](#research) section above.
 
 - **MPP + Open Wallet Standard** — [docs/research/mpp.md](docs/research/mpp.md). MPP settles via the
   reference SDK (decided); the OWS remote-policy question is answered ([ows.md](docs/research/ows.md)).
@@ -62,6 +72,8 @@ Product build-out already queued:
   [README §14](README.md#14-future-research), [docs/research/cosign.md](docs/research/cosign.md).
 
 ## Done (recent)
+
+Hotel entries below are the record of what was built. Their product status is [Research](#research), and no new hotel features are merged.
 
 - **Accredited arbiter and chargeback-style defaults — live on Testnet 17/17.** The backup arbiter is
   removed (guest 3, hotel 3, arbiter 4, co-signer 2, quorum 7). The arbiter must hold an accepted
@@ -87,13 +99,13 @@ Product build-out already queued:
 - **Privy custody hardening.** Authorization keys sign every `raw_sign` request
   (`PRIVY_AUTHORIZATION_KEY`), and Privy-held keys can enrol in `eng.provision/1` by
   proof-of-possession through a `Signer`.
-- **End-to-end web demo + provisioning protocol.** A single page ([`packages/web`](packages/web)) that provisions an engagement account, opens it on-ledger, and drives the agent through the policy co-signer — settling in-policy payments and blocking the rest. A template dropdown adds more scenarios — **escrow with arbiter** (since replaced by **Hotel stay**, above), a **bonded marketplace** (the seller stakes a collateral bond; delivery returns it, harm lets the arbiter slash it to the buyer), **x402 metered purchase** (the co-signer's W7 rule binds each payment to the merchant's challenge, so it can't be redirected or replayed), and **MPP push payment** on the Stripe/Tempo rail (the same rail-neutral W7 binding) — proving one governed account works across agentic-payment rails. It runs **simulated** (a shareable artifact (no backend)) and **live** on Testnet (`npm run web`: real provisioning, real multisigned payments, explorer links). Underneath it is `eng.provision/1` ([`packages/provisioning`](packages/provisioning)): non-custodial signer enrolment by proof-of-possession — each signer proves control of its key (pubkey derives to address + challenge signature verifies), the coordinator assembles the SignerList + engagement record, the owner opens. Core + HTTP + 6 tests; full suite 174/174.
+- **End-to-end web demo + provisioning protocol.** A single page ([`packages/web`](packages/web)) that provisions an engagement account, opens it on-ledger, and drives the agent through the policy co-signer — settling in-policy payments and blocking the rest. A template dropdown adds more scenarios — **escrow with arbiter** (since replaced by **Hotel stay**, above; [Research](#research)), a **bonded marketplace** ([Research](#research); the seller stakes a collateral bond; delivery returns it, harm lets the arbiter slash it to the buyer), **x402 metered purchase** (the co-signer's W7 rule binds each payment to the merchant's challenge, so it can't be redirected or replayed), and **MPP push payment** on the Stripe/Tempo rail (the same rail-neutral W7 binding) — proving one governed account works across agentic-payment rails. It runs **simulated** (a shareable artifact (no backend)) and **live** on Testnet (`npm run web`: real provisioning, real multisigned payments, explorer links). Underneath it is `eng.provision/1` ([`packages/provisioning`](packages/provisioning)): non-custodial signer enrolment by proof-of-possession — each signer proves control of its key (pubkey derives to address + challenge signature verifies), the coordinator assembles the SignerList + engagement record, the owner opens. Core + HTTP + 6 tests; full suite 174/174.
 - **Agent-side MCP tool** ([packages/agent-mcp](packages/agent-mcp)). An MCP server exposing four tools to an AI agent — `propose_payment` (the agent signs, the co-signer evaluates and on `SIGN` returns its signature, the two combine into a quorum blob), `submit_payment`, `pay_vendor`, and `engagement_status`. The agent's `SignerList` key sits below quorum, so it can never move funds alone; broadcasting is fail-closed (off unless `XRPL_URL` + `AGENT_ALLOW_SUBMIT=1`). The transport-free core (`Decider`/`Chain` seams) is driven in tests against the real co-signer both in-process and over its HTTP API; full suite 168/168. Makes the whole design usable by any MCP-speaking agent runtime.
 - **R2 consumer-shopping scenario.** A second scenario on the same owner-wallet engine as B1 —
   weekly cap + a `merchant.category/1` classifier allowlist, with the rail-neutral payment-challenge
   binding (SH5) reused. New `owner-wallet/shopping@1` template + `pol_shopping@1.0.0`, fixtures, and
   9 conformance vectors (50 policy / 11 template total); full suite 162/162, lint + validate green.
-  Proves the engine generalizes beyond procurement.
+  Proves the engine generalizes beyond procurement. Product status: [Research](#research).
 - **x402 `exact` multisig upstream proposal — drafted.** A backward-compatible
   amendment to the XRPL `exact` scheme adding normative offline `Signers`/SignerList/quorum
   verification (aligned with `rippled`'s `checkMultiSign`), with the adapter's `verifyExactPayload` as

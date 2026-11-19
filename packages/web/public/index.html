@@ -68,6 +68,9 @@
   select{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--fg);background:var(--panel);
     border:1px solid var(--line);border-radius:10px;padding:9px 12px;cursor:pointer;min-width:220px}
   select:hover{border-color:var(--accent)}
+  .research-note{margin:0 0 14px;max-width:70ch;font-size:14px;line-height:1.45;font-weight:600;
+    color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);
+    border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);border-radius:10px;padding:9px 12px}
 
   .hero h1{font-size:clamp(22px,4.2vw,32px);font-weight:700;letter-spacing:-.02em}
   .hero h1 em{font-style:normal;color:var(--accent)}
@@ -324,8 +327,8 @@
     <label for="scenario">Template</label>
     <select id="scenario">
       <option value="procurement">Procurement agent — owner wallet</option>
-      <option value="hotel">Hotel stay — escrow with arbiter (hotel@2)</option>
-      <option value="bond">Bonded marketplace — collateral &amp; slashing</option>
+      <option value="hotel">Hotel stay — Research (hotel@2)</option>
+      <option value="bond">Bonded marketplace — Research</option>
       <option value="x402">x402 metered purchase — pay-per-use</option>
       <option value="mpp">MPP push payment — Stripe/Tempo rail</option>
     </select>
@@ -414,6 +417,7 @@
   if (LIVE){ modeEl.classList.add("live"); $("#modeLabel").textContent = "Live · XRPL Testnet"; }
 
   // ---- scenarios ----------------------------------------------------------
+  var RESEARCH = "Research: designed and tested on Testnet, not maintained for production or new features.";
   var SCENARIOS = {
     procurement: {
       id:"procurement", label:"Procurement agent",
@@ -457,7 +461,7 @@
       signers:[{role:"principal",weight:3,as:"guest"},{role:"counterparty",weight:3,as:"hotel"},{role:"arbiter",weight:4},{role:"cosigner",weight:2}],
       quorum:7, quorumText:"7 of 12 weight",
       solo:"Guest + hotel is weight 6, arbiter + co-signer is 6 — both below the quorum of 7. Every close needs the co-signer, or the arbiter with one party.",
-      kind:"hotel",
+      kind:"hotel", research:true,
       actions:[
         {id:"happy", title:"Happy stay", sub:"confirm → check-in + deposit → minibar claim → guest settles", path:"happy", shows:"Everything goes to plan. After checkout the hotel claims for the minibar from the deposit; the guest accepts and leaves a review, so guest, hotel and co-signer settle together."},
         {id:"unconfirmed", title:"Hotel never confirms", sub:"the pre-signed refund fires", path:"unconfirmed", shows:"The hotel never confirms the booking in time. Nobody has to do anything: the guest’s money comes back automatically."},
@@ -488,7 +492,7 @@
       signers:[{role:"agent",weight:2,as:"seller's delegate",note:"the seller stakes the bond and delegated signing to this agent"},{role:"buyer",weight:2},{role:"arbiter",weight:3},{role:"cosigner",weight:1}],
       quorum:5, quorumText:"5 of 8 weight",
       solo:"The seller can’t reclaim its own bond alone (weight 2 < 5). It comes back only when the buyer agrees, or the arbiter rules — the whole point of a bond.",
-      kind:"escrow",
+      kind:"escrow", research:true,
       actions:[
         {id:"release", title:"Deal delivered → release the bond", sub:"seller’s agent + buyer + co-signer return it", path:"bond_release", settles:true},
         {id:"slash", title:"Buyer harmed → arbiter slashes 70%", sub:"arbiter + buyer compensate the buyer", path:"bond_slash", settles:true},
@@ -633,7 +637,8 @@
   // ---- render context -----------------------------------------------------
   function renderScenario(){
     var scn = S.scn;
-    $("#hero").innerHTML = "<h1>"+scn.heroTitle+"</h1><p>"+esc(scn.heroText)+' <button class="moreinfo" id="moreInfo">More info →</button></p>';
+    var note = scn.research ? '<p class="research-note">'+esc(RESEARCH)+'</p>' : "";
+    $("#hero").innerHTML = note + "<h1>"+scn.heroTitle+"</h1><p>"+esc(scn.heroText)+' <button class="moreinfo" id="moreInfo">More info →</button></p>';
     $("#moreInfo").addEventListener("click", function(){ openModal(scn); });
     $("#mandateTitle").textContent = scn.mandateTitle;
     var mc = $("#mandate"); mc.innerHTML = "";
@@ -1279,7 +1284,8 @@
   function openModal(scn){
     $("#modalTitle").textContent = scn.label;
     var parties = (scn.parties||[]).map(function(p){ return '<div class="modal-party"><div class="pr">'+esc(p.role)+'</div><div class="pd">'+esc(p.desc)+'</div></div>'; }).join("");
-    $("#modalBody").innerHTML =
+    var note = scn.research ? '<section><h3>Status</h3><p>'+esc(RESEARCH)+'</p></section>' : "";
+    $("#modalBody").innerHTML = note +
       '<section><h3>What it proves</h3><p>'+esc(scn.proves)+'</p></section>' +
       '<section><h3>The parties</h3><div class="modal-parties">'+parties+'</div></section>' +
       '<section><h3>How it differs from an embedded wallet policy (e.g. Privy)</h3>'+COSIGNER_HTML+'</section>';
