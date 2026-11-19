@@ -1,4 +1,6 @@
 node_modules/
+# JSON reporter from `npm test -- --reporter=json` (input to scripts/check-counts.ts)
+.vitest-report.json
 .DS_Store
 *.log
 .env
