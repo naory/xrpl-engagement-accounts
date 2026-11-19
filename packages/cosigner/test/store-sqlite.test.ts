@@ -22,41 +22,65 @@ runStoreContract('sqlite', async () => {
 describe('SqliteStateStore lease', () => {
   it('a second open on the same file rejects STORE_LOCKED', async () => {
     const file = newFile()
-    const a = await SqliteStateStore.open({ file, ownerId: 'a' })
-    await expect(SqliteStateStore.open({ file, ownerId: 'b' })).rejects.toThrow(/STORE_LOCKED/)
+    const a = await SqliteStateStore.open({ file })
+    await expect(SqliteStateStore.open({ file })).rejects.toThrow(/STORE_LOCKED/)
     await a.close()
   })
 
   it('opens after the holder closes', async () => {
     const file = newFile()
-    const a = await SqliteStateStore.open({ file, ownerId: 'a' })
+    const a = await SqliteStateStore.open({ file })
     await a.close()
-    const b = await SqliteStateStore.open({ file, ownerId: 'b' })
+    const b = await SqliteStateStore.open({ file })
     await b.close()
   })
 
   it('opens over a stale heartbeat', async () => {
     const file = newFile()
-    const a = await SqliteStateStore.open({ file, ownerId: 'a', leaseMs: 15000 })
+    const a = await SqliteStateStore.open({ file, leaseMs: 15000 })
     const raw = new Database(file)
     raw.prepare("update meta set value = ? where key = 'lease.heartbeat'").run(String(Date.now() - 60000))
     raw.close()
-    const b = await SqliteStateStore.open({ file, ownerId: 'b', leaseMs: 15000 })
+    const b = await SqliteStateStore.open({ file, leaseMs: 15000 })
     await b.close()
     await a.close() // must not clear b's (already cleared) lease or throw
   })
 
-  it('the same owner may reopen without waiting', async () => {
+  it('a second open from the same process is refused while the first is live, and the first keeps working', async () => {
     const file = newFile()
-    const a = await SqliteStateStore.open({ file, ownerId: 'a' })
-    const a2 = await SqliteStateStore.open({ file, ownerId: 'a' })
-    await a2.close()
+    const a = await SqliteStateStore.open({ file })
+    await expect(SqliteStateStore.open({ file })).rejects.toThrow(/STORE_LOCKED/)
+    await a.transaction(async (tx) => { await tx.setMeta('k', 'v') })
+    expect((await a.loadAll()).meta).toEqual({ k: 'v' })
     await a.close()
+  })
+
+  it('concurrent opens: exactly one wins', async () => {
+    const file = newFile()
+    const rs = await Promise.allSettled([SqliteStateStore.open({ file }), SqliteStateStore.open({ file })])
+    expect(rs.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    const lost = rs.find((r) => r.status === 'rejected') as PromiseRejectedResult
+    expect(String(lost.reason)).toMatch(/STORE_LOCKED/)
+    for (const r of rs) if (r.status === 'fulfilled') await r.value.close()
+  })
+
+  it('a store that lost its lease rejects later transactions with STORE_LOCKED', async () => {
+    const file = newFile()
+    const a = await SqliteStateStore.open({ file })
+    const raw = new Database(file)
+    raw.prepare("update meta set value = ? where key = 'lease.heartbeat'").run(String(Date.now() - 60000))
+    raw.close()
+    const b = await SqliteStateStore.open({ file })
+    await a.renewNow()
+    await expect(a.transaction(async (tx) => { await tx.setMeta('k', 'v') })).rejects.toThrow(/STORE_LOCKED/)
+    await a.close() // must not release b's lease
+    await expect(SqliteStateStore.open({ file })).rejects.toThrow(/STORE_LOCKED/)
+    await b.close()
   })
 
   it('renews the heartbeat while open, and keeps lease rows out of loadAll().meta', async () => {
     const file = newFile()
-    const a = await SqliteStateStore.open({ file, ownerId: 'a', leaseMs: 60 })
+    const a = await SqliteStateStore.open({ file, leaseMs: 60 })
     const read = (): number => {
       const raw = new Database(file, { readonly: true })
       try { return Number((raw.prepare("select value from meta where key = 'lease.heartbeat'").get() as { value: string }).value) } finally { raw.close() }

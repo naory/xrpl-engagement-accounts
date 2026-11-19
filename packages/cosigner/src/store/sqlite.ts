@@ -24,59 +24,54 @@ const LEASE_OWNER = 'lease.owner'
 const LEASE_HEARTBEAT = 'lease.heartbeat'
 const isLeaseKey = (k: string): boolean => k === LEASE_OWNER || k === LEASE_HEARTBEAT
 
-export interface SqliteStoreOptions { file: string; ownerId?: string; leaseMs?: number }
+export interface SqliteStoreOptions { file: string; leaseMs?: number }
 
 /** Durable StateStore on SQLite (Kysely + better-sqlite3), guarded by a single-owner heartbeat lease. */
 export class SqliteStateStore implements StateStore {
   private queue: Promise<unknown> = Promise.resolve()
   private timer: ReturnType<typeof setInterval> | undefined
   private closed = false
+  private lost = false
 
-  private constructor(private readonly db: Kysely<Tables>, private readonly ownerId: string, private readonly leaseMs: number) {}
+  private constructor(private readonly db: Kysely<Tables>, private readonly token: string) {}
 
   static async open(o: SqliteStoreOptions): Promise<SqliteStateStore> {
-    const ownerId = o.ownerId ?? randomUUID()
+    const token = randomUUID() // per-instance lease token: two opens never share ownership
     const leaseMs = o.leaseMs ?? 15000
     const sqlite = new Database(o.file, { timeout: 5000 }) // busy_timeout
     sqlite.pragma('journal_mode = WAL')
+    sqlite.pragma('synchronous = FULL')
     const db = new Kysely<Tables>({ dialect: new SqliteDialect({ database: sqlite }) })
     try {
-      const { error } = await new Migrator({ db, provider: migrationProvider }).migrateToLatest()
-      if (error) throw error
-      await db.transaction().execute(async (trx) => {
-        const rows = await trx.selectFrom('meta').select(['key', 'value']).where('key', 'in', [LEASE_OWNER, LEASE_HEARTBEAT]).execute()
-        const get = (k: string): string | undefined => rows.find((r) => r.key === k)?.value
-        const owner = get(LEASE_OWNER)
-        const beat = Number(get(LEASE_HEARTBEAT) ?? 0)
-        if (owner !== undefined && owner !== ownerId && beat > Date.now() - leaseMs) {
-          throw new Error(`STORE_LOCKED: ${o.file} is held by another owner (${owner})`)
-        }
-        await upsertMeta(trx, LEASE_OWNER, ownerId)
-        await upsertMeta(trx, LEASE_HEARTBEAT, String(Date.now()))
-      })
+      await migrate(db)
+      await claimLease(db, token, leaseMs, o.file)
     } catch (e) {
       await db.destroy()
       throw e
     }
-    const store = new SqliteStateStore(db, ownerId, leaseMs)
-    store.timer = setInterval(() => { void store.renew() }, Math.max(1, Math.floor(leaseMs / 3)))
+    const store = new SqliteStateStore(db, token)
+    store.timer = setInterval(() => { void store.renewNow() }, Math.max(1, Math.floor(leaseMs / 3)))
     store.timer.unref()
     return store
   }
 
-  private async renew(): Promise<void> {
-    if (this.closed) return
+  /** Extend the lease if we still hold it; otherwise mark the store lease-lost (all later transactions reject). */
+  async renewNow(): Promise<void> {
+    if (this.closed || this.lost) return
     try {
-      // Only extend a lease we still own.
-      await this.db.updateTable('meta').set({ value: String(Date.now()) })
+      const r = await this.db.updateTable('meta').set({ value: String(Date.now()) })
         .where('key', '=', LEASE_HEARTBEAT)
-        .where(({ exists, selectFrom }) => exists(selectFrom('meta').select('key').where('key', '=', LEASE_OWNER).where('value', '=', this.ownerId)))
-        .execute()
-    } catch { /* store closing or transient busy: next tick retries */ }
+        .where(({ exists, selectFrom }) => exists(selectFrom('meta').select('key').where('key', '=', LEASE_OWNER).where('value', '=', this.token)))
+        .executeTakeFirst()
+      if (Number(r.numUpdatedRows) === 0) this.lost = true
+    } catch {
+      this.lost = true
+    }
   }
 
   transaction<T>(fn: (tx: StoreTx) => Promise<T>): Promise<T> {
     const run = async (): Promise<T> => {
+      if (this.lost) throw new Error('STORE_LOCKED: lease lost to another owner')
       const live = { open: true }
       try {
         return await this.db.transaction().execute(async (trx) => fn(guard(txFor(trx), live)))
@@ -128,10 +123,38 @@ export class SqliteStateStore implements StateStore {
     try {
       // Release the lease only if we still hold it.
       const owner = await this.db.selectFrom('meta').select('value').where('key', '=', LEASE_OWNER).executeTakeFirst()
-      if (owner?.value === this.ownerId) await this.db.deleteFrom('meta').where('key', 'in', [LEASE_OWNER, LEASE_HEARTBEAT]).execute()
+      if (owner?.value === this.token && !this.lost) await this.db.deleteFrom('meta').where('key', 'in', [LEASE_OWNER, LEASE_HEARTBEAT]).execute()
     } finally {
       await this.db.destroy()
     }
+  }
+}
+
+/** Run migrations; a concurrent opener may have applied them first, so retry (a re-run sees them applied). */
+async function migrate(db: Kysely<Tables>): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const { error } = await new Migrator({ db, provider: migrationProvider }).migrateToLatest()
+    if (!error) return
+    if (attempt >= 3) throw error
+  }
+}
+
+/** Atomic claim: one conditional upsert on the heartbeat row succeeds only if no row exists or it is stale. */
+async function claimLease(db: Kysely<Tables>, token: string, leaseMs: number, file: string): Promise<void> {
+  const locked = (): Error => new Error(`STORE_LOCKED: ${file} is held by another owner`)
+  const now = Date.now()
+  try {
+    await db.transaction().execute(async (trx) => {
+      const r = await trx.insertInto('meta').values({ key: LEASE_HEARTBEAT, value: String(now) })
+        .onConflict((oc) => oc.column('key').doUpdateSet({ value: String(now) })
+          .where((eb) => eb(eb.cast<number>(eb.ref('meta.value'), 'bigint'), '<', now - leaseMs)))
+        .executeTakeFirst()
+      if (Number(r.numInsertedOrUpdatedRows ?? 0) === 0) throw locked()
+      await upsertMeta(trx, LEASE_OWNER, token)
+    })
+  } catch (e) {
+    if (e instanceof Error && /SQLITE_BUSY|database is locked/i.test(`${(e as { code?: string }).code ?? ''} ${e.message}`)) throw locked()
+    throw e
   }
 }
 
