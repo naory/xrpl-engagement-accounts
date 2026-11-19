@@ -12,3 +12,4 @@ export { createServer, loadLibrary, serverOptionsFromEnv, type ServerOptions } f
 export { HotelFlow, HOTEL_PATHS, DEMO_HOTEL_TIMERS, DEMO_HOTEL_BOOKING, describeStep, hotelOpenSequences, hotelPathNights, hotelTerms, hotelTickets, ledgerClock, receiptOf, type HotelReceipt, type HotelPath, type HotelStepResult, type HotelTicketPlan, type HotelTimerOffsets, type HotelCast, type HotelBooking } from './hotel/flow.ts'
 export * from './store/types.ts'
 export * from './store/memory.ts'
+export * from './store/sqlite.ts'
