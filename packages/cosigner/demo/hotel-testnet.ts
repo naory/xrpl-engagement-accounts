@@ -13,7 +13,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
-import { localSigner, type Template } from '@eng/core'
+import { localSigner, resolveTestnetEndpoint, type Template } from '@eng/core'
 import { layerHash, type PolicyDoc } from '@eng/policy'
 import {
   CosignerService, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, HOTEL_PATHS, HotelFlow, XrplLedgerSource, hotelPathNights, hotelTerms,
@@ -26,8 +26,8 @@ type Json = Record<string, unknown>
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '../../..')
-const URL_ = process.env.XRPL_URL ?? 'wss://s.altnet.rippletest.net:51233'
-const EXPLORER = URL_.includes('devnet') ? 'https://devnet.xrpl.org/transactions/' : 'https://testnet.xrpl.org/transactions/'
+let URL_ = ''
+let EXPLORER = 'https://testnet.xrpl.org/transactions/'
 const CUR = currencyHex('RLUSD')
 const RUN = Date.now().toString(36)
 
@@ -82,6 +82,9 @@ async function ensureXrp(client: InstanceType<typeof xrpl.Client>, w: Wallet, dr
 }
 
 async function main() {
+  URL_ = await resolveTestnetEndpoint()
+  EXPLORER = URL_.includes('devnet') ? 'https://devnet.xrpl.org/transactions/' : 'https://testnet.xrpl.org/transactions/'
+  results.url = URL_
   const client = new xrpl.Client(URL_, { timeout: 60_000 })
   await client.connect()
   console.log(`Connected to ${URL_}\n`)

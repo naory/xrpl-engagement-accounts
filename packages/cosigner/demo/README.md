@@ -1,6 +1,6 @@
 # Co-signer demos (Testnet)
 
-Both scripts run from the **repo root** on a machine that can reach XRPL Testnet over WebSocket (port 51233). Every account is created fresh from the faucet on each run, and the script never needs a seed. Results land in `demo/results/`.
+Both scripts run from the **repo root** on a machine that can reach XRPL Testnet over WebSocket. Every account is created fresh from the faucet on each run, and the script never needs a seed. Results land in `demo/results/`.
 
 ```bash
 npm install
@@ -11,7 +11,7 @@ npm run demo:x402      # x402 engagement-account purchase (needs x402-xrpl-settl
 npm run probe:x402     # probe a hosted facilitator for engagement-account support
 ```
 
-Set `XRPL_URL=wss://s.devnet.rippletest.net:51233` to use Devnet instead.
+With no `XRPL_URL`, the demo and probe scripts use `resolveTestnetEndpoint` (`@eng/core`): `wss://testnet.xrpl-labs.com`, then `wss://s.altnet.rippletest.net:51233` if that connect fails or times out. Set `XRPL_URL` to pin an endpoint, including Devnet (`XRPL_URL=wss://s.devnet.rippletest.net:51233`).
 
 ## `b1-testnet.ts`: what it checks
 

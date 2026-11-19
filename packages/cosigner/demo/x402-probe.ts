@@ -22,11 +22,12 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
+import { resolveTestnetEndpoint } from '@eng/core'
 import { ASF_DISABLE_MASTER, accountInfo, combine, currentLedger, lookupTx, memo, multisignBlob, sendSimple, serverFees, sleep } from '../src/xrpl-io.ts'
 
 type Json = Record<string, unknown>
 const here = path.dirname(fileURLToPath(import.meta.url))
-const URL_ = process.env.XRPL_URL ?? 'wss://s.altnet.rippletest.net:51233'
+let URL_ = ''
 const FACILITATORS = (process.env.FACILITATOR_URLS ?? 'https://xrpl-facilitator-testnet.t54.ai').split(',').map((s) => s.trim()).filter(Boolean)
 const SOURCE_TAG = 804681468
 
@@ -47,6 +48,8 @@ async function fund(client: InstanceType<typeof xrpl.Client>, label: string) {
 }
 
 async function main() {
+  URL_ = await resolveTestnetEndpoint()
+  out.url = URL_
   const client = new xrpl.Client(URL_)
   await client.connect()
   const fees = await serverFees(client)

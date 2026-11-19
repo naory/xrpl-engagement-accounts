@@ -11,7 +11,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
-import { localSigner, signerBlob, signStatementAsync, verifyStatement, newNonce, type StatementBody } from '@eng/core'
+import { localSigner, signerBlob, signStatementAsync, verifyStatement, newNonce, resolveTestnetEndpoint, type StatementBody } from '@eng/core'
 import { createPrivyXrplWallet, privySigner } from '../src/privy-signer.ts'
 import { loadEnv } from '../src/env.ts'
 import { serverFees, submit, multisigFee } from '../src/xrpl-io.ts'
@@ -23,7 +23,8 @@ const APP_SECRET = process.env.PRIVY_APP_SECRET
 if (!APP_ID || !APP_SECRET) { console.log('skip: set PRIVY_APP_ID and PRIVY_APP_SECRET in .env to run this live Testnet check'); process.exit(0) }
 
 async function main() {
-  const client = new xrpl.Client(process.env.XRPL_URL ?? 'wss://s.altnet.rippletest.net:51233')
+  const url = await resolveTestnetEndpoint()
+  const client = new xrpl.Client(url)
   await client.connect()
   const fees = await serverFees(client)
 
