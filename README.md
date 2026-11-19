@@ -251,7 +251,7 @@ xrpl-engagement-accounts/
 │   ├── SCOPE.md         # supported use cases by tier, component status
 │   ├── pool.md
 │   ├── use-cases/       # catalog.md, hotel-booking.md
-│   ├── demo/            # b1-procurement.md, x402-purchase.md
+│   ├── demo/            # b1-procurement.md, x402-purchase.md, mpp-purchase.md
 │   ├── spec/            # attestations.md, policy.md
 │   ├── research/        # cosign.md, mpp.md, ows.md, x402-multisig.md
 │   ├── proposals/       # x402 exact-scheme notes
