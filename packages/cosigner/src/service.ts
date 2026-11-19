@@ -14,6 +14,9 @@ import {
 } from '@eng/policy'
 import type { LedgerSource } from './snapshot.ts'
 import { combine, unsigned } from './xrpl-io.ts'
+import { MemoryStateStore } from './store/memory.ts'
+import { pinsOf, readDecisionsJsonl, resolvePins } from './store/restore.ts'
+import type { StateStore, StoreTx } from './store/types.ts'
 
 type Json = Record<string, unknown>
 
@@ -84,6 +87,38 @@ interface EngagementState {
   presigned: Map<string, string>
   /** tick() SIGN results keyed by proposedTxHash; returned again while that decision is in flight. */
   completed: Map<string, TickResult>
+  /** Fingerprint (outcome + ':' + sorted failing ids) of the last logged tick refusal, keyed by outcome (quiet ticks). */
+  lastRefusal: Map<string, string>
+  /** Marked closed (its account is gone): still readable, no longer ticked. */
+  closed: boolean
+}
+
+/**
+ * An engagement restored with a pinned policy layer or template no longer in the library (design §2a.1): it still
+ * answers reads, but decide / tick / ingest / storePresigned fail closed with ENGAGEMENT_STALE.
+ */
+interface StaleEngagement {
+  record: EngagementRecord
+  registered: { record: EngagementRecord; mandate: Statement | null }
+  attestations: Map<string, { statement: Statement; receipt: Receipt }>
+  closed: boolean
+}
+
+/**
+ * One operation's changes to one engagement, staged (design §2a.2): the store writes are committed in one transaction
+ * first, and only then are the staged values swapped into memory. A failed commit leaves memory as it was.
+ */
+interface Draft {
+  st: EngagementState
+  record: EngagementRecord
+  /** This engagement's in-flight entries. */
+  inflight: InflightRecord[]
+  presigned: Map<string, string>
+  completed: Map<string, TickResult>
+  lastRefusal: Map<string, string>
+  /** Decision records to append to the log. */
+  log: Statement[]
+  writes: Array<(tx: StoreTx) => Promise<unknown>>
 }
 
 export interface CosignerOptions {
@@ -93,8 +128,10 @@ export interface CosignerOptions {
   templates: Template[]
   /** Policy library: the baseline plus template / engagement layers. */
   policies: PolicyDoc[]
-  /** Optional directory for the append-only decision log (decisions.jsonl). */
+  /** Optional directory for a best-effort export of the decision log (decisions.jsonl); the store is the source of truth. */
   dataDir?: string
+  /** Durable state (default: a fresh MemoryStateStore). Only CosignerService.open() restores from it. */
+  store?: StateStore
   historySecs?: number
   accreditation?: { issuer: string; credentialType: string }
 }
@@ -113,14 +150,100 @@ const MAX_ISSUE_LAG_SECS = 300
 
 export class CosignerService {
   private readonly engagements = new Map<string, EngagementState>()
-  private readonly inflight: InflightRecord[] = []
+  /** Quarantined at restore (ENGAGEMENT_STALE); readable only. */
+  private readonly stale = new Map<string, StaleEngagement>()
+  private inflight: InflightRecord[] = []
   private readonly log: Statement[] = []
   /** Serialize decisions per engagement so in-flight accounting is race-free. */
   private readonly locks = new Map<string, Promise<unknown>>()
+  private readonly store: StateStore
 
-  constructor(private readonly o: CosignerOptions) {}
+  /** A service with empty state, writing through to `o.store` (default: in memory). Use open() to restore from a store. */
+  constructor(private readonly o: CosignerOptions) {
+    this.store = o.store ?? new MemoryStateStore()
+  }
+
+  /**
+   * Open a service on `o.store` and rebuild its state (design §2.4, §2a): checks the store's signer (SIGNER_MISMATCH),
+   * re-resolves each engagement's pinned layers and template (quarantining any that are gone or changed), and imports
+   * `<dataDir>/decisions.jsonl` once into a store that has never recorded decisions.
+   */
+  static async open(o: CosignerOptions): Promise<CosignerService> {
+    const svc = new CosignerService(o)
+    await svc.restore()
+    return svc
+  }
+
+  private async restore(): Promise<void> {
+    const snap = await this.store.loadAll()
+    const signer = snap.meta['signer.address']
+    if (signer !== undefined && signer !== this.address) throw new Error(`SIGNER_MISMATCH: the store belongs to co-signer ${signer}, the configured signer is ${this.address}`)
+    const imported = this.o.dataDir && snap.meta['jsonl.imported'] === undefined && !snap.decisions.length ? readDecisionsJsonl(this.o.dataDir) : undefined
+    if (signer === undefined || imported) {
+      await this.store.transaction(async (tx) => {
+        if (signer === undefined) await tx.setMeta('signer.address', this.address)
+        if (imported) {
+          for (const s of imported) await tx.appendDecision(s)
+          await tx.setMeta('jsonl.imported', String(imported.length))
+        }
+      })
+    }
+    const of = <T extends { engagementId: string }>(rows: T[], id: string): T[] => rows.filter((r) => r.engagementId === id)
+    for (const e of snap.engagements) {
+      const id = e.engagementId
+      // Ingest order: by receipt ledger, then receipt time (the store keeps no insertion order).
+      const receiptAt = (a: { receipt: Receipt }) => [Number(a.receipt.statement.claim.ledgerIndex ?? 0), Date.parse(String(a.receipt.statement.claim.receivedAt ?? ''))]
+      const atts = of(snap.attestations, id).sort((a, b) => { const [la, ta] = receiptAt(a); const [lb, tb] = receiptAt(b); return la - lb || ta - tb })
+      const attestations = new Map(atts.map((a) => [a.statement.id, { statement: a.statement, receipt: a.receipt }]))
+      const pinned = resolvePins(e.pins, this.o.policies, this.o.templates)
+      if ('reason' in pinned) {
+        this.stale.set(id, { record: e.record, registered: e.registered, attestations, closed: e.closed })
+        console.warn(`ENGAGEMENT_STALE: ${id}: ${pinned.reason}; quarantined (reads only)`)
+        continue
+      }
+      this.engagements.set(id, {
+        record: e.record, registered: e.registered, mandate: e.registered.mandate, layers: pinned.layers, template: pinned.template, attestations,
+        presigned: new Map(of(snap.presigned, id).map((p) => [p.outcome, p.blob])),
+        completed: new Map(of(snap.completed, id).map((c) => [c.txHash, c.result])),
+        lastRefusal: new Map(of(snap.lastRefusal, id).map((r) => [r.outcome, r.fingerprint])),
+        closed: e.closed,
+      })
+    }
+    this.inflight = snap.inflight
+    this.log.push(...snap.decisions.sort((a, b) => a.seq - b.seq).map((d) => d.statement), ...(imported ?? []))
+  }
+
+  /** Wait for pending operations, then close the store. */
+  async close(): Promise<void> {
+    await Promise.all([...this.locks.values()])
+    await this.store.close()
+  }
 
   get address(): string { return this.o.signer.address }
+
+  /** Registered engagements that are neither quarantined nor closed (the tick scheduler's work list). */
+  openEngagementIds(): string[] {
+    return [...this.engagements.values()].filter((s) => !s.closed).map((s) => s.record.engagementId)
+  }
+
+  /** Mark an engagement closed (its account is gone): persisted, then dropped from openEngagementIds(); reads still answer. */
+  async markClosed(engagementId: string): Promise<void> {
+    return this.serialized(engagementId, async () => {
+      const st = this.engagements.get(engagementId) ?? this.stale.get(engagementId)
+      if (!st) throw new Error(`unknown engagement ${engagementId}`)
+      if (st.closed) return
+      await this.store.transaction((tx) => tx.setClosed(engagementId))
+      st.closed = true
+    })
+  }
+
+  /** The engagement's working state; a quarantined engagement fails closed. */
+  private live(engagementId: string): EngagementState {
+    if (this.stale.has(engagementId)) throw new Error(`ENGAGEMENT_STALE: ${engagementId}`)
+    const st = this.engagements.get(engagementId)
+    if (!st) throw new Error(`unknown engagement ${engagementId}`)
+    return st
+  }
 
   /**
    * Register an engagement (normally done by the service at open, from the signed engagement record).
@@ -140,6 +263,7 @@ export class CosignerService {
    * terms must also check out first (stayTermsFindings, R30), or INVALID_TERMS and nothing is registered.
    */
   private async registerLocked(record: EngagementRecord, mandate: Statement | null): Promise<{ ok: true; layers: string[] }> {
+    if (this.stale.has(record?.engagementId)) throw new Error(`ENGAGEMENT_STALE: ${record.engagementId}`)
     const existing = this.engagements.get(record?.engagementId)
     if (existing) {
       if (!isDeepStrictEqual(existing.registered, { record, mandate })) throw new Error(`ALREADY_REGISTERED: ${record.engagementId} is registered with a different record`)
@@ -175,24 +299,30 @@ export class CosignerService {
       const codes = neutralityFindings(record, mandate, accredited, all, new LedgerFacts(ledger, new Assets(assets)))
       if (codes.length) throw new Error(`NOT_NEUTRAL: ${codes.join(', ')}`)
     }
-    this.engagements.set(record.engagementId, { record: structuredClone({ consumed: [], ...record }), registered: structuredClone({ record, mandate }), mandate, layers: [baseline, ...layers], template, attestations: new Map(), presigned: new Map(), completed: new Map() })
-    return { ok: true, layers: [baseline, ...layers].map((l) => `${l.policyId}@${l.version} ${layerHash(l)}`) }
+    const all = [baseline, ...layers]
+    const st: EngagementState = {
+      record: structuredClone({ consumed: [], ...record }), registered: structuredClone({ record, mandate }), mandate, layers: all, template,
+      attestations: new Map(), presigned: new Map(), completed: new Map(), lastRefusal: new Map(), closed: false,
+    }
+    await this.store.transaction((tx) => tx.putEngagement({ engagementId: record.engagementId, registered: st.registered, record: st.record, pins: pinsOf(all, template), closed: false }))
+    this.engagements.set(record.engagementId, st)
+    return { ok: true, layers: all.map((l) => `${l.policyId}@${l.version} ${layerHash(l)}`) }
   }
 
-  engagement(id: string): EngagementRecord | undefined { return this.engagements.get(id)?.record }
+  engagement(id: string): EngagementRecord | undefined { return (this.engagements.get(id) ?? this.stale.get(id))?.record }
   decisions(engagementId?: string): Statement[] { return engagementId ? this.log.filter((s) => s.engagementId === engagementId) : [...this.log] }
   inflightFor(engagementId: string): InflightRecord[] { return this.inflight.filter((i) => i.engagementId === engagementId) }
 
   /** Receipted statements with their receipts, in ingest order. */
   attestations(engagementId: string): Array<{ statement: Statement; receipt: Receipt }> {
-    const st = this.engagements.get(engagementId)
+    const st = this.engagements.get(engagementId) ?? this.stale.get(engagementId)
     if (!st) throw new Error(`unknown engagement ${engagementId}`)
     return [...st.attestations.values()]
   }
 
   /** Receipted statements for an engagement, in ingest order. */
   statements(engagementId: string): Statement[] {
-    return [...(this.engagements.get(engagementId)?.attestations.values() ?? [])].map((a) => a.statement)
+    return [...((this.engagements.get(engagementId) ?? this.stale.get(engagementId))?.attestations.values() ?? [])].map((a) => a.statement)
   }
 
   async decide(req: DecideRequest): Promise<DecideResponse> {
@@ -209,8 +339,7 @@ export class CosignerService {
   }
 
   private async ingestLocked(engagementId: string, s: Statement): Promise<Receipt> {
-    const st = this.engagements.get(engagementId)
-    if (!st) throw new Error(`unknown engagement ${engagementId}`)
+    const st = this.live(engagementId)
     const v = verifyStatement(s)
     if (!v.ok) throw new Error(`BAD_STATEMENT: ${v.reason}`)
     const prior = st.attestations.get(s.id)
@@ -262,6 +391,7 @@ export class CosignerService {
         attester: { account: this.address, kind: 'COSIGNER', ...(this.o.accreditation ? { accreditation: this.o.accreditation } : {}) },
       }, this.o.signer),
     }
+    await this.store.transaction((tx) => tx.putAttestation({ engagementId, statement: s, receipt }))
     st.attestations.set(s.id, { statement: s, receipt })
     return receipt
   }
@@ -448,12 +578,11 @@ export class CosignerService {
    * LastLedgerSequence) of the engagement account matching the outcome's blueprint. Otherwise nothing is stored.
    */
   async storePresigned(engagementId: string, outcome: string, blob: string): Promise<void> {
-    return this.serialized(engagementId, async () => this.storePresignedLocked(engagementId, outcome, blob))
+    return this.serialized(engagementId, () => this.storePresignedLocked(engagementId, outcome, blob))
   }
 
-  private storePresignedLocked(engagementId: string, outcome: string, blob: string): void {
-    const st = this.engagements.get(engagementId)
-    if (!st) throw new Error(`unknown engagement ${engagementId}`)
+  private async storePresignedLocked(engagementId: string, outcome: string, blob: string): Promise<void> {
+    const st = this.live(engagementId)
     const [base, variant] = splitVariant(outcome)
     const o = st.template.outcomes[base]
     if (!o?.presigned || !o.finalSigner) throw new Error(`NOT_PRESIGNED: ${base} is not a pre-signed outcome of ${st.template.templateId}`)
@@ -520,6 +649,7 @@ export class CosignerService {
     const existing = st.presigned.get(outcome)
     if (existing === canonical) return
     if (existing && this.signedInFlight(st, existing)) throw new Error(`IN_FLIGHT: ${outcome} has a signed transaction in flight; it cannot be replaced`)
+    await this.store.transaction((tx) => tx.putPresigned(engagementId, outcome, canonical))
     st.presigned.set(outcome, canonical)
   }
 
@@ -535,62 +665,91 @@ export class CosignerService {
    * apply: it is retired and reported once as TICKET_CONSUMED. One outcome's failure is reported as TICK_ERROR for
    * that outcome and does not stop the others. A deleted account has nothing left to complete.
    */
-  async tick(engagementId: string): Promise<TickResult[]> {
-    return this.serialized(engagementId, () => this.tickLocked(engagementId))
+  async tick(engagementId: string, o: { quiet?: boolean } = {}): Promise<TickResult[]> {
+    return this.serialized(engagementId, () => this.tickLocked(engagementId, o.quiet === true))
   }
 
-  private async tickLocked(engagementId: string): Promise<TickResult[]> {
-    const st = this.engagements.get(engagementId)
-    if (!st) throw new Error(`unknown engagement ${engagementId}`)
-    if (!st.presigned.size) return []
+  /**
+   * One tick is one store transaction: every decision record, in-flight change, completed result and retired blob of
+   * this tick commits together before any result (or blob) is returned. In quiet mode a REFUSE identical to the last
+   * logged one for its outcome (same failing rules) is returned but not logged again (design §2a.4).
+   */
+  private async tickLocked(engagementId: string, quiet: boolean): Promise<TickResult[]> {
+    const st = this.live(engagementId)
+    if (st.closed || !st.presigned.size) return []
     const ledger = await this.o.source.snapshot({
       account: st.record.account, assets: this.assetsOf(st.layers), accounts: [], credentialSubjects: [], historySecs: this.o.historySecs ?? 90 * DAY,
     })
     if (!ledger.accounts[st.record.account]?.exists) return []
-    this.resolveInflight(st, ledger)
+    const draft = this.draft(st)
+    this.resolveInflight(draft, ledger)
 
     const out: TickResult[] = []
     // A snapshot without owner objects says nothing about Tickets: skip the check rather than retire (R35).
     const owned = ledger.accounts[st.record.account]?.ownerObjects
     const tickets = owned ? new Set(owned.tickets ?? []) : null
-    for (const [outcome, stored] of [...st.presigned]) {
+    for (const [outcome, stored] of [...draft.presigned]) {
       // A per-night variant ("<outcome>#k") is decided under its outcome's stage; the result keeps the #k name.
       const base = splitVariant(outcome)[0]
       const stage = st.template.outcomes[base]?.policyStage ?? base
       const tx = unsigned(xrpl.decode(stored) as Json)
       const txHash = documentHash(tx)
-      const prior = st.completed.get(txHash)
-      if (prior && this.inflightFor(engagementId).some((i) => i.proposedTxHash === txHash)) { out.push(prior); continue }
-      st.completed.delete(txHash)
+      const prior = draft.completed.get(txHash)
+      if (prior && draft.inflight.some((i) => i.proposedTxHash === txHash)) { out.push(prior); continue }
+      if (draft.completed.delete(txHash)) draft.writes.push((w) => w.deleteCompleted(engagementId, txHash))
 
       const used = [tx, ...((tx.RawTransactions ?? []) as Array<{ RawTransaction: Json }>).map((r) => r.RawTransaction)].map((t) => Number(t.TicketSequence))
       const gone = tickets ? used.filter((t) => !tickets.has(t)) : []
       if (gone.length) {
-        st.presigned.delete(outcome)
+        draft.presigned.delete(outcome)
+        draft.writes.push((w) => w.deletePresigned(engagementId, outcome))
         const record = await this.refusalRecord(st, ledger, stage, txHash, { id: 'TICKET_CONSUMED', result: 'fail', reason: 'TICKET_CONSUMED', message: `Tickets ${gone.join(', ')} are no longer on the account; the pre-signed default can never apply.` })
+        this.logTickRefusal(draft, outcome, ['TICKET_CONSUMED'], record, quiet)
         out.push({ outcome, stage, decision: 'REFUSE', failing: ['TICKET_CONSUMED'], record })
         continue
       }
 
       let r: DecideResponse | undefined
       try {
-        r = await this.decideLocked({ engagementId, stage, txBlob: stored })
+        r = await this.decideDraft(draft, { engagementId, stage, txBlob: stored }, { outcome, quiet })
         const res: TickResult = { outcome, stage, decision: r.decision, failing: r.failing, record: r.record }
         if (r.decision === 'SIGN' && r.signerBlob) {
           res.blob = combine([stored, r.signerBlob])
-          st.completed.set(txHash, res)
+          draft.completed.set(txHash, res)
+          draft.writes.push((w) => w.putCompleted(engagementId, txHash, res))
         }
         out.push(res)
       } catch (e) {
         // Never leave a signed-but-undelivered decision in flight: it would block other outcomes (B9).
-        const i = r ? this.inflight.findIndex((f) => f.engagementId === engagementId && f.decisionId === r!.record.id) : -1
-        if (i >= 0) this.inflight.splice(i, 1)
+        const i = r ? draft.inflight.findIndex((f) => f.decisionId === r!.record.id) : -1
+        if (i >= 0) {
+          const [f] = draft.inflight.splice(i, 1)
+          draft.writes.push((w) => w.removeInflight(engagementId, f.proposedTxHash))
+        }
         const message = String((e as Error)?.message ?? e)
         const record = await this.refusalRecord(st, ledger, stage, txHash, { id: 'TICK_ERROR', result: 'error', reason: 'TICK_ERROR', message, error: message.split('\n')[0] })
+        this.logTickRefusal(draft, outcome, ['TICK_ERROR'], record, quiet)
         out.push({ outcome, stage, decision: 'REFUSE', failing: ['TICK_ERROR'], record })
       }
     }
+    await this.commit(draft)
     return out
+  }
+
+  /**
+   * Log a tick refusal and remember its fingerprint for its outcome, unless this is a quiet tick and the fingerprint
+   * equals the last logged one (then the refusal is returned to the caller but not logged). A SIGN never resets it.
+   */
+  private logTickRefusal(draft: Draft, outcome: string, failing: string[], record: Statement, quiet: boolean): void {
+    const fingerprint = `${outcome}:${[...failing].sort().join(',')}`
+    const last = draft.lastRefusal.get(outcome)
+    if (quiet && last === fingerprint) return
+    this.logDecision(draft, record)
+    if (last !== fingerprint) {
+      draft.lastRefusal.set(outcome, fingerprint)
+      const id = draft.record.engagementId
+      draft.writes.push((w) => w.setLastRefusal(id, outcome, fingerprint))
+    }
   }
 
   /** A signed cosigner.decision/1 REFUSE record for a refusal the co-signer makes itself, outside policy evaluation. */
@@ -605,9 +764,7 @@ export class CosignerService {
       inputsHash: documentHash({ engagementId: st.record.engagementId, stage, proposedTxHash, ledger: { index: ledger.index, hash: ledger.hash }, check: result.id }),
       costUnits: 0, proposedTxHash,
     }
-    const record = await signStatementAsync(decisionStatementBody(d, { account: this.address, accreditation: this.o.accreditation }, newNonce()), this.o.signer)
-    this.append(record)
-    return record
+    return signStatementAsync(decisionStatementBody(d, { account: this.address, accreditation: this.o.accreditation }, newNonce()), this.o.signer)
   }
 
   /** Serialize work per engagement so in-flight accounting and the attestation store are race-free. */
@@ -619,8 +776,18 @@ export class CosignerService {
   }
 
   private async decideLocked(req: DecideRequest): Promise<DecideResponse> {
-    const st = this.engagements.get(req.engagementId)
-    if (!st) throw new Error(`unknown engagement ${req.engagementId}`)
+    const draft = this.draft(this.live(req.engagementId))
+    const out = await this.decideDraft(draft, req)
+    await this.commit(draft)
+    return out
+  }
+
+  /**
+   * decide() into a draft: the decision record, in-flight resolution and the new in-flight entry are staged, not
+   * applied. In a tick (`tick` set) a REFUSE goes through logTickRefusal (quiet mode, fingerprint).
+   */
+  private async decideDraft(draft: Draft, req: DecideRequest, tick?: { outcome: string; quiet: boolean }): Promise<DecideResponse> {
+    const { st } = draft
     const tx = req.txBlob ? unsigned(xrpl.decode(req.txBlob) as Json) : req.tx ? unsigned(req.tx) : null
     // Stored (receipted) statements plus those passed in, deduplicated by id. A window-governed statement
     // counts only once receipted ("posted" = receipted), so request copies of unreceipted ones are dropped.
@@ -643,12 +810,12 @@ export class CosignerService {
     })
 
     // Resolve in-flight decisions against this ledger, then reserve single-use statements.
-    this.resolveInflight(st, ledger)
+    this.resolveInflight(draft, ledger)
     const txHash = tx ? documentHash(tx) : null
     // A re-request for a transaction already signed (same hash, same sequence) must not count against itself.
-    const mine = this.inflightFor(st.record.engagementId).filter((i) => i.proposedTxHash !== txHash)
+    const mine = draft.inflight.filter((i) => i.proposedTxHash !== txHash)
     const reserved = mine.flatMap((i) => i.reserved)
-    const engagement: EngagementRecord = { ...st.record, consumed: [...(st.record.consumed ?? []), ...reserved] }
+    const engagement: EngagementRecord = { ...draft.record, consumed: [...(draft.record.consumed ?? []), ...reserved] }
 
     const decided = decide({
       stage: req.stage, proposedTx: tx, engagement, template: st.template, layers: st.layers,
@@ -658,7 +825,8 @@ export class CosignerService {
 
     const intentHash = tx ? new TxFacts(tx, { eng: engagement, template: st.template, assets: new Assets(assets), ledger }).intentHash() : ''
     const record = await signStatementAsync(decisionStatementBody(d, { account: this.address, accreditation: this.o.accreditation }, newNonce(), intentHash || undefined), this.o.signer)
-    this.append(record)
+    if (tick && d.decision === 'REFUSE') this.logTickRefusal(draft, tick.outcome, d.failing, record, tick.quiet)
+    else this.logDecision(draft, record)
 
     const signs = this.signsStage(st.template, req.stage)
     const out: DecideResponse = { decision: d.decision, failing: d.failing, results: d.results, statementsRejected: d.statementsRejected, record, tx, ...(signs ? {} : { advisory: true }) }
@@ -666,9 +834,12 @@ export class CosignerService {
       out.signerBlob = await signerBlob(this.o.signer, tx)
       const facts = new TxFacts(tx, { eng: engagement, template: st.template, assets: new Assets(assets), ledger })
       const used = new Set(d.statementsUsed)
-      const dup = this.inflight.findIndex((i) => i.engagementId === st.record.engagementId && i.proposedTxHash === txHash)
-      if (dup >= 0) this.inflight.splice(dup, 1)
-      this.inflight.push({
+      const dup = draft.inflight.findIndex((i) => i.proposedTxHash === txHash)
+      if (dup >= 0) {
+        draft.inflight.splice(dup, 1)
+        draft.writes.push((w) => w.removeInflight(st.record.engagementId, txHash!))
+      }
+      const entry: InflightRecord = {
         proposedTxHash: txHash!,
         engagementId: st.record.engagementId,
         decisionId: record.id,
@@ -678,7 +849,9 @@ export class CosignerService {
         payments: facts.innerRaw.filter((i) => i.TransactionType === 'Payment').map(seqOf),
         reserved: statements.filter((s) => used.has(s.id) && REGISTRY[s.type]?.singleUse).map((s) => s.id),
         decidedAtLedger: ledger.index,
-      })
+      }
+      draft.inflight.push(entry)
+      draft.writes.push((w) => w.addInflight(entry))
     }
     return out
   }
@@ -695,20 +868,25 @@ export class CosignerService {
   }
 
   /** In-flight entries leave the set when their sequence/ticket is consumed or their LastLedgerSequence passes. */
-  private resolveInflight(st: EngagementState, ledger: LedgerSnapshot): void {
-    const acct = ledger.accounts[st.record.account]
-    const hist = ledger.history[st.record.account] ?? []
-    for (let i = this.inflight.length - 1; i >= 0; i--) {
-      const f = this.inflight[i]
-      if (f.engagementId !== st.record.engagementId) continue
+  private resolveInflight(draft: Draft, ledger: LedgerSnapshot): void {
+    const { account, engagementId } = draft.record
+    const acct = ledger.accounts[account]
+    const hist = ledger.history[account] ?? []
+    for (let i = draft.inflight.length - 1; i >= 0; i--) {
+      const f = draft.inflight[i]
       const consumed = !acct?.exists
         || (f.outer.sequence != null && acct.sequence != null && acct.sequence > f.outer.sequence)
         || (f.outer.ticket != null && !(acct.ownerObjects?.tickets ?? []).includes(f.outer.ticket))
       const expired = f.lastLedgerSequence != null && ledger.index > f.lastLedgerSequence
       if (!consumed && !expired) continue
       const succeeded = consumed && f.payments.some((p) => hist.some((h) => (p.sequence != null && h.sequence === p.sequence) || (p.ticket != null && h.ticket === p.ticket)))
-      if (succeeded) st.record.consumed = [...new Set([...(st.record.consumed ?? []), ...f.reserved])]
-      this.inflight.splice(i, 1)
+      if (succeeded) {
+        const next = [...new Set([...(draft.record.consumed ?? []), ...f.reserved])]
+        draft.record = { ...draft.record, consumed: next }
+        draft.writes.push((w) => w.setConsumed(engagementId, next))
+      }
+      draft.inflight.splice(i, 1)
+      draft.writes.push((w) => w.removeInflight(engagementId, f.proposedTxHash))
     }
   }
 
@@ -718,11 +896,49 @@ export class CosignerService {
     return a
   }
 
-  private append(s: Statement): void {
-    this.log.push(s)
-    if (this.o.dataDir) {
+  /** Stage the engagement's mutable state for one operation (see Draft). */
+  private draft(st: EngagementState): Draft {
+    return {
+      st, record: st.record, inflight: this.inflightFor(st.record.engagementId),
+      presigned: new Map(st.presigned), completed: new Map(st.completed), lastRefusal: new Map(st.lastRefusal),
+      log: [], writes: [],
+    }
+  }
+
+  private logDecision(draft: Draft, s: Statement): void {
+    draft.log.push(s)
+    draft.writes.push((w) => w.appendDecision(s))
+  }
+
+  /**
+   * Commit a draft: its writes in one store transaction first; only if that commits, swap the staged state into memory.
+   * A failed commit throws and leaves memory exactly as it was. The decisions.jsonl export follows, best-effort.
+   */
+  private async commit(draft: Draft): Promise<void> {
+    if (draft.writes.length) {
+      await this.store.transaction(async (tx) => {
+        for (const write of draft.writes) await write(tx)
+      })
+    }
+    const { st } = draft
+    const id = st.record.engagementId
+    st.record = draft.record
+    st.presigned = draft.presigned
+    st.completed = draft.completed
+    st.lastRefusal = draft.lastRefusal
+    this.inflight = [...this.inflight.filter((i) => i.engagementId !== id), ...draft.inflight]
+    this.log.push(...draft.log)
+    this.exportDecisions(draft.log)
+  }
+
+  /** Append committed decision records to `<dataDir>/decisions.jsonl` (an optional export; a failure is only warned). */
+  private exportDecisions(records: Statement[]): void {
+    if (!this.o.dataDir || !records.length) return
+    try {
       fs.mkdirSync(this.o.dataDir, { recursive: true })
-      fs.appendFileSync(path.join(this.o.dataDir, 'decisions.jsonl'), JSON.stringify(s) + '\n')
+      fs.appendFileSync(path.join(this.o.dataDir, 'decisions.jsonl'), records.map((s) => JSON.stringify(s) + '\n').join(''))
+    } catch (e) {
+      console.warn(`decisions.jsonl export failed: ${String((e as Error)?.message ?? e)}`)
     }
   }
 }
