@@ -17,23 +17,7 @@ This file tracks what's next, highest-leverage first.
    the signer address; a signer's own master key is refused under `lsfDisableMaster` even if its
    `RegularKey` equals its address), from the t54 review. Feeds the upstream amendment's conformance
    set.
-
-Hotel stay → production-ready (the flow itself is built and live; these close its known gaps):
-
-- **Automatic endings return extra money to the guest** *(in progress)*. Pre-signed defaults are
-  signed for an exact balance, so any extra RLUSD (a partial deposit, stray funds) jams them. Each
-  ending sweeps the remainder back to the guest instead; a partial deposit then ends like real life —
-  no keys, a no-show, the partial deposit returned.
-- **Persistent co-signer state.** Receipts, stored statements and pre-signed defaults are in memory;
-  a restart drops them, so a restarted co-signer could complete a default over a claim it had
-  receipted. Needs a persistent store and a restart test.
-- **Outside accreditation bodies for arbiters.** Today the engagement service is the only accreditor
-  (`ENG/ARBITER`, `arbiterIssuers`); recognising outside bodies is an assumption to revisit with a real
-  business.
-- **Replacing a lapsed arbiter.** The backup arbiter is gone and a SignerList change needs quorum, so a
-  deal whose accreditation lapses mid-stay cannot swap arbiters; chargeback defaults cover silence only.
-- **Chargeback parameters.** Ruling window, split, 14-night cap and bond return are demo assumptions
-  pending a real business.
+4. **Persistent co-signer state:** registrations, in-flight counters, receipts and pre-signed defaults are in memory; a restart drops them. Needs a store, restart tests and a tick scheduler.
 
 Demo and agent tooling:
 
@@ -54,6 +38,27 @@ Product build-out already queued:
 - **Collateral bonds** — bond template + slashing by arbiter + harmed party; bond size as a trust
   signal.
 
+## Research
+
+**Research: designed and tested on Testnet, not maintained for production or new features.**
+
+Research applies to: hotel (hotel@2, catalog R1).
+
+**Hotel is frozen.** `settlement-vault/hotel@2` and the Hotel stay scenario in the web demo (`packages/web`) are Research. The stay was designed and run on Testnet (Done, below, records 17/17). **Process rule: no new hotel features are merged.**
+
+Known research issue — reserve at the 14-night cap. `npm run validate-templates` reports `tickets needed: 109, reserve: 23.2 XRP` for `settlement-vault/hotel@2`. The validator counts every pre-signed outcome, including 13 stay-chargeback variants (`templates/hotel@2.json` sets `default.chargebackStay.variants.max` to 13). A one-night stay books 31 Tickets and a 14-night stay books 109 (`packages/cosigner/test/hotel-flow.test.ts`). Reserve is 1 XRP plus 0.2 XRP for the trust line, the signer list and each Ticket (`packages/core/src/template.ts`), which is 23.2 XRP at 109 Tickets. The template check allows 25 XRP of pre-create funding for that reserve plus fee headroom (`packages/core/src/cli.ts`).
+
+Automatic endings in `hotel@2` return extra funds to the guest (`default.noshowSweep` and the other pre-signed endings).
+
+Known limits of this vertical:
+
+- **In-memory state.** Receipts and pre-signed defaults are maps on the engagement (`packages/cosigner/src/service.ts`). Open item: persistent co-signer state, under Next.
+- **Accreditation issuer is a placeholder.** `pol_hotel@2.0.0` sets `arbiterIssuers` to `rArbiterAccreditorPlaceholderXXXXXX`. The chargeback design assumes that issuer is the engagement service. Recognising outside bodies remains an assumption.
+- **A lapsed arbiter is not replaced.** The backup arbiter is gone and a SignerList change needs quorum, so a deal whose accreditation lapses mid-stay cannot swap arbiters. Chargeback defaults cover silence only.
+- **Chargeback parameters.** Ruling window, split, 14-night cap and bond return are demo assumptions pending a real business.
+
+The same label is in [`docs/SCOPE.md`](docs/SCOPE.md#product-status).
+
 ## Research track
 
 - **MPP + Open Wallet Standard** — [docs/research/mpp.md](docs/research/mpp.md). MPP settles via the
@@ -62,6 +67,8 @@ Product build-out already queued:
   [README §14](README.md#14-future-research), [docs/research/cosign.md](docs/research/cosign.md).
 
 ## Done (recent)
+
+Hotel entries below are [Research](#research). No new hotel features are merged.
 
 - **Accredited arbiter and chargeback-style defaults — live on Testnet 17/17.** The backup arbiter is
   removed (guest 3, hotel 3, arbiter 4, co-signer 2, quorum 7). The arbiter must hold an accepted

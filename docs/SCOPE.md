@@ -2,6 +2,16 @@
 
 Which use cases from the [catalog](use-cases/catalog.md) the project supports, at which tier, and what's missing for the rest. The aim is to say "supported" only for cases the code, the policies and a live Testnet run all cover, and to keep everything else visible with its blockers.
 
+## Product status
+
+**Research: designed and tested on Testnet, not maintained for production or new features.**
+
+Research applies to: hotel (hotel@2, catalog R1).
+
+The Hotel stay scenario in `packages/web` carries the same label. **Process rule: no new hotel features are merged.**
+
+Known research issue: at the 14-night cap, `hotel@2` needs 109 Tickets and 23.2 XRP of reserve. `npm run validate-templates` reports `tickets needed: 109, reserve: 23.2 XRP` for `settlement-vault/hotel@2`. The breakdown is on [the roadmap](../ROADMAP.md#research).
+
 ## Tiers
 
 | Tier | Meaning | Gate to enter |
