@@ -10,6 +10,7 @@ export interface StoredEngagement {
   closed: boolean
 }
 export interface StoredAttestation { engagementId: string; statement: Statement; receipt: Receipt }
+/** loadAll(): attestations, presigned, completed and inflight are in insertion order (an upsert keeps a row's position). */
 export interface StoreSnapshot {
   meta: Record<string, string>
   engagements: StoredEngagement[]
@@ -33,6 +34,7 @@ export interface StoreTx {
   removeInflight(engagementId: string, proposedTxHash: string): Promise<void>
   appendDecision(statement: Statement): Promise<number> // returns seq
   setLastRefusal(engagementId: string, outcome: string, fingerprint: string): Promise<void>
+  deleteLastRefusal(engagementId: string, outcome: string): Promise<void>
   setMeta(key: string, value: string): Promise<void>
 }
 export interface StateStore {

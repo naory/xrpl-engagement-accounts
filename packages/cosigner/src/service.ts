@@ -157,8 +157,12 @@ export class CosignerService {
   /** Serialize decisions per engagement so in-flight accounting is race-free. */
   private readonly locks = new Map<string, Promise<unknown>>()
   private readonly store: StateStore
+  private closing = false
 
-  /** A service with empty state, writing through to `o.store` (default: in memory). Use open() to restore from a store. */
+  /**
+   * A service with empty state, writing through to `o.store` (default: in memory). Durable stores must be opened with
+   * `CosignerService.open` (it restores state and records/checks the signer).
+   */
   constructor(private readonly o: CosignerOptions) {
     this.store = o.store ?? new MemoryStateStore()
   }
@@ -178,7 +182,10 @@ export class CosignerService {
     const snap = await this.store.loadAll()
     const signer = snap.meta['signer.address']
     if (signer !== undefined && signer !== this.address) throw new Error(`SIGNER_MISMATCH: the store belongs to co-signer ${signer}, the configured signer is ${this.address}`)
-    const imported = this.o.dataDir && snap.meta['jsonl.imported'] === undefined && !snap.decisions.length ? readDecisionsJsonl(this.o.dataDir) : undefined
+    // One-time import of a pre-store decisions.jsonl. It runs at most once per store: jsonl.imported is written even when
+    // the file is missing (count 0), so the jsonl this service later exports is never imported back.
+    const importJsonl = this.o.dataDir !== undefined && snap.meta['jsonl.imported'] === undefined && !snap.decisions.length
+    const imported = importJsonl ? readDecisionsJsonl(this.o.dataDir!) : undefined
     if (signer === undefined || imported) {
       await this.store.transaction(async (tx) => {
         if (signer === undefined) await tx.setMeta('signer.address', this.address)
@@ -191,10 +198,8 @@ export class CosignerService {
     const of = <T extends { engagementId: string }>(rows: T[], id: string): T[] => rows.filter((r) => r.engagementId === id)
     for (const e of snap.engagements) {
       const id = e.engagementId
-      // Ingest order: by receipt ledger, then receipt time (the store keeps no insertion order).
-      const receiptAt = (a: { receipt: Receipt }) => [Number(a.receipt.statement.claim.ledgerIndex ?? 0), Date.parse(String(a.receipt.statement.claim.receivedAt ?? ''))]
-      const atts = of(snap.attestations, id).sort((a, b) => { const [la, ta] = receiptAt(a); const [lb, tb] = receiptAt(b); return la - lb || ta - tb })
-      const attestations = new Map(atts.map((a) => [a.statement.id, { statement: a.statement, receipt: a.receipt }]))
+      // The store returns these lists in insertion order, so the rebuilt Maps iterate as before the restart.
+      const attestations = new Map(of(snap.attestations, id).map((a) => [a.statement.id, { statement: a.statement, receipt: a.receipt }]))
       const pinned = resolvePins(e.pins, this.o.policies, this.o.templates)
       if ('reason' in pinned) {
         this.stale.set(id, { record: e.record, registered: e.registered, attestations, closed: e.closed })
@@ -213,8 +218,9 @@ export class CosignerService {
     this.log.push(...snap.decisions.sort((a, b) => a.seq - b.seq).map((d) => d.statement), ...(imported ?? []))
   }
 
-  /** Wait for pending operations, then close the store. */
+  /** Stop accepting mutating calls (they reject with "service closed"), wait for pending ones, then close the store. */
   async close(): Promise<void> {
+    this.closing = true
     await Promise.all([...this.locks.values()])
     await this.store.close()
   }
@@ -266,7 +272,7 @@ export class CosignerService {
     if (this.stale.has(record?.engagementId)) throw new Error(`ENGAGEMENT_STALE: ${record.engagementId}`)
     const existing = this.engagements.get(record?.engagementId)
     if (existing) {
-      if (!isDeepStrictEqual(existing.registered, { record, mandate })) throw new Error(`ALREADY_REGISTERED: ${record.engagementId} is registered with a different record`)
+      if (!isDeepStrictEqual(existing.registered, jsonCopy({ record, mandate }))) throw new Error(`ALREADY_REGISTERED: ${record.engagementId} is registered with a different record`)
       return { ok: true, layers: existing.layers.map((l) => `${l.policyId}@${l.version} ${layerHash(l)}`) }
     }
     const template = this.o.templates.find((t) => t.templateId === record.template)
@@ -301,7 +307,7 @@ export class CosignerService {
     }
     const all = [baseline, ...layers]
     const st: EngagementState = {
-      record: structuredClone({ consumed: [], ...record }), registered: structuredClone({ record, mandate }), mandate, layers: all, template,
+      record: structuredClone({ consumed: [], ...record }), registered: jsonCopy({ record, mandate }), mandate, layers: all, template,
       attestations: new Map(), presigned: new Map(), completed: new Map(), lastRefusal: new Map(), closed: false,
     }
     await this.store.transaction((tx) => tx.putEngagement({ engagementId: record.engagementId, registered: st.registered, record: st.record, pins: pinsOf(all, template), closed: false }))
@@ -649,8 +655,14 @@ export class CosignerService {
     const existing = st.presigned.get(outcome)
     if (existing === canonical) return
     if (existing && this.signedInFlight(st, existing)) throw new Error(`IN_FLIGHT: ${outcome} has a signed transaction in flight; it cannot be replaced`)
-    await this.store.transaction((tx) => tx.putPresigned(engagementId, outcome, canonical))
+    // A new blob for the outcome starts a fresh quiet-tick history: its next refusal is logged.
+    const hadRefusal = st.lastRefusal.has(outcome)
+    await this.store.transaction(async (tx) => {
+      await tx.putPresigned(engagementId, outcome, canonical)
+      if (hadRefusal) await tx.deleteLastRefusal(engagementId, outcome)
+    })
     st.presigned.set(outcome, canonical)
+    st.lastRefusal.delete(outcome)
   }
 
   private signedInFlight(st: EngagementState, blob: string): boolean {
@@ -703,6 +715,12 @@ export class CosignerService {
       if (gone.length) {
         draft.presigned.delete(outcome)
         draft.writes.push((w) => w.deletePresigned(engagementId, outcome))
+        // The retired blob's completed results go with it.
+        for (const [h, c] of [...draft.completed]) {
+          if (c.outcome !== outcome) continue
+          draft.completed.delete(h)
+          draft.writes.push((w) => w.deleteCompleted(engagementId, h))
+        }
         const record = await this.refusalRecord(st, ledger, stage, txHash, { id: 'TICKET_CONSUMED', result: 'fail', reason: 'TICKET_CONSUMED', message: `Tickets ${gone.join(', ')} are no longer on the account; the pre-signed default can never apply.` })
         this.logTickRefusal(draft, outcome, ['TICKET_CONSUMED'], record, quiet)
         out.push({ outcome, stage, decision: 'REFUSE', failing: ['TICKET_CONSUMED'], record })
@@ -713,6 +731,7 @@ export class CosignerService {
       try {
         r = await this.decideDraft(draft, { engagementId, stage, txBlob: stored }, { outcome, quiet })
         const res: TickResult = { outcome, stage, decision: r.decision, failing: r.failing, record: r.record }
+        if (r.decision === 'SIGN') this.resetTickRefusal(draft, outcome)
         if (r.decision === 'SIGN' && r.signerBlob) {
           res.blob = combine([stored, r.signerBlob])
           draft.completed.set(txHash, res)
@@ -738,7 +757,8 @@ export class CosignerService {
 
   /**
    * Log a tick refusal and remember its fingerprint for its outcome, unless this is a quiet tick and the fingerprint
-   * equals the last logged one (then the refusal is returned to the caller but not logged). A SIGN never resets it.
+   * equals the last logged one (then the refusal is returned to the caller but not logged). A SIGN, or a newly stored
+   * blob for the outcome, forgets it (resetTickRefusal, storePresigned).
    */
   private logTickRefusal(draft: Draft, outcome: string, failing: string[], record: Statement, quiet: boolean): void {
     const fingerprint = `${outcome}:${[...failing].sort().join(',')}`
@@ -750,6 +770,13 @@ export class CosignerService {
       const id = draft.record.engagementId
       draft.writes.push((w) => w.setLastRefusal(id, outcome, fingerprint))
     }
+  }
+
+  /** A tick SIGN for an outcome ends its run of refusals: forget the fingerprint, so the next refusal is logged. */
+  private resetTickRefusal(draft: Draft, outcome: string): void {
+    if (!draft.lastRefusal.delete(outcome)) return
+    const id = draft.record.engagementId
+    draft.writes.push((w) => w.deleteLastRefusal(id, outcome))
   }
 
   /** A signed cosigner.decision/1 REFUSE record for a refusal the co-signer makes itself, outside policy evaluation. */
@@ -769,6 +796,7 @@ export class CosignerService {
 
   /** Serialize work per engagement so in-flight accounting and the attestation store are race-free. */
   private serialized<T>(engagementId: string, fn: () => Promise<T>): Promise<T> {
+    if (this.closing) return Promise.reject(new Error('CLOSED: the co-signer service is closed'))
     const prev = this.locks.get(engagementId) ?? Promise.resolve()
     const run = prev.then(fn, fn)
     this.locks.set(engagementId, run.catch(() => undefined))
@@ -1043,6 +1071,14 @@ function checkClaimTotal(s: Statement, assets: Record<string, AssetDef>): void {
   } catch (e) {
     throw new Error(`CLAIM_TOTAL: ${(e as Error).message}`)
   }
+}
+
+/**
+ * A JSON-canonical deep copy (undefined-valued keys dropped). The registration is kept and compared in this form, so a
+ * re-registration matches the same way before and after a restart from a JSON-backed store (R30).
+ */
+function jsonCopy<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T
 }
 
 function seqOf(tx: Json): { sequence?: number; ticket?: number } {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import path from 'node:path'
 import Database from 'better-sqlite3'
 import { Kysely, SqliteDialect, type Transaction } from 'kysely'
 import { Migrator } from 'kysely/migration'
@@ -11,10 +12,10 @@ import type { StateStore, StoreSnapshot, StoreTx, StoredAttestation, StoredEngag
 interface Tables {
   meta: { key: string; value: string }
   engagements: { engagement_id: string; registered_record: string; registered_mandate: string | null; record: string; pins: string; closed: number }
-  attestations: { engagement_id: string; statement_id: string; statement: string; receipt: string }
-  presigned: { engagement_id: string; outcome: string; blob: string }
-  completed: { engagement_id: string; tx_hash: string; result: string }
-  inflight: { engagement_id: string; proposed_tx_hash: string; record: string }
+  attestations: { engagement_id: string; statement_id: string; statement: string; receipt: string; ord: number }
+  presigned: { engagement_id: string; outcome: string; blob: string; ord: number }
+  completed: { engagement_id: string; tx_hash: string; result: string; ord: number }
+  inflight: { engagement_id: string; proposed_tx_hash: string; record: string; ord: number }
   decisions: { seq: number; statement: string }
   last_refusal: { engagement_id: string; outcome: string; fingerprint: string }
 }
@@ -26,6 +27,13 @@ const isLeaseKey = (k: string): boolean => k === LEASE_OWNER || k === LEASE_HEAR
 
 export interface SqliteStoreOptions { file: string; leaseMs?: number }
 
+/**
+ * In-process opens of one file run one at a time. better-sqlite3 waits for a busy lock synchronously, which blocks the
+ * event loop, so two same-process opens migrating at once would stall until busy_timeout. Other processes are
+ * unaffected (they have their own event loop) and are still arbitrated by the lease.
+ */
+const opening = new Map<string, Promise<unknown>>()
+
 /** Durable StateStore on SQLite (Kysely + better-sqlite3), guarded by a single-owner heartbeat lease. */
 export class SqliteStateStore implements StateStore {
   private queue: Promise<unknown> = Promise.resolve()
@@ -35,7 +43,17 @@ export class SqliteStateStore implements StateStore {
 
   private constructor(private readonly db: Kysely<Tables>, private readonly token: string) {}
 
-  static async open(o: SqliteStoreOptions): Promise<SqliteStateStore> {
+  static open(o: SqliteStoreOptions): Promise<SqliteStateStore> {
+    const file = path.resolve(o.file)
+    const prev = opening.get(file) ?? Promise.resolve()
+    const run = prev.then(() => SqliteStateStore.openNow(o), () => SqliteStateStore.openNow(o))
+    const settled = run.catch(() => undefined)
+    opening.set(file, settled)
+    void settled.then(() => { if (opening.get(file) === settled) opening.delete(file) })
+    return run
+  }
+
+  private static async openNow(o: SqliteStoreOptions): Promise<SqliteStateStore> {
     const token = randomUUID() // per-instance lease token: two opens never share ownership
     const leaseMs = o.leaseMs ?? 15000
     const sqlite = new Database(o.file, { timeout: 5000 }) // busy_timeout
@@ -89,10 +107,11 @@ export class SqliteStateStore implements StateStore {
     return this.db.transaction().execute(async (t) => {
       const meta = await t.selectFrom('meta').selectAll().orderBy('key').execute()
       const eng = await t.selectFrom('engagements').selectAll().orderBy('engagement_id').execute()
-      const att = await t.selectFrom('attestations').selectAll().orderBy('engagement_id').orderBy('statement_id').execute()
-      const pre = await t.selectFrom('presigned').selectAll().orderBy('engagement_id').orderBy('outcome').execute()
-      const com = await t.selectFrom('completed').selectAll().orderBy('engagement_id').orderBy('tx_hash').execute()
-      const inf = await t.selectFrom('inflight').selectAll().orderBy('engagement_id').orderBy('proposed_tx_hash').execute()
+      // insertion order (ord), then key order for rows that predate the ord column
+      const att = await t.selectFrom('attestations').selectAll().orderBy('ord').orderBy('engagement_id').orderBy('statement_id').execute()
+      const pre = await t.selectFrom('presigned').selectAll().orderBy('ord').orderBy('engagement_id').orderBy('outcome').execute()
+      const com = await t.selectFrom('completed').selectAll().orderBy('ord').orderBy('engagement_id').orderBy('tx_hash').execute()
+      const inf = await t.selectFrom('inflight').selectAll().orderBy('ord').orderBy('engagement_id').orderBy('proposed_tx_hash').execute()
       const dec = await t.selectFrom('decisions').selectAll().orderBy('seq').execute()
       const ref = await t.selectFrom('last_refusal').selectAll().orderBy('engagement_id').orderBy('outcome').execute()
       return {
@@ -176,6 +195,11 @@ function guard(tx: StoreTx, live: { open: boolean }): StoreTx {
 function txFor(t: Transaction<Tables>): StoreTx {
   const json = JSON.stringify
   const requireRow = (n: number | bigint, id: string): void => { if (Number(n) === 0) throw new Error(`unknown engagement ${id}`) }
+  /** Next insertion position in an ordered table (max + 1, inside this transaction). An upsert does not change it. */
+  const nextOrd = async (table: 'attestations' | 'presigned' | 'completed' | 'inflight'): Promise<number> => {
+    const m = await t.selectFrom(table).select((eb) => eb.fn.max('ord').as('m')).executeTakeFirst()
+    return Number(m?.m ?? 0) + 1
+  }
   return {
     putEngagement: async (e) => {
       const row = {
@@ -199,25 +223,25 @@ function txFor(t: Transaction<Tables>): StoreTx {
     },
     putAttestation: async (a) => {
       const row = { statement: json(a.statement), receipt: json(a.receipt) }
-      await t.insertInto('attestations').values({ engagement_id: a.engagementId, statement_id: a.statement.id, ...row })
+      await t.insertInto('attestations').values({ engagement_id: a.engagementId, statement_id: a.statement.id, ...row, ord: await nextOrd('attestations') })
         .onConflict((oc) => oc.columns(['engagement_id', 'statement_id']).doUpdateSet(row)).execute()
     },
     putPresigned: async (engagementId, outcome, blob) => {
-      await t.insertInto('presigned').values({ engagement_id: engagementId, outcome, blob })
+      await t.insertInto('presigned').values({ engagement_id: engagementId, outcome, blob, ord: await nextOrd('presigned') })
         .onConflict((oc) => oc.columns(['engagement_id', 'outcome']).doUpdateSet({ blob })).execute()
     },
     deletePresigned: async (engagementId, outcome) => {
       await t.deleteFrom('presigned').where('engagement_id', '=', engagementId).where('outcome', '=', outcome).execute()
     },
     putCompleted: async (engagementId, txHash, result) => {
-      await t.insertInto('completed').values({ engagement_id: engagementId, tx_hash: txHash, result: json(result) })
+      await t.insertInto('completed').values({ engagement_id: engagementId, tx_hash: txHash, result: json(result), ord: await nextOrd('completed') })
         .onConflict((oc) => oc.columns(['engagement_id', 'tx_hash']).doUpdateSet({ result: json(result) })).execute()
     },
     deleteCompleted: async (engagementId, txHash) => {
       await t.deleteFrom('completed').where('engagement_id', '=', engagementId).where('tx_hash', '=', txHash).execute()
     },
     addInflight: async (r) => {
-      await t.insertInto('inflight').values({ engagement_id: r.engagementId, proposed_tx_hash: r.proposedTxHash, record: json(r) })
+      await t.insertInto('inflight').values({ engagement_id: r.engagementId, proposed_tx_hash: r.proposedTxHash, record: json(r), ord: await nextOrd('inflight') })
         .onConflict((oc) => oc.columns(['engagement_id', 'proposed_tx_hash']).doUpdateSet({ record: json(r) })).execute()
     },
     removeInflight: async (engagementId, proposedTxHash) => {
@@ -232,6 +256,9 @@ function txFor(t: Transaction<Tables>): StoreTx {
     setLastRefusal: async (engagementId, outcome, fingerprint) => {
       await t.insertInto('last_refusal').values({ engagement_id: engagementId, outcome, fingerprint })
         .onConflict((oc) => oc.columns(['engagement_id', 'outcome']).doUpdateSet({ fingerprint })).execute()
+    },
+    deleteLastRefusal: async (engagementId, outcome) => {
+      await t.deleteFrom('last_refusal').where('engagement_id', '=', engagementId).where('outcome', '=', outcome).execute()
     },
     setMeta: async (k, v) => { await upsertMeta(t, k, v) },
   }

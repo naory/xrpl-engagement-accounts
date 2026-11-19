@@ -7,7 +7,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import xrpl from 'xrpl'
 import { documentHash, localSigner, type Statement } from '@eng/core'
-import { CosignerService, FixtureLedgerSource, MemoryStateStore, SqliteStateStore, combine, type CosignerOptions, type SnapshotRequest, type StateStore, type StoreSnapshot, type StoreTx } from '@eng/cosigner'
+import { CosignerService, FixtureLedgerSource, MemoryStateStore, SqliteStateStore, combine, type CosignerOptions, type SnapshotRequest, type StateStore, type TickResult, type StoreSnapshot, type StoreTx } from '@eng/cosigner'
 import { layerHash, type LedgerSnapshot } from '@eng/policy'
 import {
   W, b1Approval, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, checkin, guestCheckin, historyEntry, hotel2Close, hotel2Confirmation, hotel2Engagement, hotel2Ledger, hotel2Mandate, memo, policies, templates,
@@ -133,12 +133,17 @@ describe('CosignerService write-through', () => {
     expect(snap.completed).toEqual([{ engagementId: H2, txHash: svc.inflightFor(H2)[0].proposedTxHash, result: a }])
     expect(snap.inflight).toEqual(svc.inflightFor(H2))
     expect(snap.decisions.at(-1)!.statement).toEqual(a.record)
+    // A stale completed result of the same outcome under another tx hash (e.g. from a replaced blob) is retired too.
+    await store.transaction((tx) => tx.putCompleted(H2, 'OLD', a))
+    ;(svc as unknown as { engagements: Map<string, { completed: Map<string, TickResult> }> }).engagements.get(H2)!.completed.set('OLD', a)
     const o = source.h2.accounts[W.engHotel2.address].ownerObjects!
     o.tickets = o.tickets.filter((t) => t !== 101)
     const [b] = await svc.tick(H2)
     expect(b.failing).toEqual(['TICKET_CONSUMED'])
     snap = await store.loadAll()
     expect(snap.presigned).toEqual([])
+    expect(snap.completed).toEqual([])
+    expect((svc as unknown as { engagements: Map<string, { completed: Map<string, TickResult> }> }).engagements.get(H2)!.completed.size).toBe(0)
     expect(snap.inflight).toEqual([])
     expect(snap.decisions.at(-1)!.statement).toEqual(b.record)
   })
@@ -281,6 +286,44 @@ describe('CosignerService.open (restore)', () => {
     await expect(CosignerService.open(baseOpts(source, store))).resolves.toBeInstanceOf(CosignerService)
   })
 
+  it('a missing decisions.jsonl still records jsonl.imported (0), so a jsonl that appears later is never imported', async () => {
+    const dir = tmp()
+    const store = new MemoryStateStore()
+    const a = await CosignerService.open(baseOpts(new RoutedSource(), store, { dataDir: dir }))
+    expect(a.decisions()).toEqual([])
+    expect((await store.loadAll()).meta['jsonl.imported']).toBe('0')
+    const { svc } = await b1Svc()
+    await svc.decide({ engagementId: B1, stage: 'spend', tx: pay('800', 21), statements: [b1Invoice()] })
+    fs.writeFileSync(path.join(dir, 'decisions.jsonl'), svc.decisions().map((d) => JSON.stringify(d)).join('\n') + '\n')
+    const b = await CosignerService.open(baseOpts(new RoutedSource(), store, { dataDir: dir }))
+    expect(b.decisions()).toEqual([])
+  })
+
+  it('re-registration after a SQLite restart compares canonical JSON (an undefined-valued key is the same registration)', async () => {
+    const file = path.join(tmp(), 'cosigner.db')
+    const mandate = b1Mandate()
+    const rec = { ...b1Engagement(), note: undefined } as unknown as ReturnType<typeof b1Engagement>
+    const svc = await CosignerService.open(baseOpts(new RoutedSource(), await SqliteStateStore.open({ file })))
+    await svc.register(rec, mandate)
+    await expect(svc.register(rec, mandate)).resolves.toMatchObject({ ok: true })
+    await svc.close()
+    const again = await CosignerService.open(baseOpts(new RoutedSource(), await SqliteStateStore.open({ file })))
+    await expect(again.register(rec, mandate)).resolves.toMatchObject({ ok: true })
+    await expect(again.register(b1Engagement(), mandate)).resolves.toMatchObject({ ok: true })
+    await expect(again.register({ ...b1Engagement(), account: W.stranger.address }, mandate)).rejects.toThrow(/ALREADY_REGISTERED/)
+    await again.close()
+  })
+
+  it('close() stops new work: later mutating calls reject', async () => {
+    const { svc } = await b1Svc()
+    await svc.close()
+    await expect(svc.decide({ engagementId: B1, stage: 'spend', tx: pay('800', 21), statements: [b1Invoice()] })).rejects.toThrow(/closed/)
+    await expect(svc.register(b1Engagement(), b1Mandate())).rejects.toThrow(/closed/)
+    await expect(svc.tick(B1)).rejects.toThrow(/closed/)
+    await expect(svc.markClosed(B1)).rejects.toThrow(/closed/)
+    expect(svc.engagement(B1)).toBeDefined() // reads still answer
+  })
+
   it('imports decisions.jsonl once into an empty store; later appends are a best-effort export', async () => {
     const dir = tmp()
     const { svc } = await b1Svc()
@@ -349,5 +392,40 @@ describe('closed engagements and quiet ticks', () => {
     await again.tick(H2, { quiet: true })
     expect(again.decisions(H2)).toHaveLength(n + 2)
     expect((await store.loadAll()).decisions).toHaveLength(svc.decisions().length)
+  })
+
+  it('a tick SIGN resets the quiet fingerprint: REFUSE(X), SIGN, in-flight gone, REFUSE(X) in quiet mode is logged', async () => {
+    const { svc, source, store } = await hotelCheckedIn('2026-11-17T11:00:00Z')
+    await svc.storePresigned(H2, 'default.release', presign(releaseTx()))
+    const n = svc.decisions(H2).length
+    expect((await svc.tick(H2, { quiet: true }))[0].failing).toEqual(['L1'])
+    expect(svc.decisions(H2)).toHaveLength(n + 1)
+    source.h2.closeTime = '2026-11-17T11:00:01Z'
+    expect((await svc.tick(H2, { quiet: true }))[0].decision).toBe('SIGN')
+    expect(svc.decisions(H2)).toHaveLength(n + 2)
+    expect((await store.loadAll()).lastRefusal).toEqual([])
+    // The in-flight entry goes (a snapshot without owner objects resolves it, and skips the Ticket check), and the
+    // clock is back before the release: the same refusal again is logged, since a SIGN came in between.
+    delete source.h2.accounts[W.engHotel2.address].ownerObjects
+    source.h2.closeTime = '2026-11-17T11:00:00Z'
+    const [r] = await svc.tick(H2, { quiet: true })
+    expect(r.failing).toEqual(['L1'])
+    expect(svc.inflightFor(H2)).toEqual([])
+    expect(svc.decisions(H2)).toHaveLength(n + 3)
+    await svc.tick(H2, { quiet: true })
+    expect(svc.decisions(H2)).toHaveLength(n + 3)
+  })
+
+  it('storing a new blob for an outcome resets its quiet fingerprint', async () => {
+    const { svc, store } = await hotelCheckedIn('2026-11-17T11:00:00Z')
+    await svc.storePresigned(H2, 'default.release', presign(releaseTx()))
+    const n = svc.decisions(H2).length
+    await svc.tick(H2, { quiet: true })
+    await svc.tick(H2, { quiet: true })
+    expect(svc.decisions(H2)).toHaveLength(n + 1)
+    await svc.storePresigned(H2, 'default.release', presign({ ...releaseTx(), Memos: [memo('eng/basis', 'default.release'), memo('x', 'y')] }))
+    expect((await store.loadAll()).lastRefusal).toEqual([])
+    await svc.tick(H2, { quiet: true })
+    expect(svc.decisions(H2)).toHaveLength(n + 2)
   })
 })

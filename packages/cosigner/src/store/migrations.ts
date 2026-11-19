@@ -55,6 +55,15 @@ const m001: Migration = {
   },
 }
 
+// Insertion order for the keyed lists (loadAll returns them in it): assigned max + 1 inside the insert transaction, kept by
+// an upsert. Rows from before this migration share 0 and fall back to key order.
+const ORDERED = ['attestations', 'presigned', 'completed', 'inflight'] as const
+const m002: Migration = {
+  async up(db: Kysely<any>) {
+    for (const t of ORDERED) await db.schema.alterTable(t).addColumn('ord', 'bigint', (c) => c.notNull().defaultTo(0)).execute()
+  },
+}
+
 export const migrationProvider: MigrationProvider = {
-  async getMigrations() { return { '001_init': m001 } },
+  async getMigrations() { return { '001_init': m001, '002_insertion_order': m002 } },
 }

@@ -21,20 +21,19 @@ const emptyState = (): MemState => ({
   inflight: new Map(), decisions: [], nextSeq: 1, lastRefusal: new Map(),
 })
 
-const cloneState = (s: MemState): MemState => structuredClone(s)
-
-/** In-memory StateStore. A transaction works on a staged copy that replaces the live state only if `fn` resolves. */
+/** In-memory StateStore. StoreTx has no reads, so a transaction records its writes (values cloned at call time) and applies
+ * them to the live state, in order, only if `fn` resolves: all-or-nothing without copying the whole state. */
 export class MemoryStateStore implements StateStore {
   private state: MemState = emptyState()
   private queue: Promise<unknown> = Promise.resolve()
 
   transaction<T>(fn: (tx: StoreTx) => Promise<T>): Promise<T> {
     const run = async (): Promise<T> => {
-      const staged = cloneState(this.state)
+      const ops: Array<(s: MemState) => void> = []
       const live = { open: true }
       try {
-        const out = await fn(this.guard(this.txFor(staged), live))
-        this.state = staged
+        const out = await fn(this.guard(this.txFor(ops), live))
+        for (const op of ops) op(this.state) // validated when recorded: cannot throw here
         return out
       } finally {
         live.open = false
@@ -73,30 +72,34 @@ export class MemoryStateStore implements StateStore {
     return out as unknown as StoreTx
   }
 
-  private txFor(s: MemState): StoreTx {
-    const engagement = (id: string): StoredEngagement => {
-      const e = s.engagements.get(id)
-      if (!e) throw new Error(`unknown engagement ${id}`)
-      return e
+  /** A StoreTx that records ops. Map.set keeps an existing key's position, so an upsert keeps insertion order. */
+  private txFor(ops: Array<(s: MemState) => void>): StoreTx {
+    const put = new Set<string>() // engagements put earlier in this transaction
+    let appended = 0
+    const requireEngagement = (id: string): void => {
+      if (!this.state.engagements.has(id) && !put.has(id)) throw new Error(`unknown engagement ${id}`)
     }
+    const op = async (f: (s: MemState) => void): Promise<void> => { ops.push(f) }
     return {
-      putEngagement: async (e) => { s.engagements.set(e.engagementId, structuredClone(e)) },
-      setConsumed: async (id, consumed) => { engagement(id).record.consumed = structuredClone(consumed) },
-      setClosed: async (id) => { engagement(id).closed = true },
-      putAttestation: async (a) => { s.attestations.set(key(a.engagementId, a.statement.id), structuredClone(a)) },
-      putPresigned: async (engagementId, outcome, blob) => { s.presigned.set(key(engagementId, outcome), { engagementId, outcome, blob }) },
-      deletePresigned: async (engagementId, outcome) => { s.presigned.delete(key(engagementId, outcome)) },
-      putCompleted: async (engagementId, txHash, result) => { s.completed.set(key(engagementId, txHash), { engagementId, txHash, result: structuredClone(result) }) },
-      deleteCompleted: async (engagementId, txHash) => { s.completed.delete(key(engagementId, txHash)) },
-      addInflight: async (r) => { s.inflight.set(key(r.engagementId, r.proposedTxHash), structuredClone(r)) },
-      removeInflight: async (engagementId, proposedTxHash) => { s.inflight.delete(key(engagementId, proposedTxHash)) },
+      putEngagement: (e) => { const v = structuredClone(e); put.add(v.engagementId); return op((s) => { s.engagements.set(v.engagementId, v) }) },
+      setConsumed: async (id, consumed) => { requireEngagement(id); const v = structuredClone(consumed); ops.push((s) => { s.engagements.get(id)!.record.consumed = v }) },
+      setClosed: async (id) => { requireEngagement(id); ops.push((s) => { s.engagements.get(id)!.closed = true }) },
+      putAttestation: (a) => { const v = structuredClone(a); return op((s) => { s.attestations.set(key(v.engagementId, v.statement.id), v) }) },
+      putPresigned: (engagementId, outcome, blob) => op((s) => { s.presigned.set(key(engagementId, outcome), { engagementId, outcome, blob }) }),
+      deletePresigned: (engagementId, outcome) => op((s) => { s.presigned.delete(key(engagementId, outcome)) }),
+      putCompleted: (engagementId, txHash, result) => { const v = structuredClone(result); return op((s) => { s.completed.set(key(engagementId, txHash), { engagementId, txHash, result: v }) }) },
+      deleteCompleted: (engagementId, txHash) => op((s) => { s.completed.delete(key(engagementId, txHash)) }),
+      addInflight: (r) => { const v = structuredClone(r); return op((s) => { s.inflight.set(key(v.engagementId, v.proposedTxHash), v) }) },
+      removeInflight: (engagementId, proposedTxHash) => op((s) => { s.inflight.delete(key(engagementId, proposedTxHash)) }),
       appendDecision: async (statement) => {
-        const seq = s.nextSeq++
-        s.decisions.push({ seq, statement: structuredClone(statement) })
+        const v = structuredClone(statement)
+        const seq = this.state.nextSeq + appended++
+        ops.push((s) => { s.decisions.push({ seq, statement: v }); s.nextSeq = seq + 1 })
         return seq
       },
-      setLastRefusal: async (engagementId, outcome, fingerprint) => { s.lastRefusal.set(key(engagementId, outcome), { engagementId, outcome, fingerprint }) },
-      setMeta: async (k, v) => { s.meta.set(k, v) },
+      setLastRefusal: (engagementId, outcome, fingerprint) => op((s) => { s.lastRefusal.set(key(engagementId, outcome), { engagementId, outcome, fingerprint }) }),
+      deleteLastRefusal: (engagementId, outcome) => op((s) => { s.lastRefusal.delete(key(engagementId, outcome)) }),
+      setMeta: (k, v) => op((s) => { s.meta.set(k, v) }),
     }
   }
 }

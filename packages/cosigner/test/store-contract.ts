@@ -94,6 +94,62 @@ export function runStoreContract(name: string, makeStore: () => Promise<StateSto
       expect(snap.lastRefusal).toEqual([{ engagementId: 'e1', outcome: 'refund', fingerprint: 'fp2' }])
     })
 
+    it('loadAll keeps insertion order for attestations, presigned, completed and inflight; an upsert keeps its position', async () => {
+      const ids = ['m', 'c', 'x', 'a'] // deliberately not alphabetical
+      await store.transaction(async (tx) => {
+        for (const id of ids.slice(0, 2)) {
+          await tx.putAttestation({ engagementId: 'e1', statement: stmt(id), receipt: { statement: stmt('r') } })
+          await tx.putPresigned('e1', id, 'b')
+          await tx.putCompleted('e1', id, tickResult(id))
+          await tx.addInflight(inflight('e1', id))
+        }
+      })
+      await store.transaction(async (tx) => {
+        for (const id of ids.slice(2)) {
+          await tx.putAttestation({ engagementId: 'e1', statement: stmt(id), receipt: { statement: stmt('r') } })
+          await tx.putPresigned('e1', id, 'b')
+          await tx.putCompleted('e1', id, tickResult(id))
+          await tx.addInflight(inflight('e1', id))
+        }
+        // upsert the first row of each list: it stays first
+        await tx.putAttestation({ engagementId: 'e1', statement: stmt('m', { v: 2 }), receipt: { statement: stmt('r') } })
+        await tx.putPresigned('e1', 'm', 'b2')
+        await tx.putCompleted('e1', 'm', tickResult('m2'))
+        await tx.addInflight(inflight('e1', 'm', 'd2'))
+      })
+      const check = async (s: StateStore) => {
+        const snap = await s.loadAll()
+        expect(snap.attestations.map((a) => a.statement.id)).toEqual(ids)
+        expect(snap.presigned.map((p) => p.outcome)).toEqual(ids)
+        expect(snap.completed.map((c) => c.txHash)).toEqual(ids)
+        expect(snap.inflight.map((i) => i.proposedTxHash)).toEqual(ids)
+        expect(snap.presigned[0].blob).toBe('b2')
+        expect(snap.inflight[0].decisionId).toBe('d2')
+      }
+      await check(store)
+      // delete + re-add moves a row to the end (as Map delete + set does)
+      await store.transaction(async (tx) => { await tx.deletePresigned('e1', 'c'); await tx.putPresigned('e1', 'c', 'b') })
+      expect((await store.loadAll()).presigned.map((p) => p.outcome)).toEqual(['m', 'x', 'a', 'c'])
+      await store.transaction(async (tx) => { await tx.deletePresigned('e1', 'c'); await tx.putPresigned('e1', 'c', 'b') })
+      if (opts.reopen) {
+        await store.close()
+        store = await opts.reopen(store)
+        expect((await store.loadAll()).presigned.map((p) => p.outcome)).toEqual(['m', 'x', 'a', 'c'])
+        await store.transaction(async (tx) => { await tx.putPresigned('e1', 'z', 'b') })
+        expect((await store.loadAll()).presigned.map((p) => p.outcome)).toEqual(['m', 'x', 'a', 'c', 'z'])
+        expect((await store.loadAll()).attestations.map((a) => a.statement.id)).toEqual(ids)
+      }
+    })
+
+    it('deleteLastRefusal removes only its row; a missing row is a no-op', async () => {
+      await store.transaction(async (tx) => {
+        await tx.setLastRefusal('e1', 'refund', 'f1')
+        await tx.setLastRefusal('e1', 'release', 'f2')
+      })
+      await store.transaction(async (tx) => { await tx.deleteLastRefusal('e1', 'refund'); await tx.deleteLastRefusal('e1', 'nope') })
+      expect((await store.loadAll()).lastRefusal).toEqual([{ engagementId: 'e1', outcome: 'release', fingerprint: 'f2' }])
+    })
+
     it('removeInflight / deletePresigned / deleteCompleted remove only their row', async () => {
       await store.transaction(async (tx) => {
         await tx.putPresigned('e1', 'refund', 'b1')
