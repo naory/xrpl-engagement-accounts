@@ -51,7 +51,7 @@ Which use cases from the [catalog](use-cases/catalog.md) the project supports, a
 | Arbiter service | ⏳ planned | — |
 | Indexer (reviews, rulings) | ⏳ planned | — |
 | `engagement` x402 scheme | ⏳ planned | README §8 |
-| Sponsored accounts (XLS-68), on-ledger cosign, Smart Escrows | Research | README §16 |
+| Sponsored accounts (XLS-68), on-ledger cosign, Smart Escrows | Research | [README §14](../README.md#14-future-research) |
 
 ## Explicitly out of scope for v1
 
