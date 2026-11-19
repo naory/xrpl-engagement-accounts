@@ -266,7 +266,8 @@ Stack: TypeScript (Node ≥ 22.12, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-ke
 
 ```bash
 npm install
-npm test                    # 603 tests: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.12)
+npm test                    # 588 tests: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.12)
+npm run test:sweep          # 15 hotel R20/R21 sweep tests; nightly, not part of npm test
 npm run typecheck
 npm run validate-templates  # V1–V15 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)
 npm run lint-policies       # L1–L3, L5, L7–L9 for policies/*.json against their templates (L4 and L6 are not implemented)
