@@ -12,6 +12,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "packages/*/demo/**/*.ts", "vectors/**/*.ts"],
+  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "packages/*/demo/**/*.ts", "vectors/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["packages/cosigner/demo/x402"]
 }
