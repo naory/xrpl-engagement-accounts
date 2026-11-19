@@ -37,7 +37,7 @@ Which use cases from the [catalog](use-cases/catalog.md) the project supports, a
 
 | Component | State | Where |
 |---|---|---|
-| Ledger mechanics (pre-create, atomic open, ticketed defaults, settle-and-close) | ✅ proven on Testnet (21/21) | spike (kept local) |
+| Ledger mechanics (pre-create, atomic open, ticketed defaults, settle-and-close) | ✅ proven on Testnet (21/21) | spike (kept local; not reproducible from this repo yet; see T27) |
 | Template validator (V1–V15, disclosures, reserve) | ✅ | `packages/core` |
 | Statement envelope (JCS, `ENGA\0`, XRPL keys) | ✅ | `packages/core` |
 | Policy engine `cel-eng/1`, attestation pipeline, lint | ✅ | `packages/policy` |
