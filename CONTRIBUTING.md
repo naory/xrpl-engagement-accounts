@@ -11,6 +11,7 @@ Requires **Node ≥ 22.12**.
 ```bash
 npm install
 npm test                 # core, policy, co-signer, conformance vectors
+npm run test:sweep       # hotel R20/R21 sweep (nightly; not part of npm test)
 npm run typecheck
 npm run validate-templates   # V1–V15 over templates/*.json
 npm run lint-policies        # L1–L3, L5, L7–L9 over policies/*.json (L4 and L6 are not implemented)
@@ -56,7 +57,8 @@ change `vectors/` without it being committed.
 - Add or update tests with every behaviour change; policy changes need
   conformance-vector coverage.
 - When you add or remove tests or vectors, update the matching count marker. `npm run check-counts` checks it.
-- The whole default suite must pass (`npm test`) and typecheck cleanly.
+- The whole default suite must pass (`npm test`) and typecheck cleanly. The hotel R20/R21 sweep is `npm run test:sweep`; it is not part of `npm test` (nightly CI runs it).
+- The CI `npm audit --audit-level=high` step is blocking. If an unrelated PR goes red from a new advisory, fix it with a dependency bump PR, never by re-adding `|| true`.
 - Keys and seeds in tests are **test-only**, derived from public strings. Never
   commit a real key or seed, and never fund a fixture account.
 

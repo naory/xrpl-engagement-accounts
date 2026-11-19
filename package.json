@@ -11,6 +11,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:sweep": "vitest run -c vitest.sweep.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "validate-templates": "tsx packages/core/src/cli.ts validate-template templates/*.json",
     "lint-policies": "tsx packages/policy/src/cli.ts lint",
