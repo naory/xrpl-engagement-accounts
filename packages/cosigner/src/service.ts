@@ -232,6 +232,15 @@ export class CosignerService {
     return [...this.engagements.values()].filter((s) => !s.closed).map((s) => s.record.engagementId)
   }
 
+  /** Whether the engagement's account is still on the ledger (a tick returns [] both for "gone" and "nothing due"). */
+  async accountExists(engagementId: string): Promise<boolean> {
+    const st = this.live(engagementId)
+    const ledger = await this.o.source.snapshot({
+      account: st.record.account, assets: this.assetsOf(st.layers), accounts: [], credentialSubjects: [], historySecs: this.o.historySecs ?? 90 * DAY,
+    })
+    return ledger.accounts[st.record.account]?.exists === true
+  }
+
   /** Mark an engagement closed (its account is gone): persisted, then dropped from openEngagementIds(); reads still answer. */
   async markClosed(engagementId: string): Promise<void> {
     return this.serialized(engagementId, async () => {

@@ -1,4 +1,5 @@
 export * from './service.ts'
+export * from './scheduler.ts'
 export * from './snapshot.ts'
 export * from './xrpl-io.ts'
 export * from './keys.ts'

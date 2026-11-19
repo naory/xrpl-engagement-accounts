@@ -28,6 +28,11 @@ import type { PolicyDoc } from '@eng/policy'
 import { CosignerService, LedgerUnavailableError } from './service.ts'
 import { signerProviderFromEnv, type SignerProvider } from './keys.ts'
 import { XrplLedgerSource } from './snapshot.ts'
+import { MemoryStateStore } from './store/memory.ts'
+import { SqliteStateStore } from './store/sqlite.ts'
+import type { StateStore } from './store/types.ts'
+import { startTickScheduler } from './scheduler.ts'
+import { submit } from './xrpl-io.ts'
 
 export function loadLibrary(root: string, extraPolicies: PolicyDoc[] = []): { templates: Template[]; policies: PolicyDoc[] } {
   const read = <T>(dir: string) => fs.readdirSync(path.join(root, dir)).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(fs.readFileSync(path.join(root, dir, f), 'utf8')) as T)
@@ -195,7 +200,10 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
   const client = new xrpl.Client(process.env.XRPL_URL ?? 'wss://s.altnet.rippletest.net:51233')
   await client.connect()
   const lib = loadLibrary(process.cwd())
-  const svc = new CosignerService({ signer, source: new XrplLedgerSource(client), ...lib, dataDir: process.env.DATA_DIR ?? '.cosigner' })
+  const dataDir = process.env.DATA_DIR ?? '.cosigner'
+  fs.mkdirSync(dataDir, { recursive: true })
+  const store: StateStore = process.env.COSIGNER_STORE === 'memory' ? new MemoryStateStore() : await SqliteStateStore.open({ file: path.join(dataDir, 'cosigner.db') })
+  const svc = await CosignerService.open({ signer, source: new XrplLedgerSource(client), ...lib, dataDir, store })
   const port = Number(process.env.PORT ?? 8787)
   const server = createServer(svc, {
     ...options,
@@ -205,4 +213,30 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
   server.listen(port, host, () =>
     console.log(JSON.stringify({ t: new Date().toISOString(), level: 'info', msg: 'listening', cosigner: signer.address, host, port, key: keys.source, auth: options.token ? 'required' : 'open', rate: options.rateLimit?.max ?? null })),
   )
+  const say = (e: Record<string, unknown>) => console.log(JSON.stringify({ t: new Date().toISOString(), ...e }))
+  const tickMs = Number(process.env.COSIGNER_TICK_MS ?? 0)
+  const scheduler = tickMs > 0
+    ? startTickScheduler(svc, {
+        intervalMs: tickMs,
+        onResult: async (engagementId, r) => {
+          if (process.env.COSIGNER_TICK_SUBMIT === '1' && r.blob) {
+            const sent = await submit(client, r.blob)
+            say({ level: 'info', msg: 'tick submitted', engagementId, outcome: r.outcome, hash: sent.hash, prelim: sent.prelim, final: sent.final, validated: sent.validated })
+          } else say({ level: 'info', msg: 'tick signed', engagementId, outcome: r.outcome, blob: r.blob })
+        },
+        // A lost store lease means another co-signer owns the state: stop rather than keep signing.
+        onError: (e) => { console.error(String(e.message ?? e)); process.exit(1) },
+      })
+    : null
+  let stopping = false
+  const shutdown = async (): Promise<void> => {
+    if (stopping) return
+    stopping = true
+    await scheduler?.stop()
+    await new Promise<void>((r) => server.close(() => r()))
+    await svc.close()
+    process.exit(0)
+  }
+  process.on('SIGTERM', () => void shutdown())
+  process.on('SIGINT', () => void shutdown())
 }
