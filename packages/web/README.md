@@ -26,6 +26,13 @@ npm run web                                             # http://127.0.0.1:8080
 XRPL_URL=wss://s.devnet.rippletest.net:51233 PORT=8080 npm run web
 ```
 
+With no `XRPL_URL`, the server calls `resolveServiceEndpoint` (`@eng/cosigner`) once, before
+it listens, and logs `XRPL endpoint: <url>`. That tries `wss://testnet.xrpl-labs.com`, then
+`wss://s.altnet.rippletest.net:51233` if the connect fails or times out (5s). Every request
+uses that same URL. Set `XRPL_URL` to pin an endpoint, including Devnet; a set value is not
+probed. The pool CLI's override is `ENG_XRPL_WSS` (see `docs/pool.md`); the web server does
+not read it.
+
 Needs direct XRPL websocket egress (so run it on a normal network). First `Provision & open` funds a
 cast from the Testnet faucet and opens the account (~30–60s); then the four buttons exercise the
 policy: pay Vendor A (in policy → settles), pay Vendor B over the threshold with no approval
