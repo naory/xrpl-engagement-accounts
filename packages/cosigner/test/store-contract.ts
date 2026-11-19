@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { Statement } from '@eng/core'
 import type { EngagementRecord } from '@eng/policy'
 import type { InflightRecord, Receipt, TickResult } from '../src/service.ts'
-import type { StateStore, StoredAttestation, StoredEngagement } from '../src/store/types.ts'
+import type { StateStore, StoreTx, StoredAttestation, StoredEngagement } from '../src/store/types.ts'
 
 const stmt = (id: string, extra: Record<string, unknown> = {}): Statement => ({ id, type: 'test.statement/1', ...extra }) as unknown as Statement
 const record = (id: string, consumed: string[] = []): EngagementRecord => ({ id, state: 'open', consumed }) as unknown as EngagementRecord
@@ -21,7 +21,7 @@ const inflight = (engagementId: string, hash: string, decisionId = 'd1'): Inflig
   engagementId, outer: { ticket: 5 }, payments: [{ sequence: 1 }], reserved: ['s1'], decidedAtLedger: 10, proposedTxHash: hash,
 })
 
-export function runStoreContract(name: string, makeStore: () => Promise<StateStore>): void {
+export function runStoreContract(name: string, makeStore: () => Promise<StateStore>, opts: { reopen?: (s: StateStore) => Promise<StateStore> } = {}): void {
   describe(`StateStore contract: ${name}`, () => {
     let store: StateStore
     beforeEach(async () => { store = await makeStore() })
@@ -165,6 +165,90 @@ export function runStoreContract(name: string, makeStore: () => Promise<StateSto
       await store.transaction(async (tx) => { await tx.setMeta('k', 'ok') })
       expect((await store.loadAll()).meta.k).toBe('ok')
     })
+
+    it('key granularity: rows differing in any key component are all kept', async () => {
+      await store.transaction(async (tx) => {
+        await tx.putAttestation({ engagementId: 'e1', statement: stmt('a1'), receipt: { statement: stmt('r') } })
+        await tx.putAttestation({ engagementId: 'e1', statement: stmt('a2'), receipt: { statement: stmt('r') } })
+        await tx.putAttestation({ engagementId: 'e2', statement: stmt('a1'), receipt: { statement: stmt('r') } })
+        for (const e of ['e1', 'e2']) {
+          await tx.putPresigned(e, 'refund', 'b-' + e)
+          await tx.putCompleted(e, 'tx1', tickResult('o-' + e))
+          await tx.addInflight(inflight(e, 'tx1', 'd-' + e))
+        }
+        await tx.setLastRefusal('e1', 'refund', 'f1')
+        await tx.setLastRefusal('e1', 'release', 'f2')
+        await tx.setLastRefusal('e2', 'refund', 'f3')
+      })
+      const snap = await store.loadAll()
+      expect(snap.attestations.map((a) => [a.engagementId, a.statement.id]).sort()).toEqual([['e1', 'a1'], ['e1', 'a2'], ['e2', 'a1']])
+      expect(snap.presigned.map((p) => p.blob).sort()).toEqual(['b-e1', 'b-e2'])
+      expect(snap.completed.map((c) => c.result.outcome).sort()).toEqual(['o-e1', 'o-e2'])
+      expect(snap.inflight.map((i) => i.decisionId).sort()).toEqual(['d-e1', 'd-e2'])
+      expect(snap.lastRefusal.map((r) => r.fingerprint).sort()).toEqual(['f1', 'f2', 'f3'])
+    })
+
+    it('setConsumed / setClosed on a missing engagement reject, and a transaction failing there persists nothing', async () => {
+      await expect(store.transaction(async (tx) => { await tx.setConsumed('missing', ['s']) })).rejects.toThrow()
+      await expect(store.transaction(async (tx) => { await tx.setClosed('missing') })).rejects.toThrow()
+      for (const bad of [(tx: StoreTx) => tx.setConsumed('missing', ['s']), (tx: StoreTx) => tx.setClosed('missing')]) {
+        await expect(store.transaction(async (tx) => {
+          await tx.putEngagement(engagement('e1'))
+          await tx.setMeta('k', 'v')
+          await tx.appendDecision(stmt('d1'))
+          await bad(tx)
+        })).rejects.toThrow()
+        const snap = await store.loadAll()
+        expect(snap.engagements).toEqual([])
+        expect(snap.meta).toEqual({})
+        expect(snap.decisions).toEqual([])
+      }
+    })
+
+    it('round-trips a null mandate as null', async () => {
+      await store.transaction(async (tx) => { await tx.putEngagement(engagement('e1', { registered: { record: record('e1'), mandate: null } })) })
+      const [e] = (await store.loadAll()).engagements
+      expect(e.registered.mandate).toBeNull()
+    })
+
+    it('a tx used after its transaction settled throws', async () => {
+      let leaked!: StoreTx
+      await store.transaction(async (tx) => { leaked = tx })
+      await expect(leaked.setMeta('k', 'v')).rejects.toThrow(/transaction closed/)
+      let leaked2!: StoreTx
+      await expect(store.transaction(async (tx) => { leaked2 = tx; throw new Error('x') })).rejects.toThrow('x')
+      await expect(leaked2.setMeta('k', 'v')).rejects.toThrow(/transaction closed/)
+      expect((await store.loadAll()).meta).toEqual({})
+    })
+
+    if (opts.reopen) {
+      it('survives close and reopen with seq continuing', async () => {
+        const e = engagement('e1', { registered: { record: record('e1'), mandate: null } })
+        const att: StoredAttestation = { engagementId: 'e1', statement: stmt('a1'), receipt: { statement: stmt('r1') } }
+        const inf = inflight('e1', 'tx1')
+        let seq = 0
+        await store.transaction(async (tx) => {
+          await tx.putEngagement(e)
+          await tx.setConsumed('e1', ['s1'])
+          await tx.setClosed('e1')
+          await tx.putAttestation(att)
+          await tx.putPresigned('e1', 'refund', 'b')
+          await tx.putCompleted('e1', 'tx1', tickResult('a'))
+          await tx.addInflight(inf)
+          seq = await tx.appendDecision(stmt('d1'))
+          await tx.setLastRefusal('e1', 'refund', 'fp')
+          await tx.setMeta('k', 'v')
+        })
+        const before = await store.loadAll()
+        await store.close()
+        store = await opts.reopen!(store)
+        expect(await store.loadAll()).toEqual(before)
+        expect(before.engagements[0].registered.mandate).toBeNull()
+        let next = 0
+        await store.transaction(async (tx) => { next = await tx.appendDecision(stmt('d2')) })
+        expect(next).toBeGreaterThan(seq)
+      })
+    }
 
     it('loadAll returns copies: mutating a snapshot does not change the store', async () => {
       await store.transaction(async (tx) => { await tx.putEngagement(engagement('e1')) })

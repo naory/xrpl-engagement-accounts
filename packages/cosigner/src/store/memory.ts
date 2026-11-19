@@ -31,9 +31,14 @@ export class MemoryStateStore implements StateStore {
   transaction<T>(fn: (tx: StoreTx) => Promise<T>): Promise<T> {
     const run = async (): Promise<T> => {
       const staged = cloneState(this.state)
-      const out = await fn(this.txFor(staged))
-      this.state = staged
-      return out
+      const live = { open: true }
+      try {
+        const out = await fn(this.guard(this.txFor(staged), live))
+        this.state = staged
+        return out
+      } finally {
+        live.open = false
+      }
     }
     const result = this.queue.then(run, run)
     this.queue = result.catch(() => undefined)
@@ -55,6 +60,18 @@ export class MemoryStateStore implements StateStore {
   }
 
   async close(): Promise<void> { await this.queue }
+
+  /** Reject any use of a tx after its transaction has settled. */
+  private guard(tx: StoreTx, live: { open: boolean }): StoreTx {
+    const out = {} as Record<string, unknown>
+    for (const [name, f] of Object.entries(tx)) {
+      out[name] = (...args: unknown[]) => {
+        if (!live.open) return Promise.reject(new Error('transaction closed'))
+        return (f as (...a: unknown[]) => Promise<unknown>)(...args)
+      }
+    }
+    return out as unknown as StoreTx
+  }
 
   private txFor(s: MemState): StoreTx {
     const engagement = (id: string): StoredEngagement => {
