@@ -1,9 +1,10 @@
 // Policy lint (docs/spec/policy.md §11): L1 parse/type/float ban, L2 stage coverage, L3 statement
-// types in the registry, L5 enforcement vs template, L7 unique rule ids. (L4 static cost bound and
-// L6 layer monotonicity are follow-ups.)
+// types in the registry, L5 enforcement vs template, L7 unique rule ids, L8 plain-English text, L9 stay-terms
+// consistency (per-night variant cap vs maxStayVariantNights; rulingWindow within its bounds). (L4 static cost
+// bound and L6 layer monotonicity are follow-ups.)
 import type { Template } from '@eng/core'
 import { Assets } from './facts.ts'
-import { containsFloat, createEnvironment } from './env.ts'
+import { celDurationMs, containsFloat, createEnvironment } from './env.ts'
 import { REGISTRY } from './pipeline.ts'
 import type { PolicyDoc } from './types.ts'
 
@@ -53,7 +54,29 @@ export function lintPolicy(p: PolicyDoc, template?: Template): LintFinding[] {
       if (o.enforcement && st.enforcement !== o.enforcement && !(o.enforcement === 'advisory' && st.enforcement === 'advisory')) {
         out.push({ id: 'L5', where: on, message: `policy declares ${st.enforcement} but template declares ${o.enforcement}` })
       }
+      // L9: a per-night outcome covers stays of up to variants.max + 1 nights; the policy must state the same cap.
+      const cap = p.params?.maxStayVariantNights
+      if (o.variants?.perNight && cap !== undefined && cap !== o.variants.max + 1) {
+        out.push({ id: 'L9', where: on, message: `variants.max ${o.variants.max} covers stays of up to ${o.variants.max + 1} nights, but the policy's maxStayVariantNights is ${JSON.stringify(cap)}` })
+      }
     }
+  }
+  out.push(...rulingWindowFindings(p))
+  return out
+}
+
+/** L9: params.rulingWindow (when set) lies within params.minRulingWindow / maxRulingWindow (when set), all durations. */
+function rulingWindowFindings(p: PolicyDoc): LintFinding[] {
+  const out: LintFinding[] = []
+  const ms: Record<string, number | undefined> = {}
+  for (const k of ['rulingWindow', 'minRulingWindow', 'maxRulingWindow']) {
+    const v = p.params?.[k]
+    if (v === undefined) continue
+    try { ms[k] = celDurationMs(String(v)) } catch { out.push({ id: 'L9', where: `params.${k}`, message: `${JSON.stringify(v)} is not a duration` }) }
+  }
+  const w = ms.rulingWindow
+  if (w !== undefined && ((ms.minRulingWindow !== undefined && w < ms.minRulingWindow) || (ms.maxRulingWindow !== undefined && w > ms.maxRulingWindow))) {
+    out.push({ id: 'L9', where: 'params.rulingWindow', message: `${String(p.params!.rulingWindow)} is outside [${String(p.params!.minRulingWindow ?? '-')}, ${String(p.params!.maxRulingWindow ?? '-')}]` })
   }
   return out
 }

@@ -3,10 +3,12 @@
 //   npm install && npm run demo:hotel        (from the repo root; ~25 min, most of it the AccountDelete age wait)
 //   XRPL_URL=wss://s.devnet.rippletest.net:51233 npm run demo:hotel
 //
-// All engagement accounts are pre-created first, then the script waits until each can be deleted
-// (Sequence + 256 ≤ ledger index, counting the open Batch's Sequence numbers), then the eight paths run
-// concurrently, each opening its own account when it starts (timers count from open). Keys are fresh per
-// run; results land in demo/results/hotel-run-*.json, with the co-signer's decision log beside them.
+// The service's accreditor first issues the arbiter an ENG/ARBITER Credential (the arbiter accepts it); a deal naming an
+// unaccredited arbiter is refused at registration inside HotelFlow.open(), before the open Batch moves any money (H16). All engagement accounts are pre-created
+// (reserves sized from each path's nights), then the script waits until each can be deleted (Sequence + 256 ≤ ledger
+// index, counting the open Batch's Sequence numbers), then the ten paths run concurrently, each opening its own account
+// when it starts (timers count from open). Keys are fresh per run; results land in demo/results/hotel-run-*.json, with
+// the co-signer's decision log beside them.
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,10 +16,10 @@ import xrpl from 'xrpl'
 import { localSigner, type Template } from '@eng/core'
 import { layerHash, type PolicyDoc } from '@eng/policy'
 import {
-  CosignerService, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, HOTEL_PATHS, HotelFlow, XrplLedgerSource,
+  CosignerService, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, HOTEL_PATHS, HotelFlow, XrplLedgerSource, hotelPathNights, hotelTerms,
   type HotelCast, type HotelPath, type HotelStepResult,
 } from '../src/index.ts'
-import { ASF_DEFAULT_RIPPLE, accountInfo, currencyHex, iou, sendSimple, serverFees, sleep, type SubmitResult } from '../src/xrpl-io.ts'
+import { ASF_DEFAULT_RIPPLE, accountInfo, currencyHex, iou, iouBalance, sendSimple, serverFees, sleep, type Fees, type SubmitResult } from '../src/xrpl-io.ts'
 
 type Wallet = InstanceType<typeof xrpl.Wallet>
 type Json = Record<string, unknown>
@@ -68,6 +70,17 @@ async function fund(client: InstanceType<typeof xrpl.Client>, label: string): Pr
   throw new Error(`faucet failed for ${label}`)
 }
 
+/** Top the service up from the faucet until it holds `drops` (+ its own reserve): pre-creating funds every account's Tickets. */
+async function ensureXrp(client: InstanceType<typeof xrpl.Client>, w: Wallet, drops: number, fees: Fees): Promise<void> {
+  for (let i = 0; i < 5; i++) {
+    const have = Number(((await accountInfo(client, w.address))!.account_data as Json).Balance)
+    if (have >= drops + fees.reserveBase) return
+    log(`service holds ${have / 1e6} XRP, needs ${(drops + fees.reserveBase) / 1e6}: faucet top-up`)
+    try { await client.fundWallet(w) } catch (e) { log(`faucet top-up retry: ${(e as Error).message}`); await sleep(5000) }
+  }
+  throw new Error('could not fund the service for pre-creating the engagement accounts')
+}
+
 async function main() {
   const client = new xrpl.Client(URL_, { timeout: 60_000 })
   await client.connect()
@@ -80,36 +93,72 @@ async function main() {
   const guest = await fund(client, 'guest (principal)')
   const hotel = await fund(client, 'hotel (counterparty)')
   const service = await fund(client, 'service (fee, AccountDelete destination, pre-create)')
-  const arbiter = xrpl.Wallet.generate() // signs only
-  const backupArbiter = xrpl.Wallet.generate() // signs only
+  const arbiter = await fund(client, 'arbiter (accepts its accreditation, then only signs)')
+  const accreditor = await fund(client, 'accreditor (the service\'s arbiter accreditor)')
   const cosigner = xrpl.Wallet.generate() // signs only
-  Object.assign(results.accounts, { arbiter: arbiter.address, backupArbiter: backupArbiter.address, cosigner: cosigner.address })
+  const unaccredited = xrpl.Wallet.generate() // an arbiter nobody accredited (H16); never funded
+  Object.assign(results.accounts, { cosigner: cosigner.address, 'unaccredited arbiter': unaccredited.address })
 
   must(await sendSimple(client, issuer, { TransactionType: 'AccountSet', Account: issuer.address, SetFlag: ASF_DEFAULT_RIPPLE }), 'issuer DefaultRipple')
   for (const w of [guest, hotel, service]) must(await sendSimple(client, w, { TransactionType: 'TrustSet', Account: w.address, LimitAmount: iou(CUR, issuer.address, '10000000') }), `trust line ${w.address}`)
   must(await sendSimple(client, issuer, { TransactionType: 'Payment', Account: issuer.address, Destination: guest.address, Amount: iou(CUR, issuer.address, '10000') }), 'issue 10,000 RLUSD to the guest')
 
-  // ── Co-signer: baseline + a demo copy of pol_hotel@2.0.0 (this run's issuer, rulingWindow 60 s) ──
+  // ── Co-signer: baseline + a demo copy of pol_hotel@2.0.0 (this run's issuer and accreditor, rulingWindow 60 s) ──
   const read = <T>(f: string) => JSON.parse(fs.readFileSync(path.join(root, f), 'utf8')) as T
   const baseline = read<PolicyDoc>('policies/baseline@1.1.0.json')
   const policy = read<PolicyDoc>('policies/hotel@2.0.0.json')
   policy.version = '2.0.0-demo'
   policy.assets!.RLUSD.issuer = issuer.address
   policy.params!.rulingWindow = '60s'
+  // The demo's own ruling-window bounds around its 60 s window (the stock policy allows 3–7 days; register() checks them).
+  policy.params!.minRulingWindow = '30s'
+  policy.params!.maxRulingWindow = '120s'
+  policy.params!.arbiterIssuers = [accreditor.address]
   const template = read<Template>('templates/hotel@2.json')
   const dataDir = path.join(resultsDir, `decisions-hotel-${stamp}`)
   const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(client), templates: [template], policies: [baseline, policy], dataDir })
-  log(`co-signer ${cosigner.address}; policy layer pol_hotel@2.0.0-demo ${layerHash(policy)} (rulingWindow 60s)`)
+  log(`co-signer ${cosigner.address}; policy layer pol_hotel@2.0.0-demo ${layerHash(policy)} (rulingWindow 60s, arbiterIssuers [${accreditor.address}])`)
 
-  const cast: HotelCast = { issuer, guest, hotel, arbiter, backupArbiter, service, currency: CUR }
+  const cast: HotelCast = { issuer, guest, hotel, arbiter, accreditor, service, currency: CUR }
   const onTx = (label: string, r: SubmitResult) => results.txs.push({ label, hash: r.hash, final: r.final })
   const flows = Object.fromEntries(HOTEL_PATHS.map((p) => [p, new HotelFlow({
     client, fees, svc, cast, timers: DEMO_HOTEL_TIMERS, policyLayers: [layerHash(policy)], rulingWindowSecs: 60, runId: RUN,
-    log: (m) => log(m), onTx,
+    log: (m) => log(m), onTx, probeCosigner: cosigner,
   })])) as Record<HotelPath, HotelFlow>
 
-  // ── Pre-create every engagement account, then wait until each can be deleted ──
-  const accounts = await flows.happy.precreate(HOTEL_PATHS.length)
+  // ── Accreditation: the accreditor issues ENG/ARBITER to the arbiter, who accepts it ──
+  for (const s of await flows.happy.accredit()) if (s.final !== 'tesSUCCESS') throw new Error(`${s.step} failed: ${s.final} (${s.tx})`)
+  log(`arbiter ${arbiter.address} accredited by ${accreditor.address} (ENG/ARBITER, accepted)`)
+
+  // ── Pre-create every engagement account (reserves sized from each path's nights), plus one for H16 ──
+  await ensureXrp(client, service, [...HOTEL_PATHS.map(hotelPathNights), 1].reduce((n, k) => n + HotelFlow.precreateDrops(fees, k), 0) + 10_000_000, fees)
+  const [h16Account] = await flows.happy.precreate([1])
+  results.accounts['engagement:unaccredited (H16)'] = h16Account.address
+
+  // ── H16: the real deal flow (HotelFlow.open) with an unaccredited arbiter: the co-signer's gate refuses before money moves ──
+  {
+    const h16Txs: SubmitResult[] = []
+    const h16 = new HotelFlow({
+      client, fees, svc, cast: { ...cast, arbiter: unaccredited }, timers: DEMO_HOTEL_TIMERS, policyLayers: [layerHash(policy)], rulingWindowSecs: 60,
+      runId: `${RUN}_unaccredited`, log: (m) => log(m), onTx: (label, r) => { if (label.includes('_unaccredited')) h16Txs.push(r); onTx(label, r) },
+    })
+    const rl = () => iouBalance(client, guest.address, CUR, issuer.address)
+    const before = await rl()
+    const steps = await h16.run('happy', h16Account)
+    await sleep(8000) // a couple of ledgers: anything submitted would have validated by now
+    const after = await rl()
+    const engRlusd = await iouBalance(client, h16Account.address, CUR, issuer.address)
+    results.paths['unaccredited (H16)'] = { engagementId: h16.engagementId, account: h16Account.address, steps }
+    const s = steps[0]
+    const refused = steps.length === 1 && s?.step === 'register' && !!s.final?.startsWith('NOT_NEUTRAL') && !!s.final?.includes('ARBITER_NOT_ACCREDITED')
+    record('H16', 'Unaccredited arbiter in the real deal flow (HotelFlow.open) → the co-signer refuses to register, before any money moves',
+      'open(): register() refuses NOT_NEUTRAL (ARBITER_NOT_ACCREDITED); no open Batch submitted; the guest\'s RLUSD unchanged; the engagement account holds no RLUSD',
+      `${s?.step}: ${s?.final}; transactions submitted ${h16Txs.length}; guest RLUSD ${before} → ${after}; engagement account RLUSD ${engRlusd}`,
+      refused && h16Txs.length === 0 && before === after && Number(engRlusd ?? 0) === 0, { path: 'unaccredited (H16)' })
+  }
+
+  // ── Wait until every path's account can be deleted ──
+  const accounts = await flows.happy.precreate(HOTEL_PATHS.map(hotelPathNights))
   HOTEL_PATHS.forEach((p, i) => { results.accounts[`engagement:${p}`] = accounts[i].address })
   log(`pre-created ${accounts.length} engagement accounts`)
   await flows.happy.waitUntilAged(accounts.map((a) => a.address))
@@ -130,7 +179,7 @@ async function main() {
   console.log('')
 
   // ── Checks (spec §7.1) ──
-  const { room, deposit, bond, claim } = DEMO_HOTEL_BOOKING
+  const { room, deposit, bond, claim, partialDeposit } = DEMO_HOTEL_BOOKING
   const flow = flows.happy
   const S = (p: HotelPath, name: string, nth = 0) => steps[p].filter((s) => s.step === name)[nth]
   const deleted = async (p: HotelPath) => (await accountInfo(client, results.accounts[`engagement:${p}`])) === null
@@ -169,12 +218,24 @@ async function main() {
       `advisory ruling.default SIGN; tesSUCCESS; payouts ${payouts.map((x) => `${x.value}→${label(x.to)}`).join(', ')}; account deleted`,
       `advisory ${fmt(s)}; payouts ${showPay(s)}; deleted=${gone}`, ok, { tx: s?.tx, path: 'claimUnanswered' })
   }
-  await closed('H8', 'Claim disputed, primary arbiter silent past rulingDueBy → backup + guest + co-signer ruling', 'backupRuling', S('backupRuling', 'ruling:backupArbiter', 1),
-    want(m(room), m(deposit) + m(bond)), 'ruling.backup SIGN; tesSUCCESS')
+  // H8/H9/H14/H17: the arbiter never rules → chargeback-style defaults, completed by the co-signer (chargeback spec §4.3).
+  await closed('H8', 'Claim disputed, arbiter silent past its ruling deadline → default.chargebackClaim', 'arbiterSilent', S('arbiterSilent', 'tick default.chargebackClaim', 1),
+    want(m(room), m(deposit) + m(bond)), 'default.chargebackClaim SIGN; tesSUCCESS; room to the hotel less the fee, deposit + bond to the guest')
   {
-    const s = S('backupRuling', 'ruling:backupArbiter', 0)
-    record('H9', 'Backup ruling before rulingDueBy', 'REFUSE incl. U1 (NOT_DUE); nothing submitted', `${fmt(s)}; ${reasons(s, ['U1'])}`,
-      s?.decision === 'REFUSE' && !!s.failing?.includes('U1') && !s.tx, { path: 'backupRuling' })
+    const s = S('arbiterSilent', 'tick default.chargebackClaim', 0)
+    record('H9', 'default.chargebackClaim before the ruling deadline', 'REFUSE incl. G1 (NOT_DUE); nothing submitted', `${fmt(s)}; ${reasons(s, ['G1'])}`,
+      s?.decision === 'REFUSE' && !!s.failing?.includes('G1') && s.rules?.find((x) => x.id === 'G1')?.reason === 'NOT_DUE' && !s.tx, { path: 'arbiterSilent' })
+  }
+  {
+    const s = S('arbiterSilent', 'probe:arbiter+cosigner')
+    record('H14', 'Arbiter + co-signer alone (weight 6 < quorum 7)', 'tefBAD_QUORUM', fmt(s), s?.final === 'tefBAD_QUORUM', { tx: s?.tx, path: 'arbiterSilent' })
+  }
+  {
+    // 3 nights at floor(400 ÷ 3) = 133.333333; disputed in night 1 → one night to the hotel (less the fee), the rest to the guest.
+    const night = BigInt(Math.round(Number(hotelTerms(room, 3).nightly) * 1e6))
+    const total = BigInt(Math.round((m(room) + m(deposit) + m(bond)) * 1e6))
+    await closed('H17', 'Mid-stay dispute (night 1 of 3), arbiter silent → default.chargebackStay#1', 'staySilent', S('staySilent', 'tick default.chargebackStay#1'),
+      flow.split(night, total - night), 'default.chargebackStay#1 SIGN; tesSUCCESS; one night to the hotel less the fee, the remaining nights + deposit + bond to the guest')
   }
   {
     const s = S('happy', 'probe:principal+counterparty')
@@ -186,19 +247,26 @@ async function main() {
       s?.decision === 'REFUSE' && !!s.failing?.includes('L5'), { path: 'claimUnanswered' })
   }
   {
-    const r = S('happy', 'tick default.refund'), n = S('happy', 'tick default.noshow')
-    record('H12', 'Open-time default.refund / default.noshow after the deposit', 'both REFUSE incl. BALANCE_CHANGED (R2, N5)',
-      `refund ${fmt(r)} (${reasons(r, ['R2'])}); noshow ${fmt(n)} (${reasons(n, ['N5'])})`,
-      r?.decision === 'REFUSE' && !!r.failing?.includes('R2') && n?.decision === 'REFUSE' && !!n.failing?.includes('N5'), { path: 'happy' })
+    // Extra money no longer jams a default (it is swept back to the guest), so after check-in the open-time defaults are
+    // refused for what they are: the booking was confirmed (R1) and the guest checked in (N3).
+    const r = S('happy', 'tick default.refund'), n = S('happy', 'tick default.noshow'), ns = S('happy', 'tick default.noshowSweep')
+    record('H12', 'Open-time default.refund / both default.noshow variants after check-in + deposit', 'all REFUSE: refund R1 (NOT_DUE: confirmed), no-shows N3 (CHECKED_IN)',
+      `refund ${fmt(r)} (${reasons(r, ['R1'])}); noshow ${fmt(n)} (${reasons(n, ['N3'])}); noshowSweep ${fmt(ns)} (${reasons(ns, ['N3'])})`,
+      r?.decision === 'REFUSE' && !!r.failing?.includes('R1') && [n, ns].every((x) => x?.decision === 'REFUSE' && !!x.failing?.includes('N3')), { path: 'happy' })
   }
   {
     const s = S('entryRuled', 'tick default.noshow')
     record('H13', 'default.noshow while an entry dispute is open (past checkInBy and entryDisputeBy)', 'REFUSE incl. N4 (DISPUTE_OPEN)', `${fmt(s)}; ${reasons(s, ['N4'])}`,
       s?.decision === 'REFUSE' && !!s.failing?.includes('N4'), { path: 'entryRuled' })
   }
+
   {
-    const s = S('backupRuling', 'probe:arbiter+backupArbiter')
-    record('H14', 'Arbiter + backup arbiter alone (weight 6 < quorum 7)', 'tefBAD_QUORUM', fmt(s), s?.final === 'tefBAD_QUORUM', { tx: s?.tx, path: 'backupRuling' })
+    // H15: partial deposit + refused check-in → no-show; the sweep variant returns the partial deposit inside a ticketed
+    // ALLORNOTHING Batch (tfPartialPayment), and the exact variant is refused.
+    const exact = S('partialDeposit', 'tick default.noshow')
+    await closed('H15', 'Partial deposit, hotel refuses check-in → no-show; the guest\'s partial deposit swept back', 'partialDeposit', S('partialDeposit', 'tick default.noshowSweep'),
+      [...want(m(room), 0), { to: guest.address, value: partialDeposit }], `exact default.noshow REFUSE incl. N8 (was ${fmt(exact)}); default.noshowSweep SIGN; tesSUCCESS`)
+    if (!(exact?.decision === 'REFUSE' && exact.failing?.includes('N8'))) record('H15b', 'Exact no-show refused when the account holds more than the room', 'REFUSE incl. N8', fmt(exact), false, { path: 'partialDeposit' })
   }
 
   results.decisionLog = path.relative(root, path.join(dataDir, 'decisions.jsonl'))

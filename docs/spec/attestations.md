@@ -139,6 +139,8 @@ Multisig attester accounts (e.g. an inspection panel) aren't supported in v1. A 
 | `Expiration` | Accreditation term |
 | Accepted | Must be accepted by the attester (`lsfAccepted`) to count |
 
+**`ENG/ARBITER`.** The arbiter of a deal is an attester accredited with `CredentialType` `ENG/ARBITER`, issued by an account in the policy's `arbiterIssuers` (policy parameters `arbiterCredentialType`, `arbiterIssuers`). It must be accepted and unexpired at the decision ledger's close time. The co-signer's `register()` checks it before any money moves and refuses `NOT_NEUTRAL` otherwise; the arbiter cannot be the guest or the hotel, and a mandate's `allowedArbiters` can narrow the set. Today the engagement service is the sole issuer, an assumption pending a real business ([design §3](../superpowers/specs/2026-11-14-arbiter-chargeback-design.md#3-assumptions-to-revisit-when-a-real-business-implements-this)).
+
 **Validity rule:** the accreditation must exist, be accepted and be unexpired **at the trust ledger**. An accreditor revokes with `CredentialDelete`. Revocation invalidates every **not-yet-consumed** attestation from that attester whose trust ledger is at or after the revocation. Attestations already consumed by an executed outcome stand: the ledger can't un-pay. Revocation *for cause* can additionally be published as a statement of type `registry.revocation/1` listing tainted attestation ids, which the arbiter can use in later disputes.
 
 **Which attesters a deal accepts** (D7). The engagement record gets an `attesters` block, hashed into the open memo with everything else:

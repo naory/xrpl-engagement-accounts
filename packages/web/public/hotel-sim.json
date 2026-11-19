@@ -59,12 +59,12 @@
       "message": "The confirmed total must equal the room price the guest paid in."
     },
     "C5": {
-      "title": "Deposit within the guest's limit",
-      "message": "The security deposit the hotel asks for must not exceed the maximum the guest agreed to. Otherwise the confirmation doesn't count."
+      "title": "Deposit in the booking's currency and within the guest's limit",
+      "message": "The security deposit the hotel asks for must be in the booking's currency (RLUSD) and must not exceed the maximum the guest agreed to. Otherwise the confirmation doesn't count, so the guest can never be treated as checked in on it and the booking is refunded."
     },
     "K1": {
       "title": "Guest checked in",
-      "message": "The hotel has recorded the guest's arrival, and the deposit is in the account."
+      "message": "The hotel has recorded the guest's arrival (once recorded, a check-in can't be taken back), the guest has confirmed it (they have the keys), and the deposit is in the account."
     },
     "K2": {
       "title": "Deposit is exactly right",
@@ -103,12 +103,16 @@
       "message": "The automatic refund is only for a booking the hotel never confirmed by its deadline. If the hotel confirmed in time, it doesn't apply."
     },
     "R2": {
-      "title": "Account holds just the room price",
-      "message": "This refund was signed in advance for exactly the room price. If anything else is in the account now (a deposit, a dispute bond), it no longer fits."
+      "title": "The room price is in the account",
+      "message": "The refund needs at least the room price in the account. Anything more (a stray payment, a deposit) is not a reason to stall: it goes back to the guest too."
     },
     "R3": {
       "title": "Valid refund",
-      "message": "The automatic refund sends the room price back to the guest and closes the account."
+      "message": "The automatic refund pays the guest back and closes the account."
+    },
+    "R4": {
+      "title": "Everything goes back to the guest",
+      "message": "The guest gets back every last cent in the account, the room price plus anything extra, with no fee."
     },
     "N1": {
       "title": "No-show is due",
@@ -120,23 +124,27 @@
     },
     "N3": {
       "title": "Guest never checked in",
-      "message": "If the guest arrived and paid the deposit, it isn't a no-show."
+      "message": "If the hotel recorded the guest as checked in, the guest confirmed it and the deposit is in, it isn't a no-show. A recorded check-in is final: a later 'refused' doesn't undo it."
     },
     "N4": {
       "title": "No open dispute",
-      "message": "If the guest filed a dispute (with its bond), the automatic endings wait for the arbiter. Silence can't override a raised flag."
+      "message": "If the guest filed a dispute (with its bond), the automatic endings wait for the arbiter. Silence can't override a raised flag. A guest dispute counts only once the co-signer has receipted it, and the co-signer receipts one only when the guest's dispute credential (ENG/DISPUTE) and the bond are already on the account; after that it stays open while the money stays in."
     },
     "N5": {
-      "title": "Account holds just the room price",
-      "message": "The no-show ending was signed in advance for exactly the room price. If anything else is in the account now, it no longer fits."
+      "title": "The room price is in the account",
+      "message": "The no-show needs at least the room price in the account. Anything more (a partial deposit, a stray payment) does not stop it: it goes back to the guest."
     },
     "N6": {
       "title": "Valid no-show payout",
-      "message": "The no-show ending pays the room to the hotel (less the fee) and closes the account."
+      "message": "The no-show ending pays the room to the hotel (less the fee), returns anything extra to the guest, and closes the account."
     },
     "N7": {
       "title": "Correct service fee",
-      "message": "The service takes 0.5% of whatever the hotel receives."
+      "message": "The service takes 0.5% of the room price the hotel receives. Money returned to the guest carries no fee."
+    },
+    "N8": {
+      "title": "Hotel gets the room, the guest gets any extra",
+      "message": "The hotel is paid exactly the room price (less the fee). Anything else in the account, such as a partial deposit, goes back to the guest. Of the two no-show endings signed in advance, only the one that fits the money actually in the account can be used."
     },
     "L1": {
       "title": "Release is due",
@@ -144,47 +152,79 @@
     },
     "L2": {
       "title": "No open dispute",
-      "message": "If the guest filed a dispute (with its bond), the release waits for the arbiter. Silence can't override a raised flag."
+      "message": "If the guest filed a dispute (with its bond), the release waits for the arbiter. Silence can't override a raised flag. A guest dispute counts only once the co-signer has receipted it, and the co-signer receipts one only when the guest's dispute credential (ENG/DISPUTE) and the bond are already on the account; after that it stays open while the money stays in."
     },
     "L3": {
-      "title": "Account holds room plus deposit",
-      "message": "The release was signed in advance for the room plus the deposit. If anything else is in the account, it no longer fits."
+      "title": "Room and deposit are in the account",
+      "message": "The release needs at least the room plus the deposit in the account. Anything more (a stray payment) does not stop it: it goes back to the guest."
     },
     "L4": {
       "title": "Valid release",
-      "message": "The release pays the room to the hotel, returns the deposit to the guest, and closes the account."
+      "message": "The release pays the room to the hotel, returns the deposit and anything extra to the guest, and closes the account."
     },
     "L5": {
-      "title": "No deposit claim posted",
-      "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on."
+      "title": "No deposit claim standing",
+      "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on. But the hotel must make its case: if the guest has no open (bonded) dispute and the arbiter hasn't ruled on the claim by the ruling deadline (counted from the end of the guest's dispute window), the claim lapses and the deposit goes back to the guest."
     },
     "L6": {
-      "title": "Deposit goes back in full",
-      "message": "The whole deposit returns to the guest; the hotel gets the room price less the fee."
+      "title": "Deposit and any extra go back in full",
+      "message": "The hotel gets the room price less the fee; the whole deposit, plus anything else in the account, returns to the guest."
     },
-    "U1": {
-      "title": "Primary arbiter's time ran out",
-      "message": "The backup arbiter may only rule once the primary arbiter's ruling window has passed without a ruling."
+    "E1": {
+      "title": "Arbiter missed its deadline on an arrival dispute",
+      "message": "Only for a confirmed booking with the guest's one open, bonded dispute about a problem on arrival (no room, wrong room), once the arbiter's ruling deadline, counted from the dispute, has passed. Whether it is an arrival dispute is fixed when it is filed, so later payments into the account can't change the outcome. An unconfirmed booking is refunded instead."
     },
-    "U2": {
-      "title": "Primary arbiter hasn't ruled",
-      "message": "If the primary arbiter already ruled, the backup steps aside."
+    "E2": {
+      "title": "Arbiter hasn't ruled",
+      "message": "Once the arbiter's ruling is on record (received by the co-signer), the automatic default never applies: the arbiter and the winning party close the deal instead."
     },
-    "U3": {
-      "title": "Backup arbiter has ruled",
-      "message": "There must be a signed ruling from the backup arbiter."
+    "E3": {
+      "title": "Valid refund",
+      "message": "The entry chargeback pays the guest back and closes the account, in one transaction."
     },
-    "U4": {
-      "title": "Pays exactly what was ruled",
-      "message": "The transaction must pay exactly the amounts in the backup arbiter's ruling, to exactly those people."
+    "E4": {
+      "title": "Everything goes back to the guest",
+      "message": "Like a card chargeback, the guest gets back everything in the account: the room price, any deposit and the dispute bond, with no fee."
     },
-    "U5": {
-      "title": "Valid ruling payout",
-      "message": "A ruling splits the money and closes the account, in one transaction."
+    "G1": {
+      "title": "Arbiter missed its deadline on a claim or stay dispute",
+      "message": "Only for a stay that happened, with the guest's one open, bonded dispute filed after checkout (against the hotel's claim or the stay) or in the stay's last night, once the arbiter's ruling deadline has passed."
     },
-    "U6": {
-      "title": "Correct service fee",
-      "message": "The service takes 0.5% of whatever the hotel receives."
+    "G2": {
+      "title": "Arbiter hasn't ruled",
+      "message": "Once the arbiter's ruling is on record (received by the co-signer), the automatic default never applies: the arbiter and the winning party close the deal instead."
+    },
+    "G3": {
+      "title": "Valid payout",
+      "message": "The claim chargeback pays the hotel, the fee and the guest, and closes the account, in one transaction."
+    },
+    "G4": {
+      "title": "Hotel gets the room, nothing more",
+      "message": "The hotel's claim is rejected: the hotel is paid exactly the room price, less the service's 0.5% fee."
+    },
+    "G5": {
+      "title": "Everything else goes back to the guest",
+      "message": "The guest's payment is the one that sweeps up whatever is left: the whole deposit, the dispute bond and anything extra."
+    },
+    "Y1": {
+      "title": "Arbiter missed its deadline on a mid-stay dispute",
+      "message": "Only for the guest's one open, bonded dispute filed during the stay, before its last night, once the arbiter's ruling deadline has passed. Stays longer than 14 nights have no such ending: the dispute waits for the arbiter."
+    },
+    "Y2": {
+      "title": "Arbiter hasn't ruled",
+      "message": "Once the arbiter's ruling is on record (received by the co-signer), the automatic default never applies: the arbiter and the winning party close the deal instead."
+    },
+    "Y3": {
+      "title": "Valid payout",
+      "message": "The stay chargeback pays the hotel, the fee and the guest, and closes the account, in one transaction."
+    },
+    "Y4": {
+      "title": "Hotel gets only the nights used",
+      "message": "The hotel is paid for the nights up to and including the one in which the guest disputed (each night's share of the room price), less the service's 0.5% fee. A night counts once it has begun, from the scheduled check-in time. Of the per-night versions signed in advance, only the one for that night can be used."
+    },
+    "Y5": {
+      "title": "Everything else goes back to the guest",
+      "message": "The guest's payment is the one that sweeps up whatever is left: the remaining nights, the whole deposit, the dispute bond and anything extra."
     },
     "D1": {
       "title": "Hotel posted a claim",
@@ -212,7 +252,6 @@
     "guest": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
     "hotel": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
     "arbiter": "rJpA1KgqyhwRfeGJa3x55UZG8ruwiP94RJ",
-    "backupArbiter": "rGnMqScHjKZWTq8RUshJYNvMuzVcGGkBP9",
     "service": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
     "cosigner": "rKVRKq2PVRgqG3UTHWR5pEc8x8c7s2Degj"
   },
@@ -221,7 +260,8 @@
     "deposit": "100",
     "bond": "10",
     "claim": "20",
-    "maxDeposit": "200"
+    "maxDeposit": "200",
+    "partialDeposit": "40"
   },
   "timers": {
     "openedAt": "2026-11-01T09:00:00Z",
@@ -327,7 +367,23 @@
         "at": "2026-11-11T15:00:00Z"
       },
       {
+        "step": "guest acknowledges check-in",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:5868EC588C511276185F42A2CDB66D4E4AB965C4626A6959AA0BB3FE7CDD3C65",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
         "step": "default.release pre-signed",
+        "final": "STORED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "default.chargebackClaim + 2 stay variant(s) pre-signed",
         "final": "STORED",
         "at": "2026-11-11T15:00:00Z"
       },
@@ -402,10 +458,7 @@
         "stage": "default.refund",
         "decision": "REFUSE",
         "failing": [
-          "B7",
-          "B11",
-          "R1",
-          "R2"
+          "R1"
         ],
         "rules": [
           {
@@ -434,8 +487,7 @@
           },
           {
             "id": "B7",
-            "result": "fail",
-            "reason": "UNCLEAN_CLOSE"
+            "result": "pass"
           },
           {
             "id": "B8",
@@ -451,8 +503,7 @@
           },
           {
             "id": "B11",
-            "result": "fail",
-            "reason": "WOULD_FAIL"
+            "result": "pass"
           },
           {
             "id": "R1",
@@ -461,11 +512,14 @@
           },
           {
             "id": "R2",
-            "result": "fail",
-            "reason": "BALANCE_CHANGED"
+            "result": "pass"
           },
           {
             "id": "R3",
+            "result": "pass"
+          },
+          {
+            "id": "R4",
             "result": "pass"
           }
         ],
@@ -480,7 +534,7 @@
           "B11",
           "N1",
           "N3",
-          "N5"
+          "N8"
         ],
         "rules": [
           {
@@ -549,8 +603,7 @@
           },
           {
             "id": "N5",
-            "result": "fail",
-            "reason": "BALANCE_CHANGED"
+            "result": "pass"
           },
           {
             "id": "N6",
@@ -558,6 +611,173 @@
           },
           {
             "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "fail",
+            "reason": "PAYOUT_MISMATCH"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "tick default.noshowSweep",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "N1",
+          "N3"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "N1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "tick default.chargebackEntry",
+        "stage": "default.chargebackEntry",
+        "decision": "REFUSE",
+        "failing": [
+          "E1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "E1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "E2",
+            "result": "pass"
+          },
+          {
+            "id": "E3",
+            "result": "pass"
+          },
+          {
+            "id": "E4",
             "result": "pass"
           }
         ],
@@ -644,10 +864,242 @@
         "at": "2026-11-11T15:00:00Z"
       },
       {
+        "step": "tick default.chargebackClaim",
+        "stage": "default.chargebackClaim",
+        "decision": "REFUSE",
+        "failing": [
+          "G1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "G1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "G2",
+            "result": "pass"
+          },
+          {
+            "id": "G3",
+            "result": "pass"
+          },
+          {
+            "id": "G4",
+            "result": "pass"
+          },
+          {
+            "id": "G5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#1",
+        "stage": "default.chargebackStay",
+        "decision": "REFUSE",
+        "failing": [
+          "Y1",
+          "Y4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "fail",
+            "reason": "HOTEL_LEG"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#2",
+        "stage": "default.chargebackStay",
+        "decision": "REFUSE",
+        "failing": [
+          "Y1",
+          "Y4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "fail",
+            "reason": "HOTEL_LEG"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
         "step": "claim",
         "final": "RECEIPTED",
         "receipt": {
-          "statementId": "att:318CD43880364D8F89224CD14637775C04DE3C8C5A58E4434FC50A6B8A7B6C7D",
+          "statementId": "att:54232E2BE1C3950D1BAEDAE17817D368ED3E44E2BE619FE31DD10196C01FEC0F",
           "statementType": "party.claim/1",
           "receivedAt": "2026-11-14T15:00:00Z",
           "ledgerIndex": 99286200
@@ -656,7 +1108,7 @@
       },
       {
         "step": "probe:principal+counterparty",
-        "tx": "F5971E8AE1B56871EC0F3390FCA2F594745595F246BD1851CF54ACADAD8FF7E4",
+        "tx": "E0442457D3497885DACBE72FB52F151533D5DBE8C6F8CDACCAF598C3E463EEFF",
         "final": "tefBAD_QUORUM",
         "at": "2026-11-14T18:00:00Z"
       },
@@ -727,7 +1179,7 @@
             "result": "pass"
           }
         ],
-        "tx": "0466F765263C2983AA925738ED577DA38A8A5C3FCA2A33B41D2060249BDBBDF4",
+        "tx": "BEC642194C46E6095DE94D80EEA585EE5C786975EFD2F802376502A188F0A622",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -813,9 +1265,13 @@
           {
             "id": "R3",
             "result": "pass"
+          },
+          {
+            "id": "R4",
+            "result": "pass"
           }
         ],
-        "tx": "538DA6C8DD06FE9B3219D1918E058557CEEFF2F9231E417F452D6B2803CEA013",
+        "tx": "305BA43DC05A516A36309FB47A2BDC84BC7C7A74B7D6C51A1751603DCC2C4CB7",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -908,6 +1364,180 @@
           },
           {
             "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-01T11:01:00Z"
+      },
+      {
+        "step": "tick default.noshowSweep",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "B11",
+          "N1",
+          "N2",
+          "N8"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "N1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "N2",
+            "result": "fail",
+            "reason": "NOT_CONFIRMED"
+          },
+          {
+            "id": "N3",
+            "result": "pass"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "fail",
+            "reason": "PAYOUT_MISMATCH"
+          }
+        ],
+        "at": "2026-11-01T11:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackEntry",
+        "stage": "default.chargebackEntry",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "E1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "E1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "E2",
+            "result": "pass"
+          },
+          {
+            "id": "E3",
+            "result": "pass"
+          },
+          {
+            "id": "E4",
             "result": "pass"
           }
         ],
@@ -1059,6 +1689,10 @@
           {
             "id": "R3",
             "result": "pass"
+          },
+          {
+            "id": "R4",
+            "result": "pass"
           }
         ],
         "at": "2026-11-12T11:01:00Z"
@@ -1140,6 +1774,10 @@
           {
             "id": "N7",
             "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "pass"
           }
         ],
         "tx": "FAA57CDA26C76016826925426674E5A0B726A1D8822C22074ADFBFE9D128B309",
@@ -1152,6 +1790,172 @@
           {
             "to": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
             "value": "2"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      },
+      {
+        "step": "tick default.noshowSweep",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "B11",
+          "N8"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "pass"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "fail",
+            "reason": "PAYOUT_MISMATCH"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackEntry",
+        "stage": "default.chargebackEntry",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "E1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "E1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "E2",
+            "result": "pass"
+          },
+          {
+            "id": "E3",
+            "result": "pass"
+          },
+          {
+            "id": "E4",
+            "result": "pass"
           }
         ],
         "at": "2026-11-12T11:01:00Z"
@@ -1312,7 +2116,7 @@
             "result": "pass"
           }
         ],
-        "tx": "DB2718117DBFD7993BC9800F2B0A3D121BBFDE23B12C10FF31D4536B8172A09A",
+        "tx": "1D1A845B5901BA2A1D1D7B85C8EA42294456783964354BF9FF5A81813C0F24DF",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -1416,14 +2220,22 @@
         "at": "2026-11-11T20:00:00Z"
       },
       {
+        "step": "ruling statement",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:D0156036FD6AE2038E59FE4669E5F0AFA53D0434E8BE928C48E350C5424972C2",
+          "statementType": "party.ruling/1",
+          "receivedAt": "2026-11-12T09:00:00Z",
+          "ledgerIndex": 99237600
+        },
+        "at": "2026-11-12T09:00:00Z"
+      },
+      {
         "step": "tick default.refund",
         "stage": "default.refund",
         "decision": "REFUSE",
         "failing": [
-          "B7",
-          "B11",
-          "R1",
-          "R2"
+          "R1"
         ],
         "rules": [
           {
@@ -1452,8 +2264,7 @@
           },
           {
             "id": "B7",
-            "result": "fail",
-            "reason": "UNCLEAN_CLOSE"
+            "result": "pass"
           },
           {
             "id": "B8",
@@ -1469,8 +2280,7 @@
           },
           {
             "id": "B11",
-            "result": "fail",
-            "reason": "WOULD_FAIL"
+            "result": "pass"
           },
           {
             "id": "R1",
@@ -1479,11 +2289,14 @@
           },
           {
             "id": "R2",
-            "result": "fail",
-            "reason": "BALANCE_CHANGED"
+            "result": "pass"
           },
           {
             "id": "R3",
+            "result": "pass"
+          },
+          {
+            "id": "R4",
             "result": "pass"
           }
         ],
@@ -1497,7 +2310,7 @@
           "B7",
           "B11",
           "N4",
-          "N5"
+          "N8"
         ],
         "rules": [
           {
@@ -1565,8 +2378,7 @@
           },
           {
             "id": "N5",
-            "result": "fail",
-            "reason": "BALANCE_CHANGED"
+            "result": "pass"
           },
           {
             "id": "N6",
@@ -1575,12 +2387,179 @@
           {
             "id": "N7",
             "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "fail",
+            "reason": "PAYOUT_MISMATCH"
           }
         ],
         "at": "2026-11-12T11:01:00Z"
       },
       {
-        "tx": "B8490B63B8CAA8D50EDCB478C766562D8F0CE8CAC125E857FF08956F7D6B4CC0",
+        "step": "tick default.noshowSweep",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "N4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "pass"
+          },
+          {
+            "id": "N4",
+            "result": "fail",
+            "reason": "DISPUTE_OPEN"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackEntry",
+        "stage": "default.chargebackEntry",
+        "decision": "REFUSE",
+        "failing": [
+          "E1",
+          "E2"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "E1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "E2",
+            "result": "fail",
+            "reason": "RULED"
+          },
+          {
+            "id": "E3",
+            "result": "pass"
+          },
+          {
+            "id": "E4",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      },
+      {
+        "tx": "9D9A6C92AE3397AE9F45E5A73681DC3B118E3E2EFE96FA6DCA34F7CEC7575DE8",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -1693,7 +2672,23 @@
         "at": "2026-11-11T15:00:00Z"
       },
       {
+        "step": "guest acknowledges check-in",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:E5FF2F82EB4F4B550516E1298C667E1913442252EE6627E14F7BA034BE37E4B5",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
         "step": "default.release pre-signed",
+        "final": "STORED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "default.chargebackClaim + 2 stay variant(s) pre-signed",
         "final": "STORED",
         "at": "2026-11-11T15:00:00Z"
       },
@@ -1768,10 +2763,7 @@
         "stage": "default.refund",
         "decision": "REFUSE",
         "failing": [
-          "B7",
-          "B11",
-          "R1",
-          "R2"
+          "R1"
         ],
         "rules": [
           {
@@ -1800,8 +2792,7 @@
           },
           {
             "id": "B7",
-            "result": "fail",
-            "reason": "UNCLEAN_CLOSE"
+            "result": "pass"
           },
           {
             "id": "B8",
@@ -1817,8 +2808,7 @@
           },
           {
             "id": "B11",
-            "result": "fail",
-            "reason": "WOULD_FAIL"
+            "result": "pass"
           },
           {
             "id": "R1",
@@ -1827,11 +2817,14 @@
           },
           {
             "id": "R2",
-            "result": "fail",
-            "reason": "BALANCE_CHANGED"
+            "result": "pass"
           },
           {
             "id": "R3",
+            "result": "pass"
+          },
+          {
+            "id": "R4",
             "result": "pass"
           }
         ],
@@ -1845,7 +2838,7 @@
           "B7",
           "B11",
           "N3",
-          "N5"
+          "N8"
         ],
         "rules": [
           {
@@ -1913,8 +2906,7 @@
           },
           {
             "id": "N5",
-            "result": "fail",
-            "reason": "BALANCE_CHANGED"
+            "result": "pass"
           },
           {
             "id": "N6",
@@ -1922,6 +2914,171 @@
           },
           {
             "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "fail",
+            "reason": "PAYOUT_MISMATCH"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.noshowSweep",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "N3"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackEntry",
+        "stage": "default.chargebackEntry",
+        "decision": "REFUSE",
+        "failing": [
+          "E1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "E1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "E2",
+            "result": "pass"
+          },
+          {
+            "id": "E3",
+            "result": "pass"
+          },
+          {
+            "id": "E4",
             "result": "pass"
           }
         ],
@@ -2002,7 +3159,7 @@
             "result": "pass"
           }
         ],
-        "tx": "14F4CCE16B8B8A1D4625A936FEB4F4B70BF0AD081C50EA2F153755EBA1078A01",
+        "tx": "75C039D6E5C4FE95EC44E5BF79E5C978C90029C56890DC2ABE8793C745B3E958",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -2016,6 +3173,244 @@
           {
             "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
             "value": "100"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackClaim",
+        "stage": "default.chargebackClaim",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "G1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "G1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "G2",
+            "result": "pass"
+          },
+          {
+            "id": "G3",
+            "result": "pass"
+          },
+          {
+            "id": "G4",
+            "result": "pass"
+          },
+          {
+            "id": "G5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#1",
+        "stage": "default.chargebackStay",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "Y1",
+          "Y4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "fail",
+            "reason": "HOTEL_LEG"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#2",
+        "stage": "default.chargebackStay",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "Y1",
+          "Y4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "fail",
+            "reason": "HOTEL_LEG"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
           }
         ],
         "at": "2026-11-17T11:01:00Z"
@@ -2114,7 +3509,23 @@
         "at": "2026-11-11T15:00:00Z"
       },
       {
+        "step": "guest acknowledges check-in",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:52F42DCCE609BFAF1E2BDCA765D619F5974EB5756CB6388DD5573548839F13E7",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
         "step": "default.release pre-signed",
+        "final": "STORED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "default.chargebackClaim + 2 stay variant(s) pre-signed",
         "final": "STORED",
         "at": "2026-11-11T15:00:00Z"
       },
@@ -2188,7 +3599,7 @@
         "step": "claim",
         "final": "RECEIPTED",
         "receipt": {
-          "statementId": "att:04B6D38B158EF6DA26B3C9304B5CB9FDAFFD2A4FFC5BC8282CE182A6B8583A97",
+          "statementId": "att:388B5AB3CE3664510834E4ACAB3ED922F933C620133E16659BAA104A801E1E4B",
           "statementType": "party.claim/1",
           "receivedAt": "2026-11-14T15:00:00Z",
           "ledgerIndex": 99286200
@@ -2200,10 +3611,7 @@
         "stage": "default.refund",
         "decision": "REFUSE",
         "failing": [
-          "B7",
-          "B11",
-          "R1",
-          "R2"
+          "R1"
         ],
         "rules": [
           {
@@ -2232,8 +3640,7 @@
           },
           {
             "id": "B7",
-            "result": "fail",
-            "reason": "UNCLEAN_CLOSE"
+            "result": "pass"
           },
           {
             "id": "B8",
@@ -2249,8 +3656,7 @@
           },
           {
             "id": "B11",
-            "result": "fail",
-            "reason": "WOULD_FAIL"
+            "result": "pass"
           },
           {
             "id": "R1",
@@ -2259,11 +3665,14 @@
           },
           {
             "id": "R2",
-            "result": "fail",
-            "reason": "BALANCE_CHANGED"
+            "result": "pass"
           },
           {
             "id": "R3",
+            "result": "pass"
+          },
+          {
+            "id": "R4",
             "result": "pass"
           }
         ],
@@ -2277,7 +3686,7 @@
           "B7",
           "B11",
           "N3",
-          "N5"
+          "N8"
         ],
         "rules": [
           {
@@ -2345,8 +3754,7 @@
           },
           {
             "id": "N5",
-            "result": "fail",
-            "reason": "BALANCE_CHANGED"
+            "result": "pass"
           },
           {
             "id": "N6",
@@ -2354,6 +3762,171 @@
           },
           {
             "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "fail",
+            "reason": "PAYOUT_MISMATCH"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.noshowSweep",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "N3"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackEntry",
+        "stage": "default.chargebackEntry",
+        "decision": "REFUSE",
+        "failing": [
+          "E1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "E1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "E2",
+            "result": "pass"
+          },
+          {
+            "id": "E3",
+            "result": "pass"
+          },
+          {
+            "id": "E4",
             "result": "pass"
           }
         ],
@@ -2440,6 +4013,249 @@
         "at": "2026-11-17T11:01:00Z"
       },
       {
+        "step": "tick default.chargebackClaim",
+        "stage": "default.chargebackClaim",
+        "decision": "REFUSE",
+        "failing": [
+          "G1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "G1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "G2",
+            "result": "pass"
+          },
+          {
+            "id": "G3",
+            "result": "pass"
+          },
+          {
+            "id": "G4",
+            "result": "pass"
+          },
+          {
+            "id": "G5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#1",
+        "stage": "default.chargebackStay",
+        "decision": "REFUSE",
+        "failing": [
+          "Y1",
+          "Y4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "fail",
+            "reason": "HOTEL_LEG"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#2",
+        "stage": "default.chargebackStay",
+        "decision": "REFUSE",
+        "failing": [
+          "Y1",
+          "Y4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "fail",
+            "reason": "HOTEL_LEG"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-17T11:01:00Z"
+      },
+      {
+        "step": "ruling statement",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:62D7BADC97205775ABD4EDFB912C0E1D246A583EF72378BEF6AABCC9F74D10DA",
+          "statementType": "party.ruling/1",
+          "receivedAt": "2026-11-17T12:00:00Z",
+          "ledgerIndex": 99348300
+        },
+        "at": "2026-11-17T12:00:00Z"
+      },
+      {
         "step": "ruling:arbiter",
         "stage": "ruling.default",
         "decision": "SIGN",
@@ -2510,7 +4326,7 @@
             "result": "pass"
           }
         ],
-        "tx": "233021FFD1CBD1AD54C8D838C56D50FF87EB04C50B5C87C473F885147AB9DA74",
+        "tx": "EB6B60D4871931803F18C3B9F5EA9D9ED1A92609D68BB6AC8840BBC027C68B99",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -2529,7 +4345,7 @@
         "at": "2026-11-17T12:00:00Z"
       }
     ],
-    "backupRuling": [
+    "partialDeposit": [
       {
         "step": "open",
         "final": "tesSUCCESS",
@@ -2603,7 +4419,444 @@
           }
         ],
         "receipt": {
-          "statementId": "att:1040F54F4D1F5806EBDFA847D9BF3CE3A10C4C653B02074B563938502E4B7508",
+          "statementId": "att:728AC2928386D5AC9CF7507E6F4E301C331FE116CCA4DAEC7B80952715CE3565",
+          "statementType": "party.confirmation/1",
+          "receivedAt": "2026-11-01T09:30:00Z",
+          "ledgerIndex": 99000450
+        },
+        "at": "2026-11-01T09:30:00Z"
+      },
+      {
+        "step": "deposit (partial)",
+        "final": "tesSUCCESS",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "checkin refused",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:E009C973D167C3444333051772ED2169E9A192A4692A54600600FC061D05C6CF",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "tick default.refund",
+        "stage": "default.refund",
+        "decision": "REFUSE",
+        "failing": [
+          "R1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "R1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "R2",
+            "result": "pass"
+          },
+          {
+            "id": "R3",
+            "result": "pass"
+          },
+          {
+            "id": "R4",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      },
+      {
+        "step": "tick default.noshow",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "N8"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "pass"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "fail",
+            "reason": "PAYOUT_MISMATCH"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      },
+      {
+        "step": "tick default.noshowSweep",
+        "stage": "default.noshow",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "pass"
+          },
+          {
+            "id": "N4",
+            "result": "pass"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "pass"
+          }
+        ],
+        "tx": "A9BD5EFF3097E19C36F0749D6E0407C88FA8907AF40D1104753DB357F1A286BB",
+        "final": "tesSUCCESS",
+        "payouts": [
+          {
+            "to": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
+            "value": "398"
+          },
+          {
+            "to": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
+            "value": "2"
+          },
+          {
+            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
+            "value": "40"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackEntry",
+        "stage": "default.chargebackEntry",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "E1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "E1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "E2",
+            "result": "pass"
+          },
+          {
+            "id": "E3",
+            "result": "pass"
+          },
+          {
+            "id": "E4",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-12T11:01:00Z"
+      }
+    ],
+    "arbiterSilent": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
+      },
+      {
+        "step": "confirm",
+        "stage": "confirm",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "C1",
+            "result": "pass"
+          },
+          {
+            "id": "C2",
+            "result": "pass"
+          },
+          {
+            "id": "C4",
+            "result": "pass"
+          },
+          {
+            "id": "C5",
+            "result": "pass"
+          }
+        ],
+        "receipt": {
+          "statementId": "att:151B64BF353C93E8AAF33841D7B5E8A1976AC31D9A22AFEDFA5A480E01E26101",
           "statementType": "party.confirmation/1",
           "receivedAt": "2026-11-01T09:30:00Z",
           "ledgerIndex": 99000450
@@ -2614,7 +4867,18 @@
         "step": "checkin attestation",
         "final": "RECEIPTED",
         "receipt": {
-          "statementId": "att:E69A5E170F28C66C73FFAEDB17BEBA6CBAC434D44854E14580A1CA7C6A28AD93",
+          "statementId": "att:576D7394AD71B9C696CB97590245EAD662D6A0F463F4A00BFE02F60379C5D00B",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "guest acknowledges check-in",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:F90D0572E2AF8295AD3FCD8869A0792A6118A32D04030CBF5E335DFBBFE6AD03",
           "statementType": "party.checkin/1",
           "receivedAt": "2026-11-11T15:00:00Z",
           "ledgerIndex": 99221400
@@ -2623,6 +4887,11 @@
       },
       {
         "step": "default.release pre-signed",
+        "final": "STORED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "default.chargebackClaim + 2 stay variant(s) pre-signed",
         "final": "STORED",
         "at": "2026-11-11T15:00:00Z"
       },
@@ -2696,7 +4965,7 @@
         "step": "claim",
         "final": "RECEIPTED",
         "receipt": {
-          "statementId": "att:E59F1B5E805F5B79A1487ADED95274632C8BC8B04353D4027CAC4F7B0F098FA8",
+          "statementId": "att:D8BDD701856A1D5E838BC1CAD7D8AABE66E4798E1C63428457EA6F9924957E27",
           "statementType": "party.claim/1",
           "receivedAt": "2026-11-14T15:00:00Z",
           "ledgerIndex": 99286200
@@ -2707,19 +4976,19 @@
         "step": "dispute (settlement)",
         "final": "tesSUCCESS",
         "receipt": {
-          "statementId": "att:CF0438A27850E7DB2D53EBCF58E282E89CB6CBFAAA2D3CC64BD97F343D6F3F2B",
+          "statementId": "att:96358A9AA7C415CB0371BC50761E447EB0E7F17E3038E4BA30DDE7E388BD7496",
           "statementType": "party.dispute/1",
-          "receivedAt": "2026-11-15T10:00:00Z",
-          "ledgerIndex": 99303300
+          "receivedAt": "2026-11-14T16:00:00Z",
+          "ledgerIndex": 99287100
         },
-        "at": "2026-11-15T10:00:00Z"
+        "at": "2026-11-14T16:00:00Z"
       },
       {
-        "step": "ruling:backupArbiter",
-        "stage": "ruling.backup",
+        "step": "tick default.refund",
+        "stage": "default.refund",
         "decision": "REFUSE",
         "failing": [
-          "U1"
+          "R1"
         ],
         "rules": [
           {
@@ -2764,45 +5033,1023 @@
           },
           {
             "id": "B11",
-            "result": "n/a"
+            "result": "pass"
           },
           {
-            "id": "U1",
+            "id": "R1",
             "result": "fail",
             "reason": "NOT_DUE"
           },
           {
-            "id": "U2",
+            "id": "R2",
             "result": "pass"
           },
           {
-            "id": "U3",
+            "id": "R3",
             "result": "pass"
           },
           {
-            "id": "U4",
-            "result": "pass"
-          },
-          {
-            "id": "U5",
-            "result": "pass"
-          },
-          {
-            "id": "U6",
+            "id": "R4",
             "result": "pass"
           }
         ],
-        "at": "2026-11-16T10:00:00Z"
+        "at": "2026-11-14T16:00:00Z"
       },
       {
-        "step": "probe:arbiter+backupArbiter",
-        "tx": "C3AAA271C86413D5C8BC0D3A4CA601B53EC2C2BC8ABE9B8A3BCD3EE020C9DFCF",
+        "step": "tick default.noshow",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "N3",
+          "N4",
+          "N8"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "fail",
+            "reason": "DISPUTE_OPEN"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "fail",
+            "reason": "PAYOUT_MISMATCH"
+          }
+        ],
+        "at": "2026-11-14T16:00:00Z"
+      },
+      {
+        "step": "tick default.noshowSweep",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "N3",
+          "N4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "fail",
+            "reason": "DISPUTE_OPEN"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-14T16:00:00Z"
+      },
+      {
+        "step": "tick default.chargebackEntry",
+        "stage": "default.chargebackEntry",
+        "decision": "REFUSE",
+        "failing": [
+          "E1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "E1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "E2",
+            "result": "pass"
+          },
+          {
+            "id": "E3",
+            "result": "pass"
+          },
+          {
+            "id": "E4",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-14T16:00:00Z"
+      },
+      {
+        "step": "tick default.release",
+        "stage": "default.release",
+        "decision": "REFUSE",
+        "failing": [
+          "L1",
+          "L2",
+          "L5"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "L1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "L2",
+            "result": "fail",
+            "reason": "DISPUTE_OPEN"
+          },
+          {
+            "id": "L3",
+            "result": "pass"
+          },
+          {
+            "id": "L4",
+            "result": "pass"
+          },
+          {
+            "id": "L5",
+            "result": "fail",
+            "reason": "CLAIM_POSTED"
+          },
+          {
+            "id": "L6",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-14T16:00:00Z"
+      },
+      {
+        "step": "tick default.chargebackClaim",
+        "stage": "default.chargebackClaim",
+        "decision": "REFUSE",
+        "failing": [
+          "G1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "G1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "G2",
+            "result": "pass"
+          },
+          {
+            "id": "G3",
+            "result": "pass"
+          },
+          {
+            "id": "G4",
+            "result": "pass"
+          },
+          {
+            "id": "G5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-14T16:00:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#1",
+        "stage": "default.chargebackStay",
+        "decision": "REFUSE",
+        "failing": [
+          "Y1",
+          "Y4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "fail",
+            "reason": "HOTEL_LEG"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-14T16:00:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#2",
+        "stage": "default.chargebackStay",
+        "decision": "REFUSE",
+        "failing": [
+          "Y1",
+          "Y4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "fail",
+            "reason": "HOTEL_LEG"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-14T16:00:00Z"
+      },
+      {
+        "step": "probe:arbiter+cosigner",
+        "tx": "FC89AE10EC3C5F8FBF9A4AFA50848D74D655D9F9BF0C47F0C245BC07D5098663",
         "final": "tefBAD_QUORUM",
-        "at": "2026-11-16T10:00:00Z"
+        "at": "2026-11-14T16:00:00Z"
       },
       {
-        "step": "ruling:backupArbiter",
-        "stage": "ruling.backup",
+        "step": "tick default.refund",
+        "stage": "default.refund",
+        "decision": "REFUSE",
+        "failing": [
+          "R1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "R1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "R2",
+            "result": "pass"
+          },
+          {
+            "id": "R3",
+            "result": "pass"
+          },
+          {
+            "id": "R4",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-19T16:01:00Z"
+      },
+      {
+        "step": "tick default.noshow",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "N3",
+          "N4",
+          "N8"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "fail",
+            "reason": "DISPUTE_OPEN"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "fail",
+            "reason": "PAYOUT_MISMATCH"
+          }
+        ],
+        "at": "2026-11-19T16:01:00Z"
+      },
+      {
+        "step": "tick default.noshowSweep",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "N3",
+          "N4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "fail",
+            "reason": "DISPUTE_OPEN"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-19T16:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackEntry",
+        "stage": "default.chargebackEntry",
+        "decision": "REFUSE",
+        "failing": [
+          "E1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "E1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "E2",
+            "result": "pass"
+          },
+          {
+            "id": "E3",
+            "result": "pass"
+          },
+          {
+            "id": "E4",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-19T16:01:00Z"
+      },
+      {
+        "step": "tick default.release",
+        "stage": "default.release",
+        "decision": "REFUSE",
+        "failing": [
+          "L2",
+          "L5"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "L1",
+            "result": "pass"
+          },
+          {
+            "id": "L2",
+            "result": "fail",
+            "reason": "DISPUTE_OPEN"
+          },
+          {
+            "id": "L3",
+            "result": "pass"
+          },
+          {
+            "id": "L4",
+            "result": "pass"
+          },
+          {
+            "id": "L5",
+            "result": "fail",
+            "reason": "CLAIM_POSTED"
+          },
+          {
+            "id": "L6",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-19T16:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackClaim",
+        "stage": "default.chargebackClaim",
         "decision": "SIGN",
         "failing": [],
         "rules": [
@@ -2848,34 +6095,30 @@
           },
           {
             "id": "B11",
-            "result": "n/a"
-          },
-          {
-            "id": "U1",
             "result": "pass"
           },
           {
-            "id": "U2",
+            "id": "G1",
             "result": "pass"
           },
           {
-            "id": "U3",
+            "id": "G2",
             "result": "pass"
           },
           {
-            "id": "U4",
+            "id": "G3",
             "result": "pass"
           },
           {
-            "id": "U5",
+            "id": "G4",
             "result": "pass"
           },
           {
-            "id": "U6",
+            "id": "G5",
             "result": "pass"
           }
         ],
-        "tx": "A2928667068D6B8FA431F15B976DFCEB6C7EED96B1D089C6B7A743E19DB6EE1C",
+        "tx": "8704D4DAFB962B11C37A58B62A4008F201CD5BACB8AF7ADE15A60BEB3457BFAB",
         "final": "tesSUCCESS",
         "payouts": [
           {
@@ -2891,7 +6134,1013 @@
             "value": "110"
           }
         ],
-        "at": "2026-11-20T10:00:00Z"
+        "at": "2026-11-19T16:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#1",
+        "stage": "default.chargebackStay",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "Y1",
+          "Y4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "fail",
+            "reason": "HOTEL_LEG"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-19T16:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#2",
+        "stage": "default.chargebackStay",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "Y1",
+          "Y4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "fail",
+            "reason": "HOTEL_LEG"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-19T16:01:00Z"
+      }
+    ],
+    "staySilent": [
+      {
+        "step": "open",
+        "final": "tesSUCCESS",
+        "at": "2026-11-01T09:00:00Z"
+      },
+      {
+        "step": "confirm",
+        "stage": "confirm",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "C1",
+            "result": "pass"
+          },
+          {
+            "id": "C2",
+            "result": "pass"
+          },
+          {
+            "id": "C4",
+            "result": "pass"
+          },
+          {
+            "id": "C5",
+            "result": "pass"
+          }
+        ],
+        "receipt": {
+          "statementId": "att:141EA74FBDEAFF3BF6B7588BD0760BB48EF24B63CB4B3A4A6FB087C3B6883402",
+          "statementType": "party.confirmation/1",
+          "receivedAt": "2026-11-01T09:30:00Z",
+          "ledgerIndex": 99000450
+        },
+        "at": "2026-11-01T09:30:00Z"
+      },
+      {
+        "step": "checkin attestation",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:DB6CD7AEDF609C8A7F128403FBAFF3FDE46DE034CCF6C74D0B800D40EC580004",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "guest acknowledges check-in",
+        "final": "RECEIPTED",
+        "receipt": {
+          "statementId": "att:4572576A3D6600764650247DACB8AC0957DE051C334579DD061EFA4C9F8B9F8D",
+          "statementType": "party.checkin/1",
+          "receivedAt": "2026-11-11T15:00:00Z",
+          "ledgerIndex": 99221400
+        },
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "default.release pre-signed",
+        "final": "STORED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "default.chargebackClaim + 2 stay variant(s) pre-signed",
+        "final": "STORED",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "deposit",
+        "final": "tesSUCCESS",
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "checkin",
+        "stage": "checkin",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "n/a"
+          },
+          {
+            "id": "B2",
+            "result": "n/a"
+          },
+          {
+            "id": "B3",
+            "result": "n/a"
+          },
+          {
+            "id": "B4",
+            "result": "n/a"
+          },
+          {
+            "id": "B5",
+            "result": "n/a"
+          },
+          {
+            "id": "B6",
+            "result": "n/a"
+          },
+          {
+            "id": "B7",
+            "result": "n/a"
+          },
+          {
+            "id": "B8",
+            "result": "n/a"
+          },
+          {
+            "id": "B9",
+            "result": "n/a"
+          },
+          {
+            "id": "B10",
+            "result": "n/a"
+          },
+          {
+            "id": "B11",
+            "result": "n/a"
+          },
+          {
+            "id": "K1",
+            "result": "pass"
+          },
+          {
+            "id": "K2",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-11T15:00:00Z"
+      },
+      {
+        "step": "dispute (stay)",
+        "final": "tesSUCCESS",
+        "receipt": {
+          "statementId": "att:AE8F9AF549C4B8C78C793796C29EDF750D5C2BDF5FC55292FF04C0FC41474968",
+          "statementType": "party.dispute/1",
+          "receivedAt": "2026-11-11T20:00:00Z",
+          "ledgerIndex": 99225900
+        },
+        "at": "2026-11-11T20:00:00Z"
+      },
+      {
+        "step": "tick default.refund",
+        "stage": "default.refund",
+        "decision": "REFUSE",
+        "failing": [
+          "R1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "R1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "R2",
+            "result": "pass"
+          },
+          {
+            "id": "R3",
+            "result": "pass"
+          },
+          {
+            "id": "R4",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-16T20:01:00Z"
+      },
+      {
+        "step": "tick default.noshow",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "B7",
+          "B11",
+          "N3",
+          "N4",
+          "N8"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "fail",
+            "reason": "UNCLEAN_CLOSE"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "fail",
+            "reason": "WOULD_FAIL"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "fail",
+            "reason": "DISPUTE_OPEN"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "fail",
+            "reason": "PAYOUT_MISMATCH"
+          }
+        ],
+        "at": "2026-11-16T20:01:00Z"
+      },
+      {
+        "step": "tick default.noshowSweep",
+        "stage": "default.noshow",
+        "decision": "REFUSE",
+        "failing": [
+          "N3",
+          "N4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "N1",
+            "result": "pass"
+          },
+          {
+            "id": "N2",
+            "result": "pass"
+          },
+          {
+            "id": "N3",
+            "result": "fail",
+            "reason": "CHECKED_IN"
+          },
+          {
+            "id": "N4",
+            "result": "fail",
+            "reason": "DISPUTE_OPEN"
+          },
+          {
+            "id": "N5",
+            "result": "pass"
+          },
+          {
+            "id": "N6",
+            "result": "pass"
+          },
+          {
+            "id": "N7",
+            "result": "pass"
+          },
+          {
+            "id": "N8",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-16T20:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackEntry",
+        "stage": "default.chargebackEntry",
+        "decision": "REFUSE",
+        "failing": [
+          "E1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "E1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "E2",
+            "result": "pass"
+          },
+          {
+            "id": "E3",
+            "result": "pass"
+          },
+          {
+            "id": "E4",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-16T20:01:00Z"
+      },
+      {
+        "step": "tick default.release",
+        "stage": "default.release",
+        "decision": "REFUSE",
+        "failing": [
+          "L1",
+          "L2"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "L1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "L2",
+            "result": "fail",
+            "reason": "DISPUTE_OPEN"
+          },
+          {
+            "id": "L3",
+            "result": "pass"
+          },
+          {
+            "id": "L4",
+            "result": "pass"
+          },
+          {
+            "id": "L5",
+            "result": "pass"
+          },
+          {
+            "id": "L6",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-16T20:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackClaim",
+        "stage": "default.chargebackClaim",
+        "decision": "REFUSE",
+        "failing": [
+          "G1"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "G1",
+            "result": "fail",
+            "reason": "NOT_DUE"
+          },
+          {
+            "id": "G2",
+            "result": "pass"
+          },
+          {
+            "id": "G3",
+            "result": "pass"
+          },
+          {
+            "id": "G4",
+            "result": "pass"
+          },
+          {
+            "id": "G5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-16T20:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#1",
+        "stage": "default.chargebackStay",
+        "decision": "SIGN",
+        "failing": [],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "pass"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "pass"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "pass"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
+          }
+        ],
+        "tx": "F38DA4E340E959C29E108FBC6BE7E42ED95D5C394DF0C05FBEA5190866E73756",
+        "final": "tesSUCCESS",
+        "payouts": [
+          {
+            "to": "r3gPYb6JiqU2d63PLwV241VMdYqK7G1Wjm",
+            "value": "132.666667"
+          },
+          {
+            "to": "rNcEgcbWge1WpSeZawLF3rTKGNerexEq4p",
+            "value": "0.666666"
+          },
+          {
+            "to": "r4FCJzz5PmQNayZogAGHW2KB29m5aSMC3K",
+            "value": "376.666667"
+          }
+        ],
+        "at": "2026-11-16T20:01:00Z"
+      },
+      {
+        "step": "tick default.chargebackStay#2",
+        "stage": "default.chargebackStay",
+        "decision": "REFUSE",
+        "failing": [
+          "B9",
+          "Y4"
+        ],
+        "rules": [
+          {
+            "id": "B1",
+            "result": "pass"
+          },
+          {
+            "id": "B2",
+            "result": "pass"
+          },
+          {
+            "id": "B3",
+            "result": "pass"
+          },
+          {
+            "id": "B4",
+            "result": "pass"
+          },
+          {
+            "id": "B5",
+            "result": "pass"
+          },
+          {
+            "id": "B6",
+            "result": "pass"
+          },
+          {
+            "id": "B7",
+            "result": "pass"
+          },
+          {
+            "id": "B8",
+            "result": "pass"
+          },
+          {
+            "id": "B9",
+            "result": "fail",
+            "reason": "OUTCOME_IN_FLIGHT"
+          },
+          {
+            "id": "B10",
+            "result": "pass"
+          },
+          {
+            "id": "B11",
+            "result": "pass"
+          },
+          {
+            "id": "Y1",
+            "result": "pass"
+          },
+          {
+            "id": "Y2",
+            "result": "pass"
+          },
+          {
+            "id": "Y3",
+            "result": "pass"
+          },
+          {
+            "id": "Y4",
+            "result": "fail",
+            "reason": "HOTEL_LEG"
+          },
+          {
+            "id": "Y5",
+            "result": "pass"
+          }
+        ],
+        "at": "2026-11-16T20:01:00Z"
       }
     ]
   }

@@ -11,6 +11,8 @@ export interface RoleDef {
   kind: RoleKind
   /** "service" = operated by the engagement service; "external"; or "licensed:<type>" (E11). */
   operatedBy: 'service' | 'external' | `licensed:${string}`
+  /** Arbiter roles: who accredits whoever fills the role. "service" = the engagement service (ENG/ARBITER, V15). */
+  accreditation?: 'service'
 }
 
 export interface OutcomeDef {
@@ -20,6 +22,8 @@ export interface OutcomeDef {
   signers: string[][]
   blueprint: string
   presigned?: boolean
+  /** A pre-signed outcome signed once per night (nights 0..max-1); each variant needs its own Tickets. */
+  variants?: { perNight: true; max: number }
   /** For pre-signed outcomes: the role that withholds the last signature until policy passes. */
   finalSigner?: string
   policyStage?: string | null
@@ -32,8 +36,11 @@ export interface TimerDef {
   description?: string
   from: string
   durationSecs: number
-  /** A pre-signed outcome name, "arbiter" / "escalate", or "none" (a window that only closes). */
-  onExpire: string
+  /**
+   * A pre-signed outcome name, "arbiter" / "escalate", or "none" (a window that only closes). A list names several
+   * mutually exclusive pre-signed outcomes, of which the policy lets at most the one that fits the deal complete.
+   */
+  onExpire: string | string[]
 }
 
 export interface BlueprintDef {
@@ -179,9 +186,13 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
   // V6: every timer resolves to a pre-signed outcome or is explicitly arbiter-resolved.
   for (const [tn, tm] of Object.entries(t.timers ?? {})) {
     if (tm.onExpire === 'arbiter' || tm.onExpire === 'escalate' || tm.onExpire === 'none') continue
-    const o = t.outcomes[tm.onExpire]
-    if (!o) err('V6', `timer ${tn}: onExpire ${tm.onExpire} is not an outcome`)
-    else if (!o.presigned) err('V6', `timer ${tn}: onExpire outcome ${tm.onExpire} is not pre-signed`)
+    const names = Array.isArray(tm.onExpire) ? tm.onExpire : [tm.onExpire]
+    if (!names.length) err('V6', `timer ${tn}: onExpire lists no outcomes`)
+    for (const n of names) {
+      const o = t.outcomes[n]
+      if (!o) err('V6', `timer ${tn}: onExpire ${n} is not an outcome`)
+      else if (!o.presigned) err('V6', `timer ${tn}: onExpire outcome ${n} is not pre-signed`)
+    }
   }
 
   // V7: blueprints fit in one Batch; closing blueprints remove the trust line and delete last.
@@ -196,7 +207,7 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
 
   // V8: tickets for pre-signed outcomes (outer + every inner uses a Ticket).
   let tickets = 0
-  for (const o of Object.values(t.outcomes)) if (o.presigned && t.blueprints[o.blueprint]) tickets += 1 + t.blueprints[o.blueprint].steps.length
+  for (const o of Object.values(t.outcomes)) if (o.presigned && t.blueprints[o.blueprint]) tickets += (o.variants?.max ?? 1) * (1 + t.blueprints[o.blueprint].steps.length)
   if (tickets > MAX_TICKETS) err('V8', `${tickets} tickets exceed the per-account maximum of ${MAX_TICKETS}`)
 
   // V9: reserve budget fits the pre-create funding.
@@ -254,6 +265,13 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
   }
   ordered('checkInBy', 'entryDisputeBy', false, 'the guest must be able to dispute entry until check-in closes')
   ordered('claimBy', 'disputeWindowEnds', true, 'the guest must be able to answer the last possible claim')
+
+  // V15: every arbiter role opts into the service's accreditation gate (the co-signer registers a deal only when
+  // the arbiter holds an accepted, unexpired ENG/ARBITER credential from an issuer the policy lists).
+  for (const n of arbiters) {
+    const a = t.roles[n].accreditation
+    if (a !== 'service') err('V15', `arbiter role ${n}: must declare "accreditation": "service" (got ${JSON.stringify(a ?? null)})`)
+  }
 
   if (t.class === 'escrow' && !arbiters.length) warnings.push({ id: 'W1', message: 'escrow template without an arbiter role' })
 

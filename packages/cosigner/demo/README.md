@@ -5,7 +5,7 @@ Both scripts run from the **repo root** on a machine that can reach XRPL Testnet
 ```bash
 npm install
 npm run demo:b1        # B1 procurement agent, ~20 min including the AccountDelete wait
-npm run demo:hotel     # hotel@2 stay escrow, every path (H1–H14), ~25 min including the AccountDelete wait
+npm run demo:hotel     # hotel@2 stay escrow, every path (H1–H17), ~25 min including the AccountDelete wait
 SKIP_CLOSE=1 npm run demo:b1   # ~3 min, leaves the engagement account open
 npm run demo:x402      # x402 engagement-account purchase (needs x402-xrpl-settlement-adapter)
 npm run probe:x402     # probe a hosted facilitator for engagement-account support
@@ -33,11 +33,19 @@ An owner-wallet engagement account: the owner (treasury) has weight 2, the agent
 
 ## `hotel-testnet.ts`: what it checks
 
-The hotel@2 stay escrow (spec `docs/superpowers/specs/2026-11-12-hotel-stay-escrow-design.md` §5, §7.1), driven by `HotelFlow` (`src/hotel/flow.ts`). Signers: guest 3, hotel 3, arbiter 4, backup arbiter 2, co-signer 2; quorum 7. The guest books a 400 RLUSD room with a 100 deposit; disputes carry a 10 bond; claims are a 20 minibar charge; the service fee is 50 bps of everything the hotel receives.
+The hotel@2 stay escrow (specs `docs/superpowers/specs/2026-11-12-hotel-stay-escrow-design.md` §5, §7.1 and `docs/superpowers/specs/2026-11-14-arbiter-chargeback-design.md`), driven by `HotelFlow` (`src/hotel/flow.ts`). Signers: guest 3, hotel 3, arbiter 4, co-signer 2; quorum 7. The guest books a 400 RLUSD room with a 100 deposit (40 on the partial-deposit path); disputes carry a 10 bond; claims are a 20 minibar charge; the service fee is 50 bps of everything the hotel receives. Every path books one night, except `staySilent`, which books three (nightly = floor(400 ÷ 3) = 133.333333).
 
-The co-signer loads a copy of `pol_hotel@2.0.0` as version `2.0.0-demo` with `params.rulingWindow: "60s"` (and this run's RLUSD issuer), pinned in every engagement record through `policyLayers`. Timers are seconds from open, judged on validated-ledger close time: `confirmBy` 40, `checkIn` 60, `checkInBy` 90, `entryDisputeBy` 120, `deliveryBy` 150, `claimBy` 180, `disputeWindowEnds` 210.
+**Accredited arbiter.** The co-signer registers a deal only if its arbiter holds an accepted, unexpired `ENG/ARBITER` Credential from an issuer in the policy's `arbiterIssuers`. The script funds an accreditor (standing in for the engagement service), which issues the arbiter an `ENG/ARBITER` Credential; the arbiter (funded for this) accepts it. `HotelFlow.open()` registers the deal with the co-signer **before** submitting the open Batch (the room payment and the SignerList that gives the arbiter weight 4), so a deal naming an arbiter nobody accredited is refused (`NOT_NEUTRAL`) before any money moves (H16).
 
-The script pre-creates all eight engagement accounts, waits until each can be deleted (`Sequence + 256 ≤ ledger index`, counting the Sequence numbers the open Batch consumes), then runs the eight paths concurrently. Each path opens its own account when it starts, because timers count from open. The open Batch reserves 15 Tickets: `default.refund` uses 0–3, `default.noshow` 4–8 (both pre-signed at open), and `default.release` 9–14 (pre-signed at check-in, before the deposit is paid).
+The co-signer loads a copy of `pol_hotel@2.0.0` as version `2.0.0-demo` with `params.rulingWindow: "60s"`, this run's accreditor in `params.arbiterIssuers` and this run's RLUSD issuer, pinned in every engagement record through `policyLayers`. Records carry the deal's `terms` (`nights`, `nightly`). Timers are seconds from open, judged on validated-ledger close time: `confirmBy` 40, `checkIn` 60, `checkInBy` 90, `entryDisputeBy` 120, `deliveryBy` 150, `claimBy` 180, `disputeWindowEnds` 210; the arbiter's ruling deadline is 60 s after a dispute opens.
+
+The script pre-creates one engagement account per path (its reserve sized from the path's nights), waits until each can be deleted (`Sequence + 256 ≤ ledger index`, counting the Sequence numbers the open Batch consumes), then runs the paths concurrently. Each path opens its own account when it starts, because timers count from open. The open Batch reserves the deal's Tickets (`hotelTickets(nights)`): `default.refund` 4, `default.noshow` 5, `default.noshowSweep` 6 and `default.chargebackEntry` 4 (pre-signed at open); `default.release` 6, `default.chargebackClaim` 6 and 6 per stay variant `default.chargebackStay#k`, *k* = 1 … nights − 1 (pre-signed at check-in). That is 31 Tickets for one night and 43 for three; all reserve returns at `AccountDelete`.
+
+**Check-in order.** The hotel posts `checked_in`; the guest posts its own `checked_in` acknowledgement once it has the keys; only then do guest and hotel pre-sign the release, the claim chargeback and the stay variants, and only after those are stored does the guest pay the deposit. Nothing is pre-signed on the hotel's word alone.
+
+**Arbiter silent.** If the arbiter misses its ruling deadline on an open (bonded) dispute, the co-signer completes the chargeback-style default for it: an arrival dispute refunds everything; a claim (or after-checkout) dispute pays the hotel the room and returns the deposit and bond; a mid-stay dispute in night *k* pays the hotel *k* nights and returns the rest. A receipted arbiter ruling blocks them (on `entryRuled` the arbiter rules in time, so its 60 s deadline never fires the entry chargeback).
+
+Automatic endings return any extra money to the guest with a residual sweep (a `tfPartialPayment` that delivers whatever the fixed payouts leave): the refund sweeps the whole balance, the release sweeps the deposit plus anything extra. A sweep that can deliver nothing fails on-ledger and burns the default, so the no-show is pre-signed twice, exact and with a sweep, and the co-signer completes whichever fits the balance (B11 refuses the other); the unused one dies at `AccountDelete`. A recorded check-in is final (a later `refused` is rejected, `CHECKIN_FINAL`), and B11 also refuses an ending whose payee can't receive (DepositAuth, no or capped trust line) rather than burning it.
 
 | # | Path | Expected |
 |---|---|---|
@@ -48,13 +56,16 @@ The script pre-creates all eight engagement accounts, waits until each can be de
 | H5 | Downgraded room → entry dispute → arbiter partial refund | arbiter + guest ruling closes |
 | H6 | Stay, no claim, silence | `default.release`, deposit back to the guest |
 | H7 | Claim posted, guest silent | arbiter + hotel default ruling pays the claim (advisory `ruling.default` recorded) |
-| H8 | Claim disputed, primary arbiter silent past `rulingDueBy` | backup + guest + co-signer ruling closes |
-| H9 | Backup ruling before `rulingDueBy` | REFUSE `U1` (`NOT_DUE`) |
+| H8 | Claim posted, guest disputes it, arbiter silent past its deadline (`arbiterSilent`) | `default.chargebackClaim` SIGN: room to the hotel less the fee, deposit + bond to the guest, account deleted |
+| H9 | `default.chargebackClaim` before the ruling deadline | REFUSE `G1` with reason `NOT_DUE` (from the decision record); nothing submitted |
 | H10 | Guest + hotel alone | `tefBAD_QUORUM` |
 | H11 | `default.release` while a claim is posted | REFUSE `L5` (`CLAIM_POSTED`) |
-| H12 | Open-time `default.refund` / `default.noshow` after the deposit | REFUSE `R2` / `N5` (`BALANCE_CHANGED`) |
+| H12 | Open-time `default.refund` / both `default.noshow` variants after check-in + deposit | REFUSE `R1` (confirmed) / `N3` (`CHECKED_IN`) |
 | H13 | `default.noshow` while an entry dispute is open | REFUSE `N4` (`DISPUTE_OPEN`) |
-| H14 | Arbiter + backup arbiter alone | `tefBAD_QUORUM` |
+| H14 | Arbiter + co-signer alone (weight 6 < quorum 7) | `tefBAD_QUORUM` |
+| H15 | Guest pays a partial deposit, hotel posts `refused` | exact `default.noshow` REFUSE `N8`; `default.noshowSweep` SIGN: hotel paid the room less the fee, the 40 swept back to the guest inside the ticketed ALLORNOTHING Batch |
+| H16 | The real deal flow (`HotelFlow.open` on a pre-created account) with an unaccredited arbiter | `register()` refuses `NOT_NEUTRAL` (`ARBITER_NOT_ACCREDITED`); no open Batch submitted; the guest's RLUSD unchanged; the account holds no RLUSD |
+| H17 | 3-night stay, guest disputes in night 1, arbiter silent (`staySilent`) | `default.chargebackStay#1` SIGN: one night (133.333333) to the hotel less the fee, the other two nights + deposit + bond (376.666667) to the guest, account deleted |
 
 Results go to `demo/results/hotel-run-*.json`: every transaction hash, each path's steps (with the rule results from the co-signer's decision records), and the checks. The signed decision log is written next to them.
 

@@ -8,8 +8,8 @@ implementation disagrees with that expectation, so a vector can't silently recor
 | File | Spec | Cases | What to compare |
 |---|---|---|---|
 | `statements.json` | [attestations](../docs/spec/attestations.md) §3–§4 | 6 | JCS bytes, digest, `id`, signature verification (including tampered and wrong-key) |
-| `templates.json` | [policy](../docs/spec/policy.md), [hotel](../docs/use-cases/hotel-booking.md) §2 (V1–V12) | 12 | `ok`, error / warning / disclosure ids, minimal winning sets, tickets needed, reserve |
-| `policy.json` | [policy](../docs/spec/policy.md) §3–§8 | 90 | `decision`, `failing`, per-rule `results` (layer, id, result, reason), statements used / rejected, `inputsHash`, `effectiveHash` |
+| `templates.json` | [policy](../docs/spec/policy.md), [hotel](../docs/use-cases/hotel-booking.md) §2 (V1–V12) | 17 | `ok`, error / warning / disclosure ids, minimal winning sets, tickets needed, reserve |
+| `policy.json` | [policy](../docs/spec/policy.md) §3–§8 | 158 | `decision`, `failing`, per-rule `results` (layer, id, result, reason), statements used / rejected, `inputsHash`, `effectiveHash` |
 
 ## Normative and non-normative fields
 
@@ -48,9 +48,10 @@ The cases cover the following.
 - Confirmation deposit versus the mandate cap (C5) and check-in once the deposit is on-ledger (K2).
 - Agreed settle with a claim: fee and review, payees limited to guest, hotel and fee account (S6).
 - Conceded entry dispute refund (F1): concession required, entry phase only, dispute Credential issued by the guest.
-- Default refund (never confirmed, over-cap confirmation does not count) and no-show release (N1 to N5): bonded disputes only, strict deadlines.
-- Default release after the dispute window (L1 to L5): open claim, stray funds, open dispute, strict boundary at `disputeWindowEnds`.
-- Backup arbiter ruling (U1 to U6): phase-floored ruling window, primary arbiter precedence, payee and fee checks, claim-only branch.
+- Default refund (never confirmed, over-cap confirmation does not count; stray money swept back to the guest, R4; refused under B11 when the guest cannot receive: DepositAuth, no trust line, limit too low) and no-show release (N1 to N8): bonded disputes only, strict deadlines, and the two pre-signed no-show variants: exact room price, or a residual sweep returning a partial deposit or stray money to the guest (refused by B11 when it would deliver nothing); a recorded check-in with the deposit in is final.
+- Default release after the dispute window (L1 to L6): open claim, stray funds swept to the guest, open dispute, strict boundary at `disputeWindowEnds`.
+- Chargeback-style defaults when the arbiter misses its ruling deadline: entry (E1 to E4, everything to the guest), claim (G1 to G5, room to the hotel less the fee, the rest swept to the guest) and per-night stay variants (Y1 to Y5, the nights used to the hotel; night boundaries from the scheduled check-in, the last night via the claim chargeback, no variants past 14 nights); a receipted arbiter ruling blocks each of them.
+- Later hardening vectors: chargeback floors (backdated disputes and receipts), entry-dispute and stay-dispute deposit top-ups that must not flip an outcome, claim lapse (an unanswered claim releases once `disputeWindowEnds` + the ruling window passes; an unbonded dispute does not block it), arbiter rulings that block chargebacks only when they follow the case opening, and a receipted dispute staying open after its Credential is deleted. Accreditation itself is checked by the co-signer at registration, not by a policy vector.
 - Advisory `ruling.default`: claim capped at the deposit (D4) and payouts matching the claim (D5).
 
 ## Rebuilding and checking

@@ -16,7 +16,7 @@ import {
   accountInfo, addBatchSigner, buildOpenBatch, currencyHex, hex, iou, iouBalance, memo, sendSimple, serverFees, sleep, submit, innerResults,
   inner, batchFee, multisignBlob, combine, currentLedger, TF_ALL_OR_NOTHING, type Fees,
   PoolManager, XrplPoolLedger, LocalFileSeedStore, FilePoolStateStore, LocalKeys, type PoolConfig,
-  HotelFlow, HOTEL_PATHS, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, OPEN_SEQUENCES,
+  HotelFlow, HOTEL_PATHS, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, hotelOpenSequences, hotelPathNights,
   type HotelBooking, type HotelCast, type HotelPath, type HotelStepResult, type HotelTimerOffsets,
 } from '@eng/cosigner'
 import { EngagementAgent, XrplChain } from '@eng/agent-mcp'
@@ -178,6 +178,15 @@ export class DemoOrchestrator {
     }
     throw new Error(`faucet failed for ${label}`)
   }
+  /** Top `wallet` up from the faucet until it holds at least `drops` XRP (a faucet grant is ~100 XRP). */
+  private async ensureXrp(wallet: Wallet, drops: number): Promise<void> {
+    for (let i = 0; i < 12; i++) {
+      const info = await accountInfo(this.client, wallet.address)
+      if (info && Number((info.account_data as Json).Balance) >= drops) return
+      try { await this.client.fundWallet(wallet) } catch { await sleep(5000) }
+    }
+    throw new Error(`faucet could not fund ${wallet.address} with ${drops} drops`)
+  }
   private stmt(signer: Wallet, kind: string, type: string, subject: Json, claim: Json): Statement {
     const t = isoNow()
     const body: StatementBody = { v: 'eng.att/1', type, engagementId: this.engagementId, subject, claim, observedAt: t, issuedAt: t, nonce: newNonce(), attester: { account: signer.address, kind } }
@@ -263,7 +272,7 @@ export class DemoOrchestrator {
     // Register with an in-process co-signer and build the agent.
     const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
     this.svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir })
-    this.svc.register(plan.engagement, mandate)
+    await this.svc.register(plan.engagement, mandate)
     this.agent = new EngagementAgent({ engagementId: this.engagementId, account: eng.address, signer: localSigner(agent), asset: { code: 'RLUSD', currency: CUR, issuer: issuer.address }, decider: this.svc, chain: new XrplChain(this.client), stage: 'spend' })
     this.provisioned = true
 
@@ -353,7 +362,7 @@ export class DemoOrchestrator {
     // Register with an in-process co-signer and build the agent.
     const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
     this.svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir })
-    this.svc.register(plan.engagement, mandate)
+    await this.svc.register(plan.engagement, mandate)
     this.agent = new EngagementAgent({ engagementId: this.engagementId, account: eng.address, signer: localSigner(agent), asset: { code: 'RLUSD', currency: CUR, issuer: issuer.address }, decider: this.svc, chain: new XrplChain(this.client), stage: 'spend' })
     this.provisioned = true
 
@@ -475,8 +484,8 @@ export class DemoOrchestrator {
     const guest = await this.fund('guest')
     const hotel = await this.fund('hotel')
     const service = await this.fund('service') // pre-creates accounts; fee recipient and AccountDelete destination
-    const arbiter = xrpl.Wallet.generate(); this.w.arbiter = arbiter // signers only (never funded)
-    const backupArbiter = xrpl.Wallet.generate(); this.w.backupArbiter = backupArbiter
+    const arbiter = await this.fund('arbiter'); this.w.arbiter = arbiter // accepts its ENG/ARBITER accreditation, then only signs
+    const accreditor = await this.fund('accreditor') // the service's arbiter accreditor (the policy's arbiterIssuers)
     const cosigner = xrpl.Wallet.generate(); this.w.cosigner = cosigner
 
     must(await sendSimple(this.client, issuer, { TransactionType: 'AccountSet', Account: issuer.address, SetFlag: ASF_DEFAULT_RIPPLE }), 'DefaultRipple')
@@ -488,15 +497,19 @@ export class DemoOrchestrator {
     policy.version = '2.0.0-web'
     policy.assets!.RLUSD.issuer = issuer.address
     policy.params!.rulingWindow = '60s'
+  // The demo's own ruling-window bounds around its 60 s window (the stock policy allows 3–7 days; register() checks them).
+  policy.params!.minRulingWindow = '30s'
+  policy.params!.maxRulingWindow = '120s'
+    policy.params!.arbiterIssuers = [accreditor.address]
     this.policy = policy
     const template = this.read<Template>('templates/hotel@2.json')
     const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
     const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates: [template], policies: [baseline, policy], dataDir })
     this.svc = svc
-    const cast: HotelCast = { issuer, guest, hotel, arbiter, backupArbiter, service, currency: CUR }
+    const cast: HotelCast = { issuer, guest, hotel, arbiter, accreditor, service, currency: CUR }
 
     // eng.provision/1: every signer proves possession of its key; the SignerList is the same for every path's account.
-    const roles: Array<[string, Wallet, number]> = [['principal', guest, 3], ['counterparty', hotel, 3], ['arbiter', arbiter, 4], ['backupArbiter', backupArbiter, 2], ['cosigner', cosigner, 2]]
+    const roles: Array<[string, Wallet, number]> = [['principal', guest, 3], ['counterparty', hotel, 3], ['arbiter', arbiter, 4], ['cosigner', cosigner, 2]]
     const coord = new ProvisioningCoordinator()
     const session = coord.createSession({
       engagementId: this.engagementId, template: 'settlement-vault/hotel@2', account: '(one per path)', asset: 'RLUSD', quorum: 7,
@@ -507,9 +520,14 @@ export class DemoOrchestrator {
 
     const h: NonNullable<DemoOrchestrator['hotelRun']> = { cast, svc, policyLayer: layerHash(policy), pooled, accounts: {}, aging: null, ready: pooled, status: pooled ? 'ready — accounts are leased pre-aged from the pool' : '', ran: new Set(), failed: false }
     this.hotelRun = h
+    // The service pre-creates (or tops up) one account per path, each needing reserves for its Tickets: ~10 paths is far
+    // more than one faucet grant, so top the service up first (the stay variants grow staySilent's account the most).
+    await this.ensureXrp(service, HOTEL_PATHS.reduce((n, p) => n + HotelFlow.precreateDrops(this.fees, hotelPathNights(p)), 0) + 5_000_000)
+    // The co-signer registers a deal only with an accredited arbiter: the accreditor issues ENG/ARBITER, the arbiter accepts.
+    for (const s of await this.hotelFlow('happy').accredit()) if (s.final !== 'tesSUCCESS') throw new Error(`${s.step} failed: ${s.final}`)
     if (!pooled) {
       const flow = this.hotelFlow('happy')
-      const accounts = await flow.precreate(HOTEL_PATHS.length)
+      const accounts = await flow.precreate(HOTEL_PATHS.map(hotelPathNights))
       HOTEL_PATHS.forEach((p, i) => { h.accounts[p] = accounts[i] })
       h.status = `${fallback ? `${fallback} · ` : ''}waiting for the accounts to age past the AccountDelete window (~15 min)`
       h.aging = flow.waitUntilAged(accounts.map((a) => a.address))
@@ -523,7 +541,7 @@ export class DemoOrchestrator {
       engagementId: this.engagementId, account: h.accounts.happy?.address ?? '', explorer: this.explorer, quorum: plan.quorum,
       signers: plan.signerEntries.map(([address, weight]) => ({ role: roleOf[address] ?? '?', address, weight, proofVerified: true, as: ({ principal: 'guest', counterparty: 'hotel' } as Record<string, string>)[roleOf[address]] })),
       mandate: { purpose: 'Lisbon hotel stay (web demo)', budget: DEMO_HOTEL_BOOKING.room, dailyCap: DEMO_HOTEL_BOOKING.room, approvalOver: '0.00', vendors: [{ label: 'Hotel', address: hotel.address }] },
-      accounts: { issuer: issuer.address, guest: guest.address, hotel: hotel.address, arbiter: arbiter.address, backupArbiter: backupArbiter.address, service: service.address, cosigner: cosigner.address },
+      accounts: { issuer: issuer.address, guest: guest.address, hotel: hotel.address, arbiter: arbiter.address, accreditor: accreditor.address, service: service.address, cosigner: cosigner.address },
       openTx: '', balance: null, session: { id: session.sessionId },
       hotel: {
         ...this.hotelStatus(), paths: HOTEL_PATHS, pooled, accounts: Object.fromEntries(Object.entries(h.accounts).map(([p, w]) => [p, w!.address])),
@@ -567,7 +585,7 @@ export class DemoOrchestrator {
     })
   }
 
-  /** Pooled: lease a pre-aged account, hand it to this run's service key, and top up its reserve for the SignerList + 15 Tickets. */
+  /** Pooled: lease a pre-aged account, hand it to this run's service key, and top up its reserve for the SignerList + the pre-signed defaults' Tickets. */
   private async leaseHotelAccount(flow: HotelFlow, p: HotelPath): Promise<Wallet> {
     const h = this.hotelRun!
     const leased = await this.pool!.lease(`${this.engagementId}_${p}`)
@@ -575,8 +593,8 @@ export class DemoOrchestrator {
     const eng = xrpl.Wallet.fromSeed(leased.seed)
     const service = h.cast.service
     must(await sendSimple(this.client, this.poolService, { TransactionType: 'SetRegularKey', Account: eng.address, RegularKey: service.address }), 'hand the leased account to the service key')
-    must(await sendSimple(this.client, service, { TransactionType: 'Payment', Account: service.address, Destination: eng.address, Amount: String(this.fees.reserveBase + this.fees.inc * (2 + 15) + 1_000_000) }), 'reserve top-up')
-    await flow.waitUntilAged([eng.address], OPEN_SEQUENCES) // pool-aged; may still need the open Batch's Sequence headroom
+    must(await sendSimple(this.client, service, { TransactionType: 'Payment', Account: service.address, Destination: eng.address, Amount: String(HotelFlow.precreateDrops(this.fees, hotelPathNights(p))) }), 'reserve top-up')
+    await flow.waitUntilAged([eng.address], hotelOpenSequences(hotelPathNights(p))) // pool-aged; may still need the open Batch's Sequence headroom
     return eng
   }
 

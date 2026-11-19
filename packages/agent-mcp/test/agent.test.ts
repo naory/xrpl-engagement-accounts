@@ -11,9 +11,9 @@ const ENG = 'eng_b1_fixture'
 const ASSET = { code: 'RLUSD', currency: currencyHex('RLUSD'), issuer: W.issuer.address }
 
 /** A fresh in-process co-signer registered on the B1 fixture engagement. */
-function service(ledger = b1Ledger()): CosignerService {
+async function service(ledger = b1Ledger()): Promise<CosignerService> {
   const svc = new CosignerService({ signer: localSigner(W.cosigner), source: new FixtureLedgerSource(ledger), templates: [templates.procurement, templates.hotel], policies: [policies.baseline, policies.procurement, policies.hotel] })
-  svc.register(b1Engagement(), b1Mandate())
+  await svc.register(b1Engagement(), b1Mandate())
   return svc
 }
 
@@ -35,7 +35,7 @@ const agentFor = (svc: CosignerService, chain?: Chain) =>
 
 describe('engagement agent', () => {
   it('proposes an in-policy payment: the co-signer SIGNs and the two signatures combine into a quorum blob', async () => {
-    const agent = agentFor(service(), new FakeChain(21))
+    const agent = agentFor(await service(), new FakeChain(21))
     const p = await agent.proposePayment({ destination: W.vendorA.address, amount: '800.00', invoiceRef: 'inv:2026-Q4-0042', statements: [b1Invoice()] })
     expect(p.decision.decision).toBe('SIGN')
     expect(p.combined).toBeDefined()
@@ -48,7 +48,7 @@ describe('engagement agent', () => {
   })
 
   it('refuses an out-of-mandate payee without producing a quorum blob', async () => {
-    const agent = agentFor(service(), new FakeChain())
+    const agent = agentFor(await service(), new FakeChain())
     const p = await agent.proposePayment({ destination: W.stranger.address, amount: '100.00', invoiceRef: 'inv:X', statements: [b1Invoice(W.stranger, '100.00', 'inv:X')] })
     expect(p.decision.decision).toBe('REFUSE')
     expect(p.combined).toBeUndefined()
@@ -56,7 +56,7 @@ describe('engagement agent', () => {
 
   it('payVendor settles a signed payment, broadcasting exactly the quorum blob', async () => {
     const chain = new FakeChain(21)
-    const { proposal, submit } = await agentFor(service(), chain).payVendor({ destination: W.vendorA.address, amount: '800.00', invoiceRef: 'inv:2026-Q4-0042', statements: [b1Invoice()] })
+    const { proposal, submit } = await agentFor(await service(), chain).payVendor({ destination: W.vendorA.address, amount: '800.00', invoiceRef: 'inv:2026-Q4-0042', statements: [b1Invoice()] })
     expect(proposal.decision.decision).toBe('SIGN')
     expect(submit?.final).toBe('tesSUCCESS')
     expect(chain.submitted).toEqual([proposal.combined])
@@ -64,18 +64,18 @@ describe('engagement agent', () => {
 
   it('payVendor does not broadcast when the co-signer refuses', async () => {
     const chain = new FakeChain()
-    const { proposal, submit } = await agentFor(service(), chain).payVendor({ destination: W.stranger.address, amount: '100.00', statements: [] })
+    const { proposal, submit } = await agentFor(await service(), chain).payVendor({ destination: W.stranger.address, amount: '100.00', statements: [] })
     expect(proposal.decision.decision).toBe('REFUSE')
     expect(submit).toBeUndefined()
     expect(chain.submitted).toEqual([])
   })
 
   it('submit requires a chain', async () => {
-    await expect(agentFor(service()).submit('DEADBEEF')).rejects.toThrow(/requires a chain/)
+    await expect(agentFor(await service()).submit('DEADBEEF')).rejects.toThrow(/requires a chain/)
   })
 
   it('drives a remote co-signer over HTTP through CosignerClient (same Decider seam)', async () => {
-    const svc = service()
+    const svc = await service()
     const server = createServer(svc).listen(0, '127.0.0.1')
     await new Promise((r) => server.once('listening', r))
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`

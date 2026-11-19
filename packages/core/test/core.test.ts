@@ -75,14 +75,33 @@ describe('template validator', () => {
     expect(r.errors).toEqual([])
     expect(r.minimalWinningSets).toEqual([['owner'], ['agent', 'cosigner']])
   })
-  it('accepts hotel@2: 15 tickets, no arbiter-only winning set, arbiters+service disclosed', () => {
+  it('accepts hotel@2: no backup arbiter, chargeback defaults with 13 per-night stay variants, arbiter + co-signer not winning', () => {
     const r = validateTemplate(load('hotel@2.json'))
     expect(r.errors).toEqual([])
     expect(r.ok).toBe(true)
-    expect(r.ticketsNeeded).toBe(15)
-    expect(r.disclosures.filter((d) => d.id === 'V11').map((d) => d.message)).toEqual([expect.stringContaining('arbiter, backupArbiter, cosigner')])
-    expect(r.minimalWinningSets).toContainEqual(['principal', 'arbiter'])
-    expect(r.minimalWinningSets).not.toContainEqual(['arbiter', 'backupArbiter'])
+    // refund 4 + noshow exact 5 + noshow sweep 6 + release 6 + chargebackEntry 4 + chargebackClaim 6 + chargebackStay 13 × 6
+    expect(r.ticketsNeeded).toBe(109)
+    expect(r.minimalWinningSets).toEqual([['counterparty', 'arbiter'], ['principal', 'arbiter'], ['principal', 'counterparty', 'cosigner']])
+    expect(r.minimalWinningSets.flat()).not.toContain('backupArbiter')
+    expect(r.minimalWinningSets).not.toContainEqual(['arbiter', 'cosigner'])
+    expect(r.disclosures.filter((d) => d.id === 'V11')).toEqual([])
+  })
+  it('V15: every arbiter role declares service accreditation', () => {
+    const t = structuredClone(load('hotel@2.json'))
+    delete (t.roles.arbiter as { accreditation?: string }).accreditation
+    expect(validateTemplate(t).errors.map((e) => e.id)).toEqual(['V15'])
+    ;(t.roles.arbiter as { accreditation?: string }).accreditation = 'self'
+    expect(validateTemplate(t).errors.map((e) => e.id)).toEqual(['V15'])
+    expect(validateTemplate(load('hotel@1.json')).errors).toEqual([])
+  })
+  it('V8 counts per-night variants as max x (1 + steps)', () => {
+    const t = structuredClone(load('hotel@2.json'))
+    const base = validateTemplate(t).ticketsNeeded
+    const [name, o] = Object.entries(t.outcomes).find(([, x]: any) => x.presigned) as [string, any]
+    const steps = t.blueprints[o.blueprint].steps.length
+    o.variants = { perNight: true, max: 13 }
+    expect(validateTemplate(t).ticketsNeeded).toBe(base - (1 + steps) + 13 * (1 + steps))
+    void name
   })
   it('V6 accepts onExpire "none" (a window that only closes)', () => {
     const t = structuredClone(load('hotel@1.json'))
@@ -118,7 +137,7 @@ describe('template validator', () => {
   })
   it('V11 (E4): two equal-weight arbiter slots let the arbiters collude', () => {
     const t = hotel()
-    t.roles.arbiter2 = { weight: 3, kind: 'arbiter', operatedBy: 'external' }
+    t.roles.arbiter2 = { weight: 3, kind: 'arbiter', operatedBy: 'external', accreditation: 'service' }
     expect(validateTemplate(t).errors.map((e) => e.id)).toContain('V11')
   })
   it('E4 backup-arbiter scheme P3·C3·A1 4·A2 2·S2·Q7 passes, with the documented disclosures', () => {
@@ -127,8 +146,8 @@ describe('template validator', () => {
     t.roles = {
       principal: { weight: 3, kind: 'principal', operatedBy: 'external' },
       counterparty: { weight: 3, kind: 'counterparty', operatedBy: 'external' },
-      arbiter: { weight: 4, kind: 'arbiter', operatedBy: 'external' },
-      arbiter2: { weight: 2, kind: 'arbiter', operatedBy: 'external' },
+      arbiter: { weight: 4, kind: 'arbiter', operatedBy: 'external', accreditation: 'service' },
+      arbiter2: { weight: 2, kind: 'arbiter', operatedBy: 'external', accreditation: 'service' },
       cosigner: { weight: 2, kind: 'cosigner', operatedBy: 'service' },
     }
     const r = validateTemplate(t)

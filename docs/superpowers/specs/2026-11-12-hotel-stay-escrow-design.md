@@ -1,6 +1,6 @@
 # Hotel stay escrow — end to end through the co-signer (design)
 
-Status: design, 2026-11-12. Builds on `docs/use-cases/hotel-booking.md` (the "Dana books Lisbon" use case, paths A–D),
+Status: design, 2026-11-12. **Amended 2026-11-14:** the backup arbiter (§4 weights, §5.8) was removed in favour of an accredited arbiter and chargeback-style defaults; see [the chargeback design](2026-11-14-arbiter-chargeback-design.md). New weights: guest 3, hotel 3, arbiter 4, co-signer 2, quorum 7. Builds on `docs/use-cases/hotel-booking.md` (the "Dana books Lisbon" use case, paths A–D),
 `templates/hotel@1.json` and `policies/hotel@1.1.0.json`. This document is the delta: what the hotel flow becomes, and what
 must be built to run it for real.
 
@@ -74,6 +74,8 @@ moves money toward the inactive party, against the other side's raised flag, is 
 - `hotel@1` and `pol_hotel@1.1.0` stay untouched (vectors and tests depend on them). The new work is a new version.
 
 ## 4. Signers and weights (decided)
+
+> Superseded 2026-11-14: `backupArbiter` (weight 2) was removed; see [the chargeback design](2026-11-14-arbiter-chargeback-design.md). The rows below are the original decision.
 
 | Role | Weight |
 |---|---|
@@ -189,7 +191,8 @@ ruling → backup). A claim leaves no ledger trace, so "posted" must be defined,
      without a stored release blob.
   4. The `checkin` stage confirms the deposit on-ledger; state → CHECKED_IN.
 - If the hotel won't do step 1 → no deposit is paid; the guest's remedy is an entry dispute before `entryDisputeBy`.
-  If the guest won't do steps 2–3 → the hotel posts `status: "refused"` → no-show path; the guest may still dispute.
+  If the guest won't do steps 2–3, the deposit never arrives; check-in only counts once the deposit is in, so the guest still
+  ends as a no-show. Once a `checked_in` is recorded, a later `refused` is rejected (`CHECKIN_FINAL`); the guest may still dispute.
 - Service fee (50 bps) applies to **everything the hotel receives** (room and claims), keeping hotel@1's `S4` formula
   `toFee == bps(toMerchant + toFee)` unchanged (my call). Refunds carry no fee.
 
@@ -197,14 +200,36 @@ ruling → backup). A claim leaves no ledger trace, so "posted" must be defined,
 
 | Default | Signed when | By | Pays | Completed by co-signer when |
 |---|---|---|---|---|
-| `default.refund` | open | guest + hotel (6) | all room money → guest | `confirmBy` passed, never confirmed, balance = room |
-| `default.noshow` | open | guest + hotel | room money → hotel (minus fee) | confirmed, `checkInBy` and `entryDisputeBy` passed, no check-in recorded as `checked_in`, no dispute, balance = room |
-| `default.release` | check-in | guest + hotel | room → hotel (minus fee), deposit → guest | `disputeWindowEnds` passed, no claim, no dispute, balance = room + deposit |
+| `default.refund` | open | guest + hotel (6) | everything → guest (sweep) | `confirmBy` passed, never confirmed, balance ≥ room |
+| `default.noshow` | open | guest + hotel | room money → hotel (minus fee) | confirmed, `checkInBy` and `entryDisputeBy` passed, not checked in, no dispute, balance = room |
+| `default.noshowSweep` | open | guest + hotel | room → hotel (minus fee), the rest → guest (sweep) | as `default.noshow`, but balance > room |
+| `default.release` | check-in | guest + hotel | room → hotel (minus fee), deposit + any extra → guest (sweep) | `disputeWindowEnds` passed, checked in, no claim, no dispute, balance ≥ room + deposit |
 
-- Tickets for all three are reserved in the open Batch (`TicketCreate`), so the check-in default can be pre-signed without a
-  second engagement-account transaction (my call; costs ~15 Tickets of owner reserve up front, returned at `AccountDelete`).
-- The open-time defaults become ledger-dead once the deposit arrives (balance ≠ room); the co-signer also refuses them once a
-  check-in exists. Neither layer alone is relied on.
+- **Extra money goes back to the guest (residual sweep).** The defaults are not signed for an exact balance: the guest's
+  payment is a `tfPartialPayment` with a large `Amount`, delivering whatever the fixed payouts leave. So stray RLUSD, an
+  unopened "bond" or a partial deposit can't jam a default (§1 anti-goal: nobody wins by stalling); it returns to the guest.
+  The policy resolves the sweep from the pinned balance (R4, N8, L6) and the hotel still receives exactly the room (less fee).
+- **Why two no-show blobs.** A partial payment that can deliver nothing fails (`tecPATH_DRY`), and inside an ALLORNOTHING
+  Batch that fails the whole Batch and burns its outer Ticket (F2). With balance = room there is nothing to sweep, so the
+  no-show is signed exact *and* with a sweep; N8 lets only the one that fits the balance pass, B11 refuses any sweep that
+  would deliver ≤ 0, and the unused blob dies at `AccountDelete`. Refund and release always sweep something > 0.
+- **Partial deposit = refused check-in = no-show.** If the guest pays only part of the deposit, the hotel posts
+  `status: "refused"`; after the deadlines the sweep no-show pays the hotel the room and returns the partial deposit.
+- **A recorded check-in is final.** Once the hotel's `checked_in` is receipted the co-signer rejects any later `refused`
+  (`CHECKIN_FINAL`), and the policy counts the guest as checked in when any `checked_in` exists and the deposit is in, so a
+  stay can never be turned into a no-show that ends it early.
+- **B11 also checks payees can receive.** If the snapshot shows a payee can't accept the payment (`DepositAuth`, no trust
+  line, or not enough room under its limit), the co-signer refuses rather than burning the default.
+- Tickets for all four are reserved in the open Batch (`TicketCreate`), so the check-in default can be pre-signed without a
+  second engagement-account transaction (my call; 4 + 5 + 6 + 6 = 21 Tickets of owner reserve up front, returned at
+  `AccountDelete`).
+- The open-time defaults are refused once the guest has checked in (R1 confirmed, N3); the dispute rules (N4, L2) and the
+  claim rule (L5) still block them while a bonded dispute or a claim is open.
+- **Known limitations.** (i) A guest who makes themselves unable to receive (DepositAuth, removes or caps the RLUSD trust
+  line) blocks every automatic ending that pays them: the co-signer refuses (B11) instead of burning a Ticket, and the
+  outcome falls to the arbiter (arbiter + hotel can still close). A fallback variant that pays the guest's share elsewhere is
+  an open product decision. (ii) A confirmation with deposit 0 can't auto-release: the release's guest leg is a sweep that
+  would deliver nothing, so B11 refuses it and the stay must be settled by agreement or ruling.
 - The co-signer stores the pre-signed blobs (guest + hotel signatures) in the engagement record and exposes a `tick(now)`
   that completes and returns any default whose conditions hold at a pinned validated ledger. Submission is the caller's job
   (the demo, or a future keeper).
@@ -246,6 +271,8 @@ a mid-stay failure opens a dispute in the settlement phase (§5.7).
 - The co-signer refuses `default.release` while a claim is posted (new rule), so an unanswered claim can't be wiped by the release.
 
 ### 5.8 Backup arbiter
+
+> Superseded 2026-11-14: removed. A silent arbiter now triggers pre-signed chargeback-style defaults instead; see [the chargeback design](2026-11-14-arbiter-chargeback-design.md) §4.3. All chargeback parameters there are assumptions pending a real business.
 
 - Applies to **every** dispute: entry disputes, settlement disputes, and unanswered-claim default rulings.
 - Outcome `ruling.backup`: signers `[[backupArbiter, principal, cosigner], [backupArbiter, counterparty, cosigner]]`,

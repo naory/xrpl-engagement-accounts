@@ -48,6 +48,12 @@ export interface EngagementRecord {
   parties: Record<string, string>
   fee?: { bps: number; to: string }
   amount?: { asset: string; value: string }
+  /**
+   * Per-deal terms pinned at booking (stay templates): `nights` from the confirmed dates, `nightly` = floor(room / nights)
+   * in the asset's minor units (decimal string), and `rulingWindow` (a CEL duration such as "432000s") when the deal
+   * sets its own arbiter deadline; absent, the policy's `params.rulingWindow` applies.
+   */
+  terms?: { nights: number; nightly: string; rulingWindow?: string }
   timers?: Record<string, string>
   attesters?: Record<string, AttesterTerms>
   /** Child engagement accounts that payouts may target (E8). */
@@ -70,6 +76,11 @@ export interface LedgerAccountState {
   regularKey?: string | null
   /** Objects the account owns, for drain / deletion checks. */
   ownerObjects?: { trustlines: number; signerList: boolean; tickets: number[]; other: number }
+  /**
+   * Whether a payee can receive (read for the payees of a proposed transaction): lsfDepositAuth, and its trust lines
+   * to the configured issuers keyed by asset code (a missing code = no trust line). Absent = not read (unknown).
+   */
+  receive?: { depositAuth: boolean; lines: Record<string, { balance: string; limit: string }> }
 }
 
 export interface LedgerCredential {

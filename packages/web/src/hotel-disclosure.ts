@@ -16,12 +16,10 @@ const fixed = (v: string): string => Number(v).toFixed(2)
 export const STANDARD_OFFER: HotelOffer = {
   room: fixed(DEMO_HOTEL_BOOKING.room), deposit: fixed(DEMO_HOTEL_BOOKING.deposit),
   arbiter: { account: 'Fairwind Arbitration', accredited: true, appointedBy: 'counterparty' },
-  backupArbiter: { account: 'Northgate Dispute Services', accredited: true, appointedBy: 'service' },
 }
-/** Same booking, with three terms a guest's agent should notice. */
+/** Same booking, with terms a guest's agent should notice. */
 export const UNUSUAL_OFFER: HotelOffer = {
-  ...STANDARD_OFFER, deposit: '300.00', timers: { disputeWindowEnds: 7200 },
-  backupArbiter: { account: 'Hotel Partners Mediation', accredited: true, appointedBy: 'counterparty' },
+  ...STANDARD_OFFER, deposit: '300.00', timers: { disputeWindowEnds: 7200, rulingDueBy: 172800 }, // a 2-day ruling window: below the 3-day norm
 }
 
 export interface OfferCheck { label: string; offer: HotelOffer; terms: DealTerms; deviations: Deviation[] }

@@ -38,7 +38,7 @@ policy: pay Vendor A (in policy → settles), pay Vendor B over the threshold wi
 | `POST /api/provision` | funds the cast, runs `eng.provision/1`, opens the account, registers it with an in-process co-signer |
 | `POST /api/pay` | the agent proposes + settles a payment (the co-signer co-signs only if the policy passes) |
 | `POST /api/escrow` | bonded-marketplace settlement: bond release (seller's agent + buyer + co-signer), arbiter slash (arbiter + buyer), or a blocked seller-alone attempt |
-| `POST /api/hotel` | runs one hotel-stay path (`{ path }`, one of the eight `HotelPath`s) on its own engagement account through the real co-signer; returns `HotelFlow`'s steps |
+| `POST /api/hotel` | runs one hotel-stay path (`{ path }`, one of the nine `HotelPath`s) on its own engagement account through the real co-signer; returns `HotelFlow`'s steps |
 | `GET /api/hotel` | hotel readiness: whether the pre-created accounts have aged enough to run, and which paths already ran |
 | `POST /api/x402` | an x402 metered purchase bound to a merchant challenge (buy / redirect-blocked / replay-blocked) |
 | `POST /api/propose` | propose + co-sign without broadcasting (returns the quorum blob) |
@@ -54,10 +54,11 @@ A template dropdown switches between five scenarios, both in simulated and live 
 
 - **Procurement agent** (owner wallet, quorum 2): the agent spends repeatedly; the co-signer signs
   in-policy payments and refuses the rest.
-- **Hotel stay** (`settlement-vault/hotel@2`, quorum 7): guest (3), hotel (3), arbiter (4), backup
-  arbiter (2), co-signer (2), under `pol_hotel@2.0.0`. A path picker runs any of the eight paths
-  (happy, unconfirmed, no-show, entry dispute conceded / ruled, silence, claim unanswered, backup
-  ruling). Each step shows the co-signer's decision record as it is — stage, SIGN/REFUSE, failing rules,
+- **Hotel stay** (`settlement-vault/hotel@2`, quorum 7): guest (3), hotel (3), arbiter (4,
+  accredited by the engagement service), co-signer (2), under `pol_hotel@2.0.0`. A path picker runs any of the ten paths
+  (happy, unconfirmed, no-show, entry dispute conceded / ruled, silence, claim unanswered, partial deposit
+  refused at check-in, and two chargeback paths where the arbiter stays silent: a disputed claim and a mid-stay problem,
+  which end by default like a card chargeback). Each step shows the co-signer's decision record as it is — stage, SIGN/REFUSE, failing rules,
   and every rule row (id · result · reason) — plus its receipt for posted statements, the transaction
   and the payouts. The page writes no check text of its own. Simulated mode replays
   `public/hotel-sim.json` (`npm run web:hotel-sim`), a transcript the real co-signer produced over a

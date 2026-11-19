@@ -10,7 +10,7 @@ import { CosignerService, createServer, serverOptionsFromEnv, type ServerOptions
 const stub = () =>
   ({
     address: 'rCoSignerStub',
-    register: () => ({ ok: true, layers: [] }),
+    register: async () => ({ ok: true, layers: [] }),
     decide: async () => ({ decision: 'SIGN', failing: [], results: [], statementsRejected: [], record: { id: 'rec' } }),
     engagement: (id: string) => (id === 'eng1' ? { engagementId: 'eng1' } : undefined),
     decisions: () => [],

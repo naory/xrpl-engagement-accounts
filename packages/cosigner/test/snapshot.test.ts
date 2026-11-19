@@ -19,6 +19,8 @@ function fakeClient() {
       case 'account_info':
         if (r.account === ENG) return { result: { account_data: { Account: ENG, Sequence: 25, Flags: LSF_DISABLE_MASTER, Balance: '1400000' } } }
         if (r.account === W.treasury.address) return { result: { account_data: { Account: r.account, Sequence: 7, Flags: 0, RegularKey: W.agent.address, Balance: '99000000' } } }
+        if (r.account === W.vendorA.address) return { result: { account_data: { Account: r.account, Sequence: 3, Flags: 0, Balance: '50000000' } } }
+        if (r.account === W.vendorB.address) return { result: { account_data: { Account: r.account, Sequence: 4, Flags: 0x01000000, Balance: '50000000' } } } // lsfDepositAuth
         throw notFound()
       case 'account_objects':
         if (r.account === ENG && !r.type) return { result: { account_objects: [{ LedgerEntryType: 'RippleState' }, { LedgerEntryType: 'SignerList' }, { LedgerEntryType: 'Ticket', TicketSequence: 12 }, { LedgerEntryType: 'Credential', Subject: ENG }] } }
@@ -30,7 +32,10 @@ function fakeClient() {
         }
         if (r.type === 'credential') return { result: { account_objects: [] } }
         throw notFound()
-      case 'account_lines': return { result: { lines: [{ account: W.issuer.address, currency: RLUSD_HEX, balance: '48800' }, { account: W.fakeIssuer.address, currency: RLUSD_HEX, balance: '5' }] } }
+      case 'account_lines':
+        if (r.account === W.vendorA.address) return { result: { lines: [{ account: W.issuer.address, currency: RLUSD_HEX, balance: '12.5', limit: '1000' }, { account: W.fakeIssuer.address, currency: RLUSD_HEX, balance: '0', limit: '9' }] } }
+        if (r.account === W.vendorB.address) return { result: { lines: [] } }
+        return { result: { lines: [{ account: W.issuer.address, currency: RLUSD_HEX, balance: '48800' }, { account: W.fakeIssuer.address, currency: RLUSD_HEX, balance: '5' }] } }
       case 'account_tx': {
         const pay = (seq: number, to: string, value: string, iso: string, result = 'tesSUCCESS', issuer = W.issuer.address) => ({
           tx_json: { TransactionType: 'Payment', Account: ENG, Destination: to, DeliverMax: { currency: RLUSD_HEX, issuer, value }, Sequence: seq },
@@ -68,5 +73,17 @@ describe('XrplLedgerSource', () => {
     expect(snap.history[ENG].map((h) => [h.sequence, h.payouts[0].value])).toEqual([[24, '700'], [22, '500']])
     expect(calls.filter((c) => c.command === 'ledger').length).toBe(1)
     expect(calls.filter((c) => c.command === 'account_tx').every((c) => c.ledger_index_max === LEDGER)).toBe(true)
+  })
+
+  it('reads whether each payee can receive: DepositAuth and its trust line to the asset issuer', async () => {
+    const { client, calls } = fakeClient()
+    const snap = await new XrplLedgerSource(client).snapshot({
+      account: ENG, assets: policies.procurement.assets!, accounts: [], credentialSubjects: [],
+      payees: [W.vendorA.address, W.vendorB.address, W.controller.address], historySecs: 90 * 86400,
+    })
+    expect(snap.accounts[W.vendorA.address]).toMatchObject({ exists: true, receive: { depositAuth: false, lines: { RLUSD: { balance: '12.5', limit: '1000' } } } })
+    expect(snap.accounts[W.vendorB.address]).toMatchObject({ exists: true, receive: { depositAuth: true, lines: {} } })
+    expect(snap.accounts[W.controller.address]).toEqual({ exists: false })
+    expect(calls.filter((c) => c.command === 'account_lines' && c.account === W.vendorA.address).every((c) => c.ledger_index === LEDGER)).toBe(true)
   })
 })

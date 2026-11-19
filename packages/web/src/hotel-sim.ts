@@ -1,9 +1,10 @@
-// The web demo's simulated "Hotel stay" transcript (spec §7.2). Each of the eight HotelFlow paths runs in-process
+// The web demo's simulated "Hotel stay" transcript (spec §7.2). Each of the nine HotelFlow paths runs in-process
 // through a real CosignerService with the real pol_hotel@2.0.0, over a FixtureLedgerSource whose snapshot
 // (closeTime, ledger index, balance, Tickets, Credentials, account existence) this generator advances step by step.
 // Every decision, failing list and rule row in the transcript is the co-signer's; nothing is hand-written. The only
 // thing simulated here is the ledger: a closing Batch applies when its multisig weight reaches the quorum (7).
 //
+// Every path books the same three-night stay, so each deal reserves the stay variants (default.chargebackStay#1, #2).
 // Step labels and order mirror packages/cosigner/src/hotel/flow.ts so the simulated and live transcripts look alike;
 // a tick()'s results keep the co-signer's order, so a path's closing step is not necessarily its last.
 //
@@ -19,7 +20,7 @@ import { encodeForMultisigning } from 'ripple-binary-codec'
 import { Amount, formatAmount, localSigner, parseAmount, signStatement, type AssetDef, type Statement, type Template } from '@eng/core'
 import { ruleExplanations, type EngagementRecord, type LedgerSnapshot, type PolicyDoc } from '@eng/policy'
 import {
-  CosignerService, DEMO_HOTEL_BOOKING, FixtureLedgerSource, HOTEL_PATHS,
+  CosignerService, DEMO_HOTEL_BOOKING, FixtureLedgerSource, HOTEL_PATHS, hotelTerms, hotelTickets,
   buildCloseBatch, combine, currencyHex, memo, multisignBlob, receiptOf,
   type DecideResponse, type HotelReceipt, type Fees, type HotelBooking, type HotelPath, type HotelStepResult, type TickResult,
 } from '@eng/cosigner'
@@ -27,6 +28,9 @@ import {
 type Json = Record<string, unknown>
 type Wallet = InstanceType<typeof xrpl.Wallet>
 type Payout = { to: string; value: string }
+/** A pre-signed payout: a fixed amount, or a residual sweep (tfPartialPayment) of whatever is left. */
+type PresignPayout = { to: string; value?: string; partial?: boolean }
+const TF_PARTIAL_PAYMENT = 0x00020000
 
 /** A transcript step: a HotelFlow step plus the simulated ledger closeTime it happened at. */
 export interface HotelSimStep extends HotelStepResult { at: string }
@@ -34,7 +38,7 @@ export interface HotelSimStep extends HotelStepResult { at: string }
 export interface HotelTranscript {
   generatedBy: string
   policy: string
-  cast: { issuer: string; guest: string; hotel: string; arbiter: string; backupArbiter: string; service: string; cosigner: string }
+  cast: { issuer: string; guest: string; hotel: string; arbiter: string; service: string; cosigner: string }
   booking: HotelBooking
   timers: Record<string, string>
   /** Human-readable rule names and explanations from the policy layers (title, message), keyed by rule id. */
@@ -53,10 +57,14 @@ function wallet(name: string): Wallet {
 
 const W = {
   issuer: wallet('issuer'), guest: wallet('guest'), hotel: wallet('hotel'), arbiter: wallet('arbiter'),
-  backupArbiter: wallet('backup-arbiter'), service: wallet('service'), cosigner: wallet('cosigner'),
+  service: wallet('service'), cosigner: wallet('cosigner'),
+  /** The service's arbiter accreditor: issues the arbiter's ENG/ARBITER (the policy's arbiterIssuers). */
+  accreditor: wallet('accreditor'),
 }
-const WEIGHTS: Record<string, number> = { [W.guest.address]: 3, [W.hotel.address]: 3, [W.arbiter.address]: 4, [W.backupArbiter.address]: 2, [W.cosigner.address]: 2 }
+const WEIGHTS: Record<string, number> = { [W.guest.address]: 3, [W.hotel.address]: 3, [W.arbiter.address]: 4, [W.cosigner.address]: 2 }
 const QUORUM = 7
+/** A residual sweep to the guest: automatic endings return whatever the fixed payouts leave in the account. */
+const SWEEP_TO_GUEST: PresignPayout = { to: W.guest.address, partial: true }
 
 const TEMPLATE = 'settlement-vault/hotel@2'
 const CURRENCY = currencyHex('RLUSD')
@@ -78,8 +86,8 @@ const OPEN_INDEX = 99_000_000
 /** The pre-created account's Sequence (an account starts at the index it was created in, here ~27 min before open). */
 const PRECREATED_SEQ = OPEN_INDEX - 400
 /** Tickets reserved at open (outer + inner of each pre-signed default, spec §5.4) and Sequences the open Batch uses. */
-const TICKETS = { 'default.refund': [0, 4], 'default.noshow': [4, 9], 'default.release': [9, 15] } as const
-const TICKET_COUNT = 15
+const NIGHTS = 3
+const { slices: TICKETS, count: TICKET_COUNT } = hotelTickets(NIGHTS)
 const OPEN_SEQUENCES = 4 + TICKET_COUNT
 
 const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -90,6 +98,7 @@ const money = (v: string) => ({ currency: 'RLUSD', value: v })
 function loadLibrary(): { template: Template; policies: PolicyDoc[]; policy: PolicyDoc } {
   const policy = readJson<PolicyDoc>('policies/hotel@2.0.0.json')
   for (const a of Object.values(policy.assets ?? {})) if (a.kind === 'IOU') a.issuer = W.issuer.address
+  if (policy.params) policy.params.arbiterIssuers = [W.accreditor.address]
   if (policy.params?.rulingWindow !== `${RULING_WINDOW_SECS}s`) throw new Error(`hotel-sim assumes rulingWindow ${RULING_WINDOW_SECS}s, policy has ${String(policy.params?.rulingWindow)}`)
   return { template: readJson<Template>('templates/hotel@2.json'), policies: [readJson<PolicyDoc>('policies/baseline@1.1.0.json'), policy], policy }
 }
@@ -129,7 +138,8 @@ class PathSim {
       index: OPEN_INDEX, hash: '', closeTime: TIMERS.openedAt, baseFeeDrops: String(FEES.base), reserveIncDrops: String(FEES.inc),
       accounts: { [this.eng.address]: { exists: true, masterDisabled: true, regularKey: W.service.address, sequence: this.seq, ownerObjects: { trustlines: 1, signerList: false, tickets: [], other: 0 } } },
       balances: { [this.eng.address]: { RLUSD: '0' } },
-      credentials: [], history: {},
+      // The arbiter's accepted ENG/ARBITER from the service accreditor: the co-signer registers only a neutral arbiter.
+      credentials: [{ issuer: W.accreditor.address, subject: W.arbiter.address, type: 'ENG/ARBITER', accepted: true, expiration: null }], history: {},
     })
     this.setClock(TIMERS.openedAt)
     this.svc = new CosignerService({ signer: localSigner(W.cosigner), source: this.source, templates: [lib.template], policies: lib.policies })
@@ -155,7 +165,7 @@ class PathSim {
   }
 
   // ── Steps (as HotelFlow) ─────────────────────────────────────────────────
-  /** Open Batch applied: room funded, SignerList, 15 Tickets, RegularKey cleared. Register; pre-sign the open-time defaults. */
+  /** Open Batch applied: room funded, SignerList, 21 Tickets, RegularKey cleared. Register; pre-sign the open-time defaults. */
   async open(): Promise<void> {
     this.tickets = Array.from({ length: TICKET_COUNT }, (_, i) => this.seq + 3 + i) // outer, SignerListSet, TicketCreate, then its Tickets
     this.seq += OPEN_SEQUENCES
@@ -168,13 +178,15 @@ class PathSim {
     })
     const record: EngagementRecord = {
       engagementId: this.id, template: TEMPLATE, account: this.eng.address, asset: 'RLUSD',
-      parties: { principal: W.guest.address, counterparty: W.hotel.address, arbiter: W.arbiter.address, backupArbiter: W.backupArbiter.address, cosigner: W.cosigner.address },
+      parties: { principal: W.guest.address, counterparty: W.hotel.address, arbiter: W.arbiter.address, cosigner: W.cosigner.address },
       fee: { bps: Number(FEE_BPS), to: W.service.address }, deleteTo: W.service.address,
-      amount: { asset: 'RLUSD', value: BOOKING.room }, timers: { ...TIMERS }, state: 'OPEN', consumed: [], mandateId: this.mandate.id,
+      amount: { asset: 'RLUSD', value: BOOKING.room }, timers: { ...TIMERS }, terms: hotelTerms(BOOKING.room, NIGHTS), state: 'OPEN', consumed: [], mandateId: this.mandate.id,
     }
-    this.svc.register(record, this.mandate)
-    await this.presign('default.refund', [{ to: W.guest.address, value: BOOKING.room }])
+    await this.svc.register(record, this.mandate)
+    await this.presign('default.refund', [SWEEP_TO_GUEST])
     await this.presign('default.noshow', split(micro(BOOKING.room), 0n))
+    await this.presign('default.noshowSweep', [...split(micro(BOOKING.room), 0n), SWEEP_TO_GUEST])
+    await this.presign('default.chargebackEntry', [SWEEP_TO_GUEST]) // arbiter silent on an arrival dispute: everything back to the guest
     this.add({ step: 'open', final: 'tesSUCCESS' })
   }
 
@@ -186,23 +198,43 @@ class PathSim {
     this.add({ ...this.decided('confirm', await this.svc.decide({ engagementId: this.id, stage: 'confirm' })), receipt })
   }
 
-  /** Spec §5.3 order: check-in attestation → default.release pre-signed and stored → deposit → `checkin`. */
+  /**
+   * Spec §5.3 order: the hotel's check-in attestation → the guest's own acknowledgement (it has the keys; R23) →
+   * default.release pre-signed and stored → deposit → `checkin`.
+   */
   async checkIn(): Promise<void> {
     const receipt = await this.post(this.stmt(W.hotel, 'COUNTERPARTY', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'checked_in', room: '204', deposit: money(BOOKING.deposit) }))
     this.add({ step: 'checkin attestation', final: 'RECEIPTED', receipt })
-    await this.presign('default.release', split(micro(BOOKING.room), micro(BOOKING.deposit)))
+    const ack = await this.post(this.stmt(W.guest, 'PRINCIPAL', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'checked_in', room: '204' }))
+    this.add({ step: 'guest acknowledges check-in', final: 'RECEIPTED', receipt: ack })
+    await this.presign('default.release', [...split(micro(BOOKING.room), 0n), SWEEP_TO_GUEST]) // deposit + anything extra
     this.add({ step: 'default.release pre-signed', final: 'STORED' })
+    // Arbiter silent on a claim/after-checkout dispute: room to the hotel (less fee), the rest to the guest.
+    await this.presign('default.chargebackClaim', [...split(micro(BOOKING.room), 0n), SWEEP_TO_GUEST])
+    // Arbiter silent on a mid-stay dispute in night k: k nights to the hotel (less fee), the rest to the guest.
+    const variants = Object.keys(TICKETS).filter((k) => k.startsWith('default.chargebackStay#'))
+    const nightly = micro(hotelTerms(BOOKING.room, NIGHTS).nightly)
+    for (const v of variants) await this.presign(v, [...split(nightly * BigInt(v.split('#')[1]), 0n), SWEEP_TO_GUEST])
+    this.add({ step: `default.chargebackClaim${variants.length ? ` + ${variants.length} stay variant(s)` : ''} pre-signed`, final: 'STORED' })
     this.balance += micro(BOOKING.deposit)
     this.add({ step: 'deposit', final: 'tesSUCCESS' })
     this.add(this.decided('checkin', await this.svc.decide({ engagementId: this.id, stage: 'checkin' })))
   }
 
+  /** The guest pays only part of the deposit; the hotel refuses check-in (HotelFlow.partialDepositRefused). */
+  async partialDepositRefused(): Promise<void> {
+    this.balance += micro(BOOKING.partialDeposit)
+    this.add({ step: 'deposit (partial)', final: 'tesSUCCESS' })
+    const receipt = await this.post(this.stmt(W.hotel, 'COUNTERPARTY', 'party.checkin/1', { bookingId: this.bookingId }, { status: 'refused', room: '204', deposit: money(BOOKING.deposit) }))
+    this.add({ step: 'checkin refused', final: 'RECEIPTED', receipt })
+  }
+
   /** Guest's Batch applied (ENG/DISPUTE Credential on the account + the bond); then the dispute attestation. */
-  async openDispute(phase: 'entry' | 'settlement'): Promise<void> {
+  async openDispute(phase: 'entry' | 'stay' | 'settlement'): Promise<void> {
     this.snap.credentials.push({ issuer: W.guest.address, subject: this.eng.address, type: 'ENG/DISPUTE', accepted: false, expiration: null })
     this.balance += micro(BOOKING.bond)
     this.dispute = this.stmt(W.guest, 'PRINCIPAL', 'party.dispute/1', { bookingId: this.bookingId }, {
-      phase, reason: phase === 'entry' ? 'room not as booked' : 'claim disputed', bond: money(BOOKING.bond), evidenceHashes: [],
+      phase, reason: phase === 'entry' ? 'room not as booked' : phase === 'stay' ? 'no hot water since check-in' : 'claim disputed', bond: money(BOOKING.bond), evidenceHashes: [],
     })
     const receipt = await this.post(this.dispute)
     this.add({ step: `dispute (${phase})`, final: 'tesSUCCESS', receipt })
@@ -231,19 +263,19 @@ class PathSim {
     this.add(await this.cosigned('settle', 'settle', tx, [W.guest, W.hotel]))
   }
 
-  /** Primary arbiter: arbiter + one party, no co-signer (optional advisory stage). Backup: backup + party + co-signer. */
-  async ruling(by: 'arbiter' | 'backupArbiter', payouts: Payout[], opts: { party?: 'principal' | 'counterparty'; advisory?: string } = {}): Promise<void> {
-    const arb = by === 'arbiter' ? W.arbiter : W.backupArbiter
-    if (!this.rulings.has(by)) {
-      const st = this.stmt(arb, 'ARBITER', 'party.ruling/1', { bookingId: this.bookingId }, { payouts, rationale: by === 'arbiter' ? 'primary ruling' : 'backup ruling after the primary ruling window' })
-      await this.post(st)
-      this.rulings.set(by, st)
-    }
+  /** The arbiter's party.ruling/1, receipted (before its deadline it blocks every chargeback default). Posted once. */
+  async postRuling(payouts: Payout[]): Promise<void> {
+    const st = this.stmt(W.arbiter, 'ARBITER', 'party.ruling/1', { bookingId: this.bookingId }, { payouts, rationale: 'arbiter ruling' })
+    const receipt = await this.post(st)
+    this.rulings.set('arbiter', st)
+    this.add({ step: 'ruling statement', final: 'RECEIPTED', receipt })
+  }
+
+  /** The arbiter rules: arbiter + one party, no co-signer (optional advisory stage). */
+  async ruling(payouts: Payout[], opts: { party?: 'principal' | 'counterparty'; advisory?: string } = {}): Promise<void> {
+    const arb = W.arbiter
+    if (!this.rulings.has('arbiter')) await this.postRuling(payouts)
     const party = opts.party === 'counterparty' ? W.hotel : W.guest
-    if (by === 'backupArbiter') {
-      this.add(await this.cosigned('ruling:backupArbiter', 'ruling.backup', this.liveClose(payouts, 'ruling.backup', 3), [arb, party]))
-      return
-    }
     const tx = this.liveClose(payouts, 'settle.ruling', 2)
     const blobs = [multisignBlob(arb, tx), multisignBlob(party, tx)]
     const adv = opts.advisory ? await this.svc.decide({ engagementId: this.id, stage: opts.advisory, txBlob: blobs[0] }) : undefined
@@ -259,8 +291,8 @@ class PathSim {
   }
 
   /** A close signed only by `roles`. */
-  async quorumProbe(roles: Array<'principal' | 'counterparty' | 'arbiter' | 'backupArbiter'>): Promise<void> {
-    const w = { principal: W.guest, counterparty: W.hotel, arbiter: W.arbiter, backupArbiter: W.backupArbiter }
+  async quorumProbe(roles: Array<'principal' | 'counterparty' | 'arbiter' | 'cosigner'>): Promise<void> {
+    const w = { principal: W.guest, counterparty: W.hotel, arbiter: W.arbiter, cosigner: W.cosigner }
     const tx = this.liveClose([{ to: W.guest.address, value: fmt(this.balance) }], 'probe', roles.length)
     const { tx: hash, final } = this.submit(combine(roles.map((r) => multisignBlob(w[r], tx))))
     this.add({ step: `probe:${roles.join('+')}`, tx: hash, final })
@@ -279,11 +311,11 @@ class PathSim {
   /** Posted = receipted by the co-signer (ingest judges the window on the snapshot's closeTime). */
   private async post(s: Statement): Promise<HotelReceipt> { return receiptOf(await this.svc.ingest(this.id, s)) }
 
-  private async presign(outcome: keyof typeof TICKETS, payouts: Payout[]): Promise<void> {
+  private async presign(outcome: string, payouts: PresignPayout[]): Promise<void> {
     const [a, b] = TICKETS[outcome]
     const tx = buildCloseBatch({
       eng: this.eng.address, currency: CURRENCY, issuer: W.issuer.address, payouts, deleteTo: W.service.address,
-      tickets: this.tickets.slice(a, b), memos: [memo('eng/basis', outcome)], fees: FEES, signatures: 3,
+      tickets: this.tickets.slice(a, b), memos: [memo('eng/basis', outcome.split('#')[0])], fees: FEES, signatures: 3,
     })
     await this.svc.storePresigned(this.id, outcome, combine([multisignBlob(W.guest, tx), multisignBlob(W.hotel, tx)]))
   }
@@ -313,7 +345,9 @@ class PathSim {
   /**
    * The simulated ledger. A multisigned closing Batch applies when every signature verifies and the signers'
    * weights reach the quorum; otherwise tefBAD_QUORUM and nothing changes. Applying it pays the inner Payments
-   * and deletes the account. Anything else the ledger would reject is a generator bug and throws.
+   * and deletes the account; a residual sweep (tfPartialPayment) delivers what the fixed payouts leave, and one that would
+   * deliver nothing fails as on XRPL (tecPATH_DRY), which fails the whole ALLORNOTHING Batch. Anything else the ledger
+   * would reject is a generator bug and throws.
    * NOT simulated: AccountDelete's minimum account age, inner-step order (TrustSet removal before AccountDelete),
    * currency/issuer matching, exact inner Sequence numbers, fee sufficiency, LastLedgerSequence expiry.
    */
@@ -333,7 +367,17 @@ class PathSim {
     for (const t of [tx, ...inner]) {
       if (Number(t.TicketSequence ?? 0) > 0 ? !have.has(Number(t.TicketSequence)) : Number(t.Sequence) < this.seq) throw new Error('hotel-sim: Sequence/Ticket not available')
     }
-    const payouts = inner.filter((t) => t.TransactionType === 'Payment').map((t) => ({ to: String(t.Destination), value: String((t.Amount as { value: string }).value) }))
+    const pays = inner.filter((t) => t.TransactionType === 'Payment')
+    const partial = (t: Json) => (Number(t.Flags ?? 0) & TF_PARTIAL_PAYMENT) !== 0
+    const fixed = pays.filter((t) => !partial(t)).reduce((s, t) => s + micro(String((t.Amount as { value: string }).value)), 0n)
+    if (pays.filter(partial).length > 1) throw new Error('hotel-sim: more than one residual sweep')
+    const residual = this.balance - fixed
+    if (pays.some(partial) && residual <= 0n) {
+      // The outer Batch applies and consumes its Ticket; no inner transaction does (the default is burned, F2).
+      this.acct.ownerObjects!.tickets = this.acct.ownerObjects!.tickets.filter((n) => n !== Number(tx.TicketSequence))
+      return { tx: hash, final: 'tesSUCCESS (inner tecPATH_DRY, nothing applied)' }
+    }
+    const payouts = pays.map((t) => ({ to: String(t.Destination), value: partial(t) ? fmt(residual) : String((t.Amount as { value: string }).value) }))
     if (payouts.reduce((s, p) => s + micro(p.value), 0n) !== this.balance) throw new Error('hotel-sim: close does not drain the account exactly')
     this.balance = 0n
     Object.assign(this.acct, { exists: false, ownerObjects: { trustlines: 0, signerList: false, tickets: [], other: 0 } })
@@ -371,8 +415,9 @@ async function runPath(p: HotelPath, lib: ReturnType<typeof loadLibrary>): Promi
     case 'entryRuled':
       await s.at('2026-11-01T09:30:00Z').confirm()
       await s.at('2026-11-11T20:00:00Z').openDispute('entry')
+      await s.at('2026-11-12T09:00:00Z').postRuling(split(room - deposit, deposit + bond)) // the arbiter rules in time: no chargeback
       await s.at('2026-11-12T11:01:00Z').tickAndSubmit() // no-show refused while the entry dispute is open
-      await s.at('2026-11-12T15:00:00Z').ruling('arbiter', split(room - deposit, deposit + bond)) // downgrade: partial refund + bond back
+      await s.at('2026-11-12T15:00:00Z').ruling(split(room - deposit, deposit + bond)) // downgrade: partial refund + bond back
       break
     case 'silence':
       await s.at('2026-11-01T09:30:00Z').confirm()
@@ -384,19 +429,28 @@ async function runPath(p: HotelPath, lib: ReturnType<typeof loadLibrary>): Promi
       await s.at('2026-11-11T15:00:00Z').checkIn()
       await s.at('2026-11-14T15:00:00Z').postClaim(minibar)
       await s.at('2026-11-17T11:01:00Z').tickAndSubmit() // release refused while a claim is posted
-      await s.at('2026-11-17T12:00:00Z').ruling('arbiter', split(room + claim, deposit - claim), { party: 'counterparty', advisory: 'ruling.default' })
+      await s.at('2026-11-17T12:00:00Z').ruling(split(room + claim, deposit - claim), { party: 'counterparty', advisory: 'ruling.default' })
       break
-    case 'backupRuling': {
-      const payouts = split(room, deposit + bond)
+    case 'partialDeposit':
+      await s.at('2026-11-01T09:30:00Z').confirm()
+      await s.at('2026-11-11T15:00:00Z').partialDepositRefused()
+      await s.at('2026-11-12T11:01:00Z').tickAndSubmit() // the sweep no-show returns the partial deposit; the exact one is refused
+      break
+    case 'arbiterSilent':
       await s.at('2026-11-01T09:30:00Z').confirm()
       await s.at('2026-11-11T15:00:00Z').checkIn()
       await s.at('2026-11-14T15:00:00Z').postClaim(minibar)
-      await s.at('2026-11-15T10:00:00Z').openDispute('settlement') // disputeOpenedAt 2026-11-15T09:59:30Z
-      await s.at('2026-11-16T10:00:00Z').ruling('backupArbiter', payouts) // inside the primary's 5-day window
-      await s.quorumProbe(['arbiter', 'backupArbiter'])
-      await s.at('2026-11-20T10:00:00Z').ruling('backupArbiter', payouts) // past disputeOpenedAt + 432000 s
+      await s.at('2026-11-14T16:00:00Z').openDispute('settlement')
+      await s.tickAndSubmit() // H9: the claim chargeback before the ruling deadline is refused
+      await s.quorumProbe(['arbiter', 'cosigner']) // H14: arbiter (4) + co-signer (2) stay below quorum 7
+      await s.at('2026-11-19T16:01:00Z').tickAndSubmit() // H8: arbiter silent for 5 days → default.chargebackClaim
       break
-    }
+    case 'staySilent':
+      await s.at('2026-11-01T09:30:00Z').confirm()
+      await s.at('2026-11-11T15:00:00Z').checkIn()
+      await s.at('2026-11-11T20:00:00Z').openDispute('stay') // night 1 of 3
+      await s.at('2026-11-16T20:01:00Z').tickAndSubmit() // H17: arbiter silent → default.chargebackStay#1
+      break
   }
   return s.steps
 }
@@ -411,7 +465,7 @@ export async function buildHotelTranscript(): Promise<HotelTranscript> {
     explanations: ruleExplanations(lib.policies),
     cast: {
       issuer: W.issuer.address, guest: W.guest.address, hotel: W.hotel.address, arbiter: W.arbiter.address,
-      backupArbiter: W.backupArbiter.address, service: W.service.address, cosigner: W.cosigner.address,
+      service: W.service.address, cosigner: W.cosigner.address,
     },
     booking: { ...BOOKING },
     timers: { ...TIMERS },

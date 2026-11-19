@@ -13,6 +13,9 @@
       "default.refund",
       "default.release",
       "default.noshow",
+      "default.chargebackEntry",
+      "default.chargebackClaim",
+      "default.chargebackStay",
       "ladder",
       "release.documents"
     ],
@@ -55,13 +58,25 @@
         "TrustSet",
         "AccountDelete"
       ],
-      "refund.conceded": [
+      "default.chargebackEntry": [
         "Batch",
         "Payment",
         "TrustSet",
         "AccountDelete"
       ],
-      "ruling.backup": [
+      "default.chargebackClaim": [
+        "Batch",
+        "Payment",
+        "TrustSet",
+        "AccountDelete"
+      ],
+      "default.chargebackStay": [
+        "Batch",
+        "Payment",
+        "TrustSet",
+        "AccountDelete"
+      ],
+      "refund.conceded": [
         "Batch",
         "Payment",
         "TrustSet",

@@ -11,10 +11,10 @@ import { CosignerService, FixtureLedgerSource, createServer } from '@eng/cosigne
 import { W, LEDGER_INDEX, b1Approval, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, historyEntry, policies, templates } from '../../policy/test/fixtures.ts'
 import { Assets, TxFacts } from '@eng/policy'
 
-function setup(ledger = b1Ledger(), dataDir?: string) {
+async function setup(ledger = b1Ledger(), dataDir?: string) {
   const source = new FixtureLedgerSource(ledger)
   const svc = new CosignerService({ signer: localSigner(W.cosigner), source, templates: [templates.procurement, templates.hotel], policies: [policies.baseline, policies.procurement, policies.hotel], dataDir })
-  svc.register(b1Engagement(), b1Mandate())
+  await svc.register(b1Engagement(), b1Mandate())
   return { svc, source }
 }
 const pay = (value: string, seq: number, invoice = 'inv:2026-Q4-0042', to = W.vendorA.address) => ({ ...b1Payment(to, value, { invoice }), Sequence: seq })
@@ -23,7 +23,7 @@ const intent = (tx: Record<string, unknown>) =>
 
 describe('co-signer service', () => {
   it('signs exactly the evaluated transaction; the signature combines with the agent’s into a quorum blob', async () => {
-    const { svc } = setup()
+    const { svc } = await setup()
     const tx = pay('800', 21)
     const agentBlob = W.agent.sign(structuredClone(tx) as never, true).tx_blob
     const r = await svc.decide({ engagementId: 'eng_b1_fixture', stage: 'spend', txBlob: agentBlob, statements: [b1Invoice()] })
@@ -42,7 +42,7 @@ describe('co-signer service', () => {
   })
 
   it('refuses without signing and still records the decision', async () => {
-    const { svc } = setup()
+    const { svc } = await setup()
     const r = await svc.decide({ engagementId: 'eng_b1_fixture', stage: 'spend', tx: pay('800', 21, 'inv:2026-Q4-0042', W.stranger.address), statements: [b1Invoice()] })
     expect(r.decision).toBe('REFUSE')
     expect(r.signerBlob).toBeUndefined()
@@ -51,7 +51,7 @@ describe('co-signer service', () => {
   })
 
   it('counts its own in-flight signatures against the daily cap until they validate or expire', async () => {
-    const { svc, source } = setup(b1Ledger({ history: [historyEntry('9000', '2026-11-18T02:00:00Z')] }))
+    const { svc, source } = await setup(b1Ledger({ history: [historyEntry('9000', '2026-11-18T02:00:00Z')] }))
     const inv = (v: string, ref: string) => b1Invoice(W.vendorA, v, ref)
     const a = await svc.decide({ engagementId: 'eng_b1_fixture', stage: 'spend', tx: pay('600', 21, 'inv:A'), statements: [inv('600.00', 'inv:A')] })
     expect(a.decision).toBe('SIGN')
@@ -66,7 +66,7 @@ describe('co-signer service', () => {
   })
 
   it('serialises concurrent requests per engagement (no double-spend of the cap)', async () => {
-    const { svc } = setup(b1Ledger({ history: [historyEntry('9000', '2026-11-18T02:00:00Z')] }))
+    const { svc } = await setup(b1Ledger({ history: [historyEntry('9000', '2026-11-18T02:00:00Z')] }))
     const [x, y] = await Promise.all([
       svc.decide({ engagementId: 'eng_b1_fixture', stage: 'spend', tx: pay('600', 21, 'inv:A'), statements: [b1Invoice(W.vendorA, '600.00', 'inv:A')] }),
       svc.decide({ engagementId: 'eng_b1_fixture', stage: 'spend', tx: pay('600', 22, 'inv:B'), statements: [b1Invoice(W.vendorA, '600.00', 'inv:B')] }),
@@ -75,7 +75,7 @@ describe('co-signer service', () => {
   })
 
   it('is idempotent for a re-request of the same transaction', async () => {
-    const { svc } = setup(b1Ledger({ history: [historyEntry('9000', '2026-11-18T02:00:00Z')] }))
+    const { svc } = await setup(b1Ledger({ history: [historyEntry('9000', '2026-11-18T02:00:00Z')] }))
     const req = { engagementId: 'eng_b1_fixture', stage: 'spend', tx: pay('600', 21, 'inv:A'), statements: [b1Invoice(W.vendorA, '600.00', 'inv:A')] }
     expect((await svc.decide(req)).decision).toBe('SIGN')
     expect((await svc.decide(req)).decision).toBe('SIGN')
@@ -83,7 +83,7 @@ describe('co-signer service', () => {
   })
 
   it('reserves a single-use approval while in flight; releases it on expiry; consumes it on success', async () => {
-    const { svc, source } = setup()
+    const { svc, source } = await setup()
     const tx1 = pay('1500', 21)
     const appr = b1Approval(intent(tx1))
     const invoice = b1Invoice(W.vendorA, '1500.00')
@@ -109,7 +109,7 @@ describe('co-signer service', () => {
 
   it('writes an append-only, individually verifiable decision log', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cosigner-'))
-    const { svc } = setup(b1Ledger(), dir)
+    const { svc } = await setup(b1Ledger(), dir)
     await svc.decide({ engagementId: 'eng_b1_fixture', stage: 'spend', tx: pay('800', 21), statements: [b1Invoice()] })
     await svc.decide({ engagementId: 'eng_b1_fixture', stage: 'spend', tx: pay('800', 22, 'inv:X', W.stranger.address), statements: [] })
     const lines = fs.readFileSync(path.join(dir, 'decisions.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Statement)
@@ -118,7 +118,7 @@ describe('co-signer service', () => {
   })
 
   it('evaluates but does not sign advisory stages (owner close)', async () => {
-    const { svc } = setup()
+    const { svc } = await setup()
     const eng = W.engB1.address
     const inner = (t: Record<string, unknown>, seq: number) => ({ RawTransaction: { ...t, Fee: '0', SigningPubKey: '', Sequence: seq, Flags: (Number(t.Flags ?? 0) | 0x40000000) >>> 0 } })
     const iouAmt = (v: string) => ({ currency: '524C555344000000000000000000000000000000', issuer: W.issuer.address, value: v })
@@ -132,7 +132,7 @@ describe('co-signer service', () => {
       Memos: [{ Memo: { MemoType: Buffer.from('eng/basis').toString('hex').toUpperCase(), MemoData: Buffer.from('owner.close').toString('hex').toUpperCase() } }],
     }
     const svc2 = new CosignerService({ signer: localSigner(W.cosigner), source: new FixtureLedgerSource(b1Ledger()), templates: [templates.procurement], policies: [policies.baseline, policies.procurement] })
-    svc2.register(b1Engagement({ deleteTo: W.service.address }), b1Mandate())
+    await svc2.register(b1Engagement({ deleteTo: W.service.address }), b1Mandate())
     const r = await svc2.decide({ engagementId: 'eng_b1_fixture', stage: 'close.owner', tx: close })
     expect(r.failing).toEqual([])
     expect(r.decision).toBe('SIGN')
@@ -142,14 +142,14 @@ describe('co-signer service', () => {
     void svc
   })
 
-  it('rejects engagements naming another co-signer or an unknown template', () => {
-    const { svc } = setup()
-    expect(() => svc.register(b1Engagement({ engagementId: 'x', parties: { ...b1Engagement().parties, cosigner: W.agent.address } }))).toThrow(/different co-signer/)
-    expect(() => svc.register(b1Engagement({ engagementId: 'y', template: 'nope@1' }))).toThrow(/unknown template/)
+  it('rejects engagements naming another co-signer or an unknown template', async () => {
+    const { svc } = await setup()
+    await expect(svc.register(b1Engagement({ engagementId: 'x', parties: { ...b1Engagement().parties, cosigner: W.agent.address } }))).rejects.toThrow(/different co-signer/)
+    await expect(svc.register(b1Engagement({ engagementId: 'y', template: 'nope@1' }))).rejects.toThrow(/unknown template/)
   })
 
   it('serves the same decisions over HTTP', async () => {
-    const { svc } = setup()
+    const { svc } = await setup()
     const server = createServer(svc).listen(0, '127.0.0.1')
     await new Promise((r) => server.once('listening', r))
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`

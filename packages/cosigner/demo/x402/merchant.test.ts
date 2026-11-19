@@ -20,14 +20,14 @@ const NETWORK = "xrpl:1";
 const INVOICE = "inv:x402-demo-1";
 const PRICE = { amount: "800.00", asset: { kind: "IOU" as const, currency: RLUSD_HEX, issuer: W.issuer.address } };
 
-function cosigner(ledger = b1Ledger()) {
+async function cosigner(ledger = b1Ledger()) {
   const svc = new CosignerService({
     signer: localSigner(W.cosigner),
     source: new FixtureLedgerSource(ledger),
     templates: [templates.procurement, templates.hotel],
     policies: [policies.baseline, policies.procurement],
   });
-  svc.register(b1Engagement(), b1Mandate());
+  await svc.register(b1Engagement(), b1Mandate());
   return svc;
 }
 
@@ -60,7 +60,7 @@ function paymentSignatureHeader(paymentRequiredHeader: string, txHash: string): 
 
 describe("x402 engagement-account purchase (prepaid scheme)", () => {
   it("runs the full chain: 402 → co-sign (W7) → verify → deliver", async () => {
-    const svc = cosigner();
+    const svc = await cosigner();
     const txByHash: Record<string, XrplPaymentTransaction> = {};
     const merchant = createMerchant({
       resource: "https://vendor.example/data",
@@ -112,7 +112,7 @@ describe("x402 engagement-account purchase (prepaid scheme)", () => {
   });
 
   it("co-signer refuses (W7) when the payment does not match the declared challenge", async () => {
-    const svc = cosigner();
+    const svc = await cosigner();
     const merchant = createMerchant({ resource: "r", network: NETWORK, payTo: W.vendorA.address, price: PRICE, fetchTransaction: async () => null, deliver: () => ({}), newInvoiceId: () => INVOICE });
     const tx = agentPayment(merchant.memoFor(INVOICE));
     // The agent declares an x402 challenge naming a different merchant than the payee.

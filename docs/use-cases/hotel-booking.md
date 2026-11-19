@@ -1,6 +1,6 @@
 # Use case: Dana's agent books a hotel
 
-> **Status update (November 2026):** this flow is now built as `settlement-vault/hotel@2` with policy `pol_hotel@2.0.0`, and verified live on Testnet (`npm run demo:hotel`, 14/14). See [the design spec](../superpowers/specs/2026-11-12-hotel-stay-escrow-design.md). Beyond the draft below, hotel@2 adds: a security deposit at check-in; entry disputes that end the deal early; deposit claims (capped at the deposit); guest-only disputes (a Credential plus a receipted statement); silence rules; and default and backup arbiter rulings. The co-signer holds attestations and pre-signed defaults in memory, so production needs a persistent store.
+> **Status update (November 2026):** this flow is now built as `settlement-vault/hotel@2` with policy `pol_hotel@2.0.0`, and verified live on Testnet (`npm run demo:hotel`, 17/17). **Update (14 Nov 2026):** the backup arbiter was removed. The arbiter must now hold an accepted `ENG/ARBITER` credential from the service (the co-signer refuses `NOT_NEUTRAL` before money moves), and a silent arbiter triggers chargeback-style defaults (full refund on entry disputes, room to the hotel on claims, nights used on mid-stay disputes), per [the chargeback design](../superpowers/specs/2026-11-14-arbiter-chargeback-design.md). Its parameters (5-day ruling window, split, 14-night cap) are assumptions pending a real business, and the escalation row below (reassign to a backup arbiter) is superseded. See [the design spec](../superpowers/specs/2026-11-12-hotel-stay-escrow-design.md). Beyond the draft below, hotel@2 adds: a security deposit at check-in; entry disputes that end the deal early; deposit claims (capped at the deposit); guest-only disputes (a Credential plus a receipted statement); silence rules; and default arbiter rulings. Automatic endings no longer depend on an exact balance (the "exact-balance property" in §§ below is superseded): each returns any extra money to the guest with a residual sweep, so stray RLUSD can't jam a default. A partial deposit means the hotel refuses check-in, which ends as a no-show: the hotel is paid the room and the partial deposit goes back to the guest. The co-signer holds attestations and pre-signed defaults in memory, so production needs a persistent store.
 
 > A worked specification for the full design. One deal is followed end to end, with concrete artifacts at every step: template, mandate, policy, x402 messages, XRPL transactions, ledger state and indexer records.
 > Status: **design draft** (October 2026). Stage 0 primitives only (multisig, Tickets, Credentials, Batch), all live on mainnet. Addresses, hashes and signatures are placeholders.
@@ -517,12 +517,15 @@ Same shape as §7.3, but **every** transaction uses a Ticket (`Sequence: 0`, `Ti
 
 - Signed at open by **Dana (2) + Atlas (2) = 4**. That's one short of quorum, so neither blob is submittable as stored. The co-signer adds the **final** signature only when its policy stage passes (§5.3). A leaked blob is useless without it.
 - **Fee risk:** the outer `Fee` is fixed at pre-sign time, so it carries headroom (e.g. 3× expected). If network fees escalate beyond that, the default must be re-signed, which is an operational risk to monitor.
-- **Exact-balance property:** D1 pays out exactly 412.00. If **any** extra RLUSD lands in the account (e.g. a dispute bond, §8.C), the trust line keeps a balance, `AccountDelete` fails (`tecHAS_OBLIGATIONS`) and `ALLORNOTHING` rolls back every payout, so **D1 becomes unexecutable on-ledger**. The dispute bond therefore doubles as a ledger-enforced lock on the release default.
+- **Superseded in hotel@2 (residual sweep):** the shipped defaults no longer depend on an exact balance. The guest's leg of each automatic ending is a `tfPartialPayment` sweep of whatever the fixed payouts leave, so extra RLUSD goes back to the guest instead of jamming the default; the no-show is signed twice (exact and sweep) because a sweep that delivers nothing fails and burns its Ticket. See the [design spec §5.4](../superpowers/specs/2026-11-12-hotel-stay-escrow-design.md). The draft's original reasoning follows.
+- **Exact-balance property (draft):** D1 pays out exactly 412.00. If **any** extra RLUSD lands in the account (e.g. a dispute bond, §8.C), the trust line keeps a balance, `AccountDelete` fails (`tecHAS_OBLIGATIONS`) and `ALLORNOTHING` rolls back every payout, so **D1 becomes unexecutable on-ledger**. The dispute bond therefore doubles as a ledger-enforced lock on the release default.
 - **Defaults are single-shot (finding F2):** a failed `ALLORNOTHING` Batch is still applied as a transaction and **consumes its outer Ticket** (rippled `Batch_test`, "all or nothing"). One failed submission of D1 kills D1 for good. So the co-signer must check the exact ledger state at its pinned ledger before adding the final signature (policy rule L3 / R2). If a default is burned (e.g. dust lands between signature and validation), the outcome falls back to a fresh agreement (P + C + S) or a ruling (A + one party).
 
 ---
 
 ## 8. The four paths
+
+> **hotel@2 note:** every automatic ending below returns any extra money to the guest (residual sweep), and an open, bonded dispute still blocks them all. A partial deposit means the hotel refuses check-in, which ends as a no-show: hotel paid the room, partial deposit returned. A recorded check-in is final (a later `refused` is rejected). Known limitations: a guest who blocks receiving (DepositAuth, no or capped trust line) pushes the outcome to the arbiter, since the co-signer refuses rather than burning a Ticket and arbiter + hotel can still close; a confirmation with deposit 0 can't auto-release.
 
 ```mermaid
 sequenceDiagram
@@ -687,7 +690,7 @@ What this use case needs from an arbiter:
 | `spec/templates.md` | Template schema (§2). Validator invariants V1–V10, with V10 as a principal disclosure. A **co-signer slot is required wherever policy must be enforced**, not just advised. |
 | `spec/policy.md` | Stage names, input model, rule language (CEL-style), attestation format, decision log format, fail-closed semantics. |
 | `spec/transactions.md` | Blueprints `close.split`, `close.refundAll`, `close.releaseAll`. Ticket planning. Fee headroom. Exact-balance rule. |
-| `spec/arbiter.md` | Accreditation, terms, evidence API, ruling format bound to `settlementTxHash`, **backup arbiter slot**. |
+| `spec/arbiter.md` | Accreditation, terms, evidence API, ruling format bound to `settlementTxHash`. |
 | `spec/x402-engagement-scheme.md` | `extra` fields, `X-PAYMENT` payload, facilitator API, how it composes with Verifiable Intent / KYA attestations. |
 | `spec/indexer.md` | Event types, derived records, reputation formulas, privacy rules. |
 

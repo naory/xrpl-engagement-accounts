@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { signStatement, verifyStatement } from '@eng/core'
-import { Assets, REGISTRY, REGISTRY_VERSION, TxFacts, decide, decisionStatementBody, lintPolicy, type DecideInput, type Decision, type PolicyDoc } from '@eng/policy'
+import { createEnvironment, Assets, REGISTRY, REGISTRY_VERSION, TxFacts, decide, decisionStatementBody, lintPolicy, type DecideInput, type Decision, type PolicyDoc } from '@eng/policy'
 import {
   LEDGER_INDEX, NOW, W, b1Approval, b1Challenge, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, closeBatch, confirmation,
   historyEntry, hotelEngagement, hotelLedger, hotelMandate, inflight, memo, policies, review, templates,
@@ -385,6 +385,18 @@ describe('Task 1 prerequisites', () => {
   })
 })
 
+describe('nightsElapsed()', () => {
+  const START = '2026-12-01T15:00:00Z'
+  const nights = (at: string) => createEnvironment({ assets }).evaluate(`nightsElapsed(timestamp('${START}'), timestamp('${at}'))`)
+  it('counts 24h boundaries from start', () => {
+    expect(nights(START)).toBe(0n)
+    expect(nights('2026-12-02T14:59:59Z')).toBe(0n)
+    expect(nights('2026-12-02T15:00:00Z')).toBe(1n)
+    expect(nights('2026-12-04T15:00:01Z')).toBe(3n)
+    expect(nights('2026-11-30T15:00:00Z')).toBe(0n)
+  })
+})
+
 describe('lint', () => {
   it('passes the shipped policies', () => {
     expect(lintPolicy(policies.baseline)).toEqual([])
@@ -401,6 +413,22 @@ describe('lint', () => {
     expect(l8.map((f) => f.where)).toEqual(['settle/X9', 'settle/X10'])
     expect(l8[0].message).toMatch(/title/)
     expect(l8[1].message).toMatch(/message/)
+  })
+  it('L9: the per-night variant cap matches the policy, and the ruling window lies within its bounds (R30, R31)', () => {
+    const cap: PolicyDoc = structuredClone(policies.hotel2)
+    cap.params!.maxStayVariantNights = 15
+    expect(lintPolicy(cap, templates.hotel2).map((f) => `${f.id} ${f.where}`)).toEqual(['L9 default.chargebackStay'])
+    const t = structuredClone(templates.hotel2)
+    t.outcomes['default.chargebackStay'].variants!.max = 12
+    expect(lintPolicy(policies.hotel2, t).map((f) => f.id)).toEqual(['L9'])
+    const win: PolicyDoc = structuredClone(policies.hotel2)
+    win.params!.rulingWindow = '60s'
+    expect(lintPolicy(win, templates.hotel2).map((f) => `${f.id} ${f.where}`)).toEqual(['L9 params.rulingWindow'])
+    win.params!.minRulingWindow = '30s'
+    win.params!.maxRulingWindow = '120s'
+    expect(lintPolicy(win, templates.hotel2)).toEqual([])
+    win.params!.maxRulingWindow = 'two minutes'
+    expect(lintPolicy(win, templates.hotel2).map((f) => `${f.id} ${f.where}`)).toEqual(['L9 params.maxRulingWindow'])
   })
   it('flags floats, unknown statement types, duplicate ids and missing stages', () => {
     const bad: PolicyDoc = structuredClone(policies.procurement)

@@ -10,11 +10,6 @@
         "account": "Fairwind Arbitration",
         "accredited": true,
         "appointedBy": "counterparty"
-      },
-      "backupArbiter": {
-        "account": "Northgate Dispute Services",
-        "accredited": true,
-        "appointedBy": "service"
       }
     },
     "terms": {
@@ -67,8 +62,12 @@
           "timer": "rulingDueBy",
           "seconds": 432000,
           "from": "disputeOpened",
-          "onExpire": "escalate",
-          "description": "How long the arbiter has to rule once a dispute is open. After this, the backup arbiter may rule."
+          "onExpire": [
+            "default.chargebackEntry",
+            "default.chargebackClaim",
+            "default.chargebackStay"
+          ],
+          "description": "How long the arbiter has to rule once a dispute is open. If it misses this deadline, the chargeback-style default for your dispute applies: the money in dispute comes back to you."
         }
       ],
       "whoCanMoveMoney": [
@@ -94,50 +93,6 @@
         },
         {
           "roles": [
-            "arbiter",
-            "backupArbiter",
-            "cosigner"
-          ],
-          "weight": 8,
-          "includesGuest": false,
-          "includesCosigner": true,
-          "plain": "the arbiter, the backup arbiter and the policy co-signer together"
-        },
-        {
-          "roles": [
-            "counterparty",
-            "backupArbiter",
-            "cosigner"
-          ],
-          "weight": 7,
-          "includesGuest": false,
-          "includesCosigner": true,
-          "plain": "the hotel, the backup arbiter and the policy co-signer together"
-        },
-        {
-          "roles": [
-            "principal",
-            "backupArbiter",
-            "cosigner"
-          ],
-          "weight": 7,
-          "includesGuest": true,
-          "includesCosigner": true,
-          "plain": "you, the backup arbiter and the policy co-signer together"
-        },
-        {
-          "roles": [
-            "principal",
-            "counterparty",
-            "backupArbiter"
-          ],
-          "weight": 8,
-          "includesGuest": true,
-          "includesCosigner": false,
-          "plain": "you, the hotel and the backup arbiter together"
-        },
-        {
-          "roles": [
             "principal",
             "counterparty",
             "cosigner"
@@ -152,17 +107,32 @@
         {
           "timer": "confirmBy",
           "outcome": "default.refund",
-          "description": "The hotel never confirmed in time: the guest gets the room money back automatically."
+          "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account."
         },
         {
           "timer": "checkInBy",
           "outcome": "default.noshow",
-          "description": "The guest never checked in and never disputed: the hotel is paid the room automatically."
+          "description": "The guest never checked in and never disputed: the hotel is paid the room automatically, and anything else in the account goes back to the guest."
         },
         {
           "timer": "disputeWindowEnds",
           "outcome": "default.release",
-          "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically."
+          "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically."
+        },
+        {
+          "timer": "rulingDueBy",
+          "outcome": "default.chargebackEntry",
+          "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically. This holds even if you were given the keys afterwards, so a hotel should not hand over keys while an arrival dispute is open."
+        },
+        {
+          "timer": "rulingDueBy",
+          "outcome": "default.chargebackClaim",
+          "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically."
+        },
+        {
+          "timer": "rulingDueBy",
+          "outcome": "default.chargebackStay",
+          "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the nights after the one you disputed in are refunded. The hotel gets the nights up to and including the night you disputed in (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter."
         }
       ],
       "arbiters": {
@@ -170,11 +140,6 @@
           "account": "Fairwind Arbitration",
           "accredited": true,
           "appointedBy": "counterparty"
-        },
-        "backupArbiter": {
-          "account": "Northgate Dispute Services",
-          "accredited": true,
-          "appointedBy": "service"
         }
       },
       "facts": {
@@ -184,8 +149,6 @@
         "arbiter.appointedBy": "counterparty",
         "merchantWithoutGuestOrNeutral": false,
         "guestAndHotelBypassPolicy": false,
-        "backupArbiter.accredited": true,
-        "backupArbiter.appointedBy": "service",
         "timers.confirmBy": 7200,
         "timers.checkInBy": 32400,
         "timers.entryDisputeBy": 75600,
@@ -206,13 +169,9 @@
         "accredited": true,
         "appointedBy": "counterparty"
       },
-      "backupArbiter": {
-        "account": "Hotel Partners Mediation",
-        "accredited": true,
-        "appointedBy": "counterparty"
-      },
       "timers": {
-        "disputeWindowEnds": 7200
+        "disputeWindowEnds": 7200,
+        "rulingDueBy": 172800
       }
     },
     "terms": {
@@ -263,10 +222,14 @@
         },
         {
           "timer": "rulingDueBy",
-          "seconds": 432000,
+          "seconds": 172800,
           "from": "disputeOpened",
-          "onExpire": "escalate",
-          "description": "How long the arbiter has to rule once a dispute is open. After this, the backup arbiter may rule."
+          "onExpire": [
+            "default.chargebackEntry",
+            "default.chargebackClaim",
+            "default.chargebackStay"
+          ],
+          "description": "How long the arbiter has to rule once a dispute is open. If it misses this deadline, the chargeback-style default for your dispute applies: the money in dispute comes back to you."
         }
       ],
       "whoCanMoveMoney": [
@@ -292,50 +255,6 @@
         },
         {
           "roles": [
-            "arbiter",
-            "backupArbiter",
-            "cosigner"
-          ],
-          "weight": 8,
-          "includesGuest": false,
-          "includesCosigner": true,
-          "plain": "the arbiter, the backup arbiter and the policy co-signer together"
-        },
-        {
-          "roles": [
-            "counterparty",
-            "backupArbiter",
-            "cosigner"
-          ],
-          "weight": 7,
-          "includesGuest": false,
-          "includesCosigner": true,
-          "plain": "the hotel, the backup arbiter and the policy co-signer together"
-        },
-        {
-          "roles": [
-            "principal",
-            "backupArbiter",
-            "cosigner"
-          ],
-          "weight": 7,
-          "includesGuest": true,
-          "includesCosigner": true,
-          "plain": "you, the backup arbiter and the policy co-signer together"
-        },
-        {
-          "roles": [
-            "principal",
-            "counterparty",
-            "backupArbiter"
-          ],
-          "weight": 8,
-          "includesGuest": true,
-          "includesCosigner": false,
-          "plain": "you, the hotel and the backup arbiter together"
-        },
-        {
-          "roles": [
             "principal",
             "counterparty",
             "cosigner"
@@ -350,27 +269,37 @@
         {
           "timer": "confirmBy",
           "outcome": "default.refund",
-          "description": "The hotel never confirmed in time: the guest gets the room money back automatically."
+          "description": "The hotel never confirmed in time: the guest gets the room money back automatically, with anything else in the account."
         },
         {
           "timer": "checkInBy",
           "outcome": "default.noshow",
-          "description": "The guest never checked in and never disputed: the hotel is paid the room automatically."
+          "description": "The guest never checked in and never disputed: the hotel is paid the room automatically, and anything else in the account goes back to the guest."
         },
         {
           "timer": "disputeWindowEnds",
           "outcome": "default.release",
-          "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit back to the guest, automatically."
+          "description": "Nobody claimed or disputed after checkout: the room goes to the hotel and the deposit (plus anything extra) back to the guest, automatically."
+        },
+        {
+          "timer": "rulingDueBy",
+          "outcome": "default.chargebackEntry",
+          "description": "You disputed a problem on arrival (no room, wrong room) and the arbiter missed its deadline: like a card chargeback, you get a full refund of the room, any deposit and the dispute bond, automatically. This holds even if you were given the keys afterwards, so a hotel should not hand over keys while an arrival dispute is open."
+        },
+        {
+          "timer": "rulingDueBy",
+          "outcome": "default.chargebackClaim",
+          "description": "You disputed the hotel's claim against your deposit (or the stay, after checkout or in its last night) and the arbiter missed its deadline: the claim is rejected. The hotel gets the room (less the fee); your deposit and the dispute bond come back to you, automatically."
+        },
+        {
+          "timer": "rulingDueBy",
+          "outcome": "default.chargebackStay",
+          "description": "You disputed the stay mid-stay and the arbiter missed its deadline: the nights after the one you disputed in are refunded. The hotel gets the nights up to and including the night you disputed in (less the fee); the remaining nights, your deposit and the dispute bond come back to you, automatically. Signed once per night; stays over 14 nights have no such ending and wait for the arbiter."
         }
       ],
       "arbiters": {
         "arbiter": {
           "account": "Fairwind Arbitration",
-          "accredited": true,
-          "appointedBy": "counterparty"
-        },
-        "backupArbiter": {
-          "account": "Hotel Partners Mediation",
           "accredited": true,
           "appointedBy": "counterparty"
         }
@@ -382,14 +311,12 @@
         "arbiter.appointedBy": "counterparty",
         "merchantWithoutGuestOrNeutral": false,
         "guestAndHotelBypassPolicy": false,
-        "backupArbiter.accredited": true,
-        "backupArbiter.appointedBy": "counterparty",
         "timers.confirmBy": 7200,
         "timers.checkInBy": 32400,
         "timers.entryDisputeBy": 75600,
         "timers.claimBy": 86400,
         "timers.disputeWindowEnds": 7200,
-        "timers.rulingDueBy": 432000
+        "timers.rulingDueBy": 172800
       }
     },
     "deviations": [
@@ -404,6 +331,16 @@
         "actualText": "2 hours"
       },
       {
+        "normId": "H4",
+        "term": "timers.rulingDueBy",
+        "severity": "warn",
+        "title": "How long the arbiter has to rule",
+        "why": "If the arbiter misses this deadline, the money in dispute comes back to you automatically, like a card chargeback. Too short, and the hotel has no fair chance to answer; too long, and your money stays frozen while you wait.",
+        "expected": "between 3 days and 7 days",
+        "actual": 172800,
+        "actualText": "2 days"
+      },
+      {
         "normId": "H6",
         "term": "depositBps",
         "severity": "warn",
@@ -412,16 +349,6 @@
         "expected": "at most 50% of the room price",
         "actual": 7500,
         "actualText": "75% of the room price"
-      },
-      {
-        "normId": "H10",
-        "term": "backupArbiter.appointedBy",
-        "severity": "serious",
-        "title": "Backup arbiter isn't the hotel's pick",
-        "why": "If the hotel also chose the backup, a stalled or biased arbiter leaves you with another arbiter the hotel picked.",
-        "expected": "chosen by the engagement service or chosen by you",
-        "actual": "counterparty",
-        "actualText": "chosen by the hotel"
       }
     ]
   }

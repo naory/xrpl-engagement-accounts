@@ -27,26 +27,40 @@
   "params": {
     "serviceFeeBps": 50,
     "minDisputeBond": "10.00",
-    "rulingWindow": "432000s"
+    "rulingWindow": "432000s",
+    "minRulingWindow": "259200s",
+    "maxRulingWindow": "604800s",
+    "arbiterCredentialType": "ENG/ARBITER",
+    "disputeCredentialType": "ENG/DISPUTE",
+    "arbiterIssuers": [
+      "rArbiterAccreditorPlaceholderXXXXXX"
+    ],
+    "maxStayVariantNights": 14
   },
   "definitions": {
     "conf": "size(att.list('party.confirmation/1', 'counterparty')) > 0 ? dyn(att.list('party.confirmation/1', 'counterparty')[0]) : dyn(null)",
     "booked": "amt(eng.amount.value, 'RLUSD')",
     "deposit": "amt(def.conf.claim.deposit.value, 'RLUSD')",
     "balance": "ledger.balance(eng.account, 'RLUSD')",
-    "confirmed": "def.conf != null && def.conf.claim.mandateHash == eng.mandateId && def.conf.claim.city == mandate.constraints.city && def.conf.claim.checkIn == mandate.constraints.checkIn && def.conf.claim.checkOut == mandate.constraints.checkOut && amt(def.conf.claim.total.value, 'RLUSD') == def.booked && def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
-    "checkedIn": "def.conf != null && att.latest('party.checkin/1', 'counterparty') != null && att.latest('party.checkin/1', 'counterparty').claim.status == 'checked_in' && def.balance >= def.booked + def.deposit",
+    "confirmed": "def.conf != null && def.conf.claim.mandateHash == eng.mandateId && def.conf.claim.city == mandate.constraints.city && def.conf.claim.checkIn == mandate.constraints.checkIn && def.conf.claim.checkOut == mandate.constraints.checkOut && amt(def.conf.claim.total.value, 'RLUSD') == def.booked && def.conf.claim.deposit.currency == 'RLUSD' && def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
+    "checkedIn": "def.conf != null && def.conf.claim.deposit.currency == 'RLUSD' && att.list('party.checkin/1', 'counterparty').exists(c, c.claim.status == 'checked_in') && att.list('party.checkin/1', 'principal').exists(c, c.claim.status == 'checked_in') && def.balance >= def.booked + def.deposit",
     "disputes": "att.list('party.dispute/1', 'principal')",
-    "disputeOpen": "ledger.credentialExists(eng.parties.principal, eng.account, 'ENG/DISPUTE') && size(def.disputes) > 0 && def.balance >= def.booked + (def.checkedIn ? def.deposit : zero('RLUSD')) + amt(params.minDisputeBond, 'RLUSD')",
+    "disputeOpen": "size(def.disputes) > 0 && (def.disputes.exists(d, d.claim.phase == 'entry') ? def.balance >= def.booked + amt(params.minDisputeBond, 'RLUSD') : def.conf != null && def.balance >= def.booked + def.deposit + amt(params.minDisputeBond, 'RLUSD'))",
     "entryDispute": "def.disputeOpen && def.disputes.exists(d, d.claim.phase == 'entry')",
     "conceded": "def.entryDispute && att.list('party.concession/1', 'counterparty').exists(c, def.disputes.exists(d, d.claim.phase == 'entry' && d.id == c.claim.disputeRef))",
     "claim": "att.latest('party.claim/1', 'counterparty')",
     "claimTotal": "amt(def.claim.claim.total.value, 'RLUSD')",
-    "primaryRuling": "att.latest('party.ruling/1', 'arbiter')",
-    "backupRuling": "att.latest('party.ruling/1', 'backupArbiter')",
     "settlementDisputes": "def.disputes.filter(d, d.claim.phase == 'settlement')",
     "entryDisputes": "def.disputes.filter(d, d.claim.phase == 'entry')",
-    "disputeOpenedAt": "size(def.settlementDisputes) > 0 ? (timestamp(def.settlementDisputes[0].issuedAt) > timestamp(eng.timers.deliveryBy) ? timestamp(def.settlementDisputes[0].issuedAt) : timestamp(eng.timers.deliveryBy)) : (timestamp(def.entryDisputes[0].issuedAt) > timestamp(eng.timers.checkIn) ? timestamp(def.entryDisputes[0].issuedAt) : timestamp(eng.timers.checkIn))",
+    "stayDisputes": "def.disputes.filter(d, d.claim.phase == 'stay')",
+    "disputeOpenedAt": "size(def.settlementDisputes) > 0 ? (timestamp(def.settlementDisputes[0].issuedAt) > timestamp(eng.timers.deliveryBy) ? timestamp(def.settlementDisputes[0].issuedAt) : timestamp(eng.timers.deliveryBy)) : size(def.stayDisputes) > 0 ? (timestamp(def.stayDisputes[0].issuedAt) > timestamp(eng.timers.checkIn) ? timestamp(def.stayDisputes[0].issuedAt) : timestamp(eng.timers.checkIn)) : (timestamp(def.entryDisputes[0].issuedAt) > timestamp(eng.timers.checkIn) ? timestamp(def.entryDisputes[0].issuedAt) : timestamp(eng.timers.checkIn))",
+    "rulingWindow": "has(eng.terms) && has(eng.terms.rulingWindow) ? duration(eng.terms.rulingWindow) : duration(params.rulingWindow)",
+    "arbiterRulings": "size(def.disputes) > 0 ? att.list('party.ruling/1', 'arbiter').filter(r, timestamp(r.issuedAt) >= def.disputeOpenedAt) : def.claim != null ? att.list('party.ruling/1', 'arbiter').filter(r, timestamp(r.issuedAt) >= timestamp(def.claim.issuedAt)) : []",
+    "arbiterRuling": "size(def.arbiterRulings) > 0 ? dyn(def.arbiterRulings[size(def.arbiterRulings) - 1]) : dyn(null)",
+    "rulingDue": "def.disputeOpen && now > def.disputeOpenedAt + def.rulingWindow",
+    "stayDispute": "size(def.stayDisputes) > 0 ? dyn(def.stayDisputes[0]) : dyn(null)",
+    "stayNight": "def.stayDispute == null ? 0 : nightsElapsed(timestamp(eng.timers.checkIn), timestamp(def.stayDispute.issuedAt)) + 1",
+    "nightly": "amt(eng.terms.nightly, 'RLUSD')",
     "toMerchant": "tx.payouts.to(eng.parties.counterparty, 'RLUSD')",
     "toFee": "tx.payouts.to(eng.fee.to, 'RLUSD')",
     "toGuest": "tx.payouts.to(eng.parties.principal, 'RLUSD')"
@@ -78,10 +92,10 @@
         },
         {
           "id": "C5",
-          "title": "Deposit within the guest's limit",
+          "title": "Deposit in the booking's currency and within the guest's limit",
           "reason": "DEPOSIT_OVER_CAP",
-          "check": "def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
-          "message": "The security deposit the hotel asks for must not exceed the maximum the guest agreed to. Otherwise the confirmation doesn't count."
+          "check": "def.conf.claim.deposit.currency == 'RLUSD' && def.deposit <= amt(mandate.constraints.maxDeposit.value, 'RLUSD')",
+          "message": "The security deposit the hotel asks for must be in the booking's currency (RLUSD) and must not exceed the maximum the guest agreed to. Otherwise the confirmation doesn't count, so the guest can never be treated as checked in on it and the booking is refunded."
         }
       ]
     },
@@ -93,7 +107,7 @@
           "title": "Guest checked in",
           "reason": "NOT_CHECKED_IN",
           "check": "def.checkedIn",
-          "message": "The hotel has recorded the guest's arrival, and the deposit is in the account."
+          "message": "The hotel has recorded the guest's arrival (once recorded, a check-in can't be taken back), the guest has confirmed it (they have the keys), and the deposit is in the account."
         },
         {
           "id": "K2",
@@ -176,17 +190,24 @@
         },
         {
           "id": "R2",
-          "title": "Account holds just the room price",
+          "title": "The room price is in the account",
           "reason": "BALANCE_CHANGED",
-          "check": "def.balance == def.booked",
-          "message": "This refund was signed in advance for exactly the room price. If anything else is in the account now (a deposit, a dispute bond), it no longer fits."
+          "check": "def.balance >= def.booked",
+          "message": "The refund needs at least the room price in the account. Anything more (a stray payment, a deposit) is not a reason to stall: it goes back to the guest too."
         },
         {
           "id": "R3",
           "title": "Valid refund",
           "reason": "TX_SHAPE",
           "check": "tx.matchesBlueprint('close.refundAll')",
-          "message": "The automatic refund sends the room price back to the guest and closes the account."
+          "message": "The automatic refund pays the guest back and closes the account."
+        },
+        {
+          "id": "R4",
+          "title": "Everything goes back to the guest",
+          "reason": "PAYOUT_MISMATCH",
+          "check": "def.toGuest == def.balance",
+          "message": "The guest gets back every last cent in the account, the room price plus anything extra, with no fee."
         }
       ]
     },
@@ -212,35 +233,42 @@
           "title": "Guest never checked in",
           "reason": "CHECKED_IN",
           "check": "!def.checkedIn",
-          "message": "If the guest arrived and paid the deposit, it isn't a no-show."
+          "message": "If the hotel recorded the guest as checked in, the guest confirmed it and the deposit is in, it isn't a no-show. A recorded check-in is final: a later 'refused' doesn't undo it."
         },
         {
           "id": "N4",
           "title": "No open dispute",
           "reason": "DISPUTE_OPEN",
           "check": "!def.disputeOpen",
-          "message": "If the guest filed a dispute (with its bond), the automatic endings wait for the arbiter. Silence can't override a raised flag."
+          "message": "If the guest filed a dispute (with its bond), the automatic endings wait for the arbiter. Silence can't override a raised flag. A guest dispute counts only once the co-signer has receipted it, and the co-signer receipts one only when the guest's dispute credential (ENG/DISPUTE) and the bond are already on the account; after that it stays open while the money stays in."
         },
         {
           "id": "N5",
-          "title": "Account holds just the room price",
+          "title": "The room price is in the account",
           "reason": "BALANCE_CHANGED",
-          "check": "def.balance == def.booked",
-          "message": "The no-show ending was signed in advance for exactly the room price. If anything else is in the account now, it no longer fits."
+          "check": "def.balance >= def.booked",
+          "message": "The no-show needs at least the room price in the account. Anything more (a partial deposit, a stray payment) does not stop it: it goes back to the guest."
         },
         {
           "id": "N6",
           "title": "Valid no-show payout",
           "reason": "TX_SHAPE",
-          "check": "tx.matchesBlueprint('close.releaseAll')",
-          "message": "The no-show ending pays the room to the hotel (less the fee) and closes the account."
+          "check": "tx.matchesBlueprint('close.releaseAll') || tx.matchesBlueprint('close.releaseWithDeposit')",
+          "message": "The no-show ending pays the room to the hotel (less the fee), returns anything extra to the guest, and closes the account."
         },
         {
           "id": "N7",
           "title": "Correct service fee",
           "reason": "FEE_MISMATCH",
           "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
-          "message": "The service takes 0.5% of whatever the hotel receives."
+          "message": "The service takes 0.5% of the room price the hotel receives. Money returned to the guest carries no fee."
+        },
+        {
+          "id": "N8",
+          "title": "Hotel gets the room, the guest gets any extra",
+          "reason": "PAYOUT_MISMATCH",
+          "check": "def.toMerchant + def.toFee == def.booked && def.toGuest + def.booked == def.balance && tx.payouts.hasResidual() == (def.balance > def.booked)",
+          "message": "The hotel is paid exactly the room price (less the fee). Anything else in the account, such as a partial deposit, goes back to the guest. Of the two no-show endings signed in advance, only the one that fits the money actually in the account can be used."
         }
       ]
     },
@@ -259,82 +287,148 @@
           "title": "No open dispute",
           "reason": "DISPUTE_OPEN",
           "check": "!def.disputeOpen",
-          "message": "If the guest filed a dispute (with its bond), the release waits for the arbiter. Silence can't override a raised flag."
+          "message": "If the guest filed a dispute (with its bond), the release waits for the arbiter. Silence can't override a raised flag. A guest dispute counts only once the co-signer has receipted it, and the co-signer receipts one only when the guest's dispute credential (ENG/DISPUTE) and the bond are already on the account; after that it stays open while the money stays in."
         },
         {
           "id": "L3",
-          "title": "Account holds room plus deposit",
+          "title": "Room and deposit are in the account",
           "reason": "BALANCE_CHANGED",
-          "check": "def.balance == def.booked + def.deposit",
-          "message": "The release was signed in advance for the room plus the deposit. If anything else is in the account, it no longer fits."
+          "check": "def.balance >= def.booked + def.deposit",
+          "message": "The release needs at least the room plus the deposit in the account. Anything more (a stray payment) does not stop it: it goes back to the guest."
         },
         {
           "id": "L4",
           "title": "Valid release",
           "reason": "TX_SHAPE",
           "check": "tx.matchesBlueprint('close.releaseWithDeposit')",
-          "message": "The release pays the room to the hotel, returns the deposit to the guest, and closes the account."
+          "message": "The release pays the room to the hotel, returns the deposit and anything extra to the guest, and closes the account."
         },
         {
           "id": "L5",
-          "title": "No deposit claim posted",
+          "title": "No deposit claim standing",
           "reason": "CLAIM_POSTED",
-          "check": "def.claim == null",
-          "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on."
+          "check": "def.claim == null || (now > timestamp(eng.timers.disputeWindowEnds) + def.rulingWindow && !def.disputeOpen && def.arbiterRuling == null)",
+          "message": "If the hotel claimed against the deposit, the release can't just return it: the claim has to be agreed, or ruled on. But the hotel must make its case: if the guest has no open (bonded) dispute and the arbiter hasn't ruled on the claim by the ruling deadline (counted from the end of the guest's dispute window), the claim lapses and the deposit goes back to the guest."
         },
         {
           "id": "L6",
-          "title": "Deposit goes back in full",
+          "title": "Deposit and any extra go back in full",
           "reason": "PAYOUT_MISMATCH",
-          "check": "def.toGuest == def.deposit && def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
-          "message": "The whole deposit returns to the guest; the hotel gets the room price less the fee."
+          "check": "def.toMerchant + def.toFee == def.booked && def.toGuest + def.booked == def.balance && def.toGuest >= def.deposit && def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
+          "message": "The hotel gets the room price less the fee; the whole deposit, plus anything else in the account, returns to the guest."
         }
       ]
     },
-    "ruling.backup": {
-      "enforcement": "ledger",
+    "default.chargebackEntry": {
+      "enforcement": "final-signature",
       "rules": [
         {
-          "id": "U1",
-          "title": "Primary arbiter's time ran out",
+          "id": "E1",
+          "title": "Arbiter missed its deadline on an arrival dispute",
           "reason": "NOT_DUE",
-          "check": "(def.disputeOpen && now > def.disputeOpenedAt + duration(params.rulingWindow)) || (def.claim != null && !def.disputeOpen && now > timestamp(eng.timers.disputeWindowEnds) + duration(params.rulingWindow))",
-          "message": "The backup arbiter may only rule once the primary arbiter's ruling window has passed without a ruling."
+          "check": "def.confirmed && def.entryDispute && size(def.disputes) == 1 && def.rulingDue",
+          "message": "Only for a confirmed booking with the guest's one open, bonded dispute about a problem on arrival (no room, wrong room), once the arbiter's ruling deadline, counted from the dispute, has passed. Whether it is an arrival dispute is fixed when it is filed, so later payments into the account can't change the outcome. An unconfirmed booking is refunded instead."
         },
         {
-          "id": "U2",
-          "title": "Primary arbiter hasn't ruled",
-          "reason": "PRIMARY_RULED",
-          "check": "def.primaryRuling == null",
-          "message": "If the primary arbiter already ruled, the backup steps aside."
+          "id": "E2",
+          "title": "Arbiter hasn't ruled",
+          "reason": "RULED",
+          "check": "def.arbiterRuling == null",
+          "message": "Once the arbiter's ruling is on record (received by the co-signer), the automatic default never applies: the arbiter and the winning party close the deal instead."
         },
         {
-          "id": "U3",
-          "title": "Backup arbiter has ruled",
-          "reason": "NO_RULING",
-          "check": "def.backupRuling != null",
-          "message": "There must be a signed ruling from the backup arbiter."
-        },
-        {
-          "id": "U4",
-          "title": "Pays exactly what was ruled",
-          "reason": "RULING_MISMATCH",
-          "check": "size(def.backupRuling.claim.payouts) == tx.payouts.count() && def.backupRuling.claim.payouts.all(p, def.backupRuling.claim.payouts.filter(q, q.to == p.to).size() == 1 && tx.payouts.to(p.to, 'RLUSD') == amt(p.value, 'RLUSD')) && tx.payouts.destinations().all(d, def.backupRuling.claim.payouts.exists(p, p.to == d))",
-          "message": "The transaction must pay exactly the amounts in the backup arbiter's ruling, to exactly those people."
-        },
-        {
-          "id": "U5",
-          "title": "Valid ruling payout",
+          "id": "E3",
+          "title": "Valid refund",
           "reason": "TX_SHAPE",
-          "check": "tx.matchesBlueprint('close.split')",
-          "message": "A ruling splits the money and closes the account, in one transaction."
+          "check": "tx.matchesBlueprint('close.refundAll')",
+          "message": "The entry chargeback pays the guest back and closes the account, in one transaction."
         },
         {
-          "id": "U6",
-          "title": "Correct service fee",
-          "reason": "FEE_MISMATCH",
-          "check": "def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
-          "message": "The service takes 0.5% of whatever the hotel receives."
+          "id": "E4",
+          "title": "Everything goes back to the guest",
+          "reason": "NOT_FULL_REFUND",
+          "check": "def.toGuest == def.balance",
+          "message": "Like a card chargeback, the guest gets back everything in the account: the room price, any deposit and the dispute bond, with no fee."
+        }
+      ]
+    },
+    "default.chargebackClaim": {
+      "enforcement": "final-signature",
+      "rules": [
+        {
+          "id": "G1",
+          "title": "Arbiter missed its deadline on a claim or stay dispute",
+          "reason": "NOT_DUE",
+          "check": "def.checkedIn && size(def.disputes) == 1 && def.rulingDue && (size(def.settlementDisputes) == 1 || (def.stayDispute != null && def.stayNight >= eng.terms.nights))",
+          "message": "Only for a stay that happened, with the guest's one open, bonded dispute filed after checkout (against the hotel's claim or the stay) or in the stay's last night, once the arbiter's ruling deadline has passed."
+        },
+        {
+          "id": "G2",
+          "title": "Arbiter hasn't ruled",
+          "reason": "RULED",
+          "check": "def.arbiterRuling == null",
+          "message": "Once the arbiter's ruling is on record (received by the co-signer), the automatic default never applies: the arbiter and the winning party close the deal instead."
+        },
+        {
+          "id": "G3",
+          "title": "Valid payout",
+          "reason": "TX_SHAPE",
+          "check": "tx.matchesBlueprint('close.releaseWithDeposit')",
+          "message": "The claim chargeback pays the hotel, the fee and the guest, and closes the account, in one transaction."
+        },
+        {
+          "id": "G4",
+          "title": "Hotel gets the room, nothing more",
+          "reason": "HOTEL_LEG",
+          "check": "def.toMerchant + def.toFee == def.booked && def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
+          "message": "The hotel's claim is rejected: the hotel is paid exactly the room price, less the service's 0.5% fee."
+        },
+        {
+          "id": "G5",
+          "title": "Everything else goes back to the guest",
+          "reason": "RESIDUAL",
+          "check": "tx.payouts.items.exists(p, p.partial && p.to == eng.parties.principal) && tx.payouts.items.all(p, !p.partial || p.to == eng.parties.principal) && def.toGuest + def.toMerchant + def.toFee == def.balance",
+          "message": "The guest's payment is the one that sweeps up whatever is left: the whole deposit, the dispute bond and anything extra."
+        }
+      ]
+    },
+    "default.chargebackStay": {
+      "enforcement": "final-signature",
+      "rules": [
+        {
+          "id": "Y1",
+          "title": "Arbiter missed its deadline on a mid-stay dispute",
+          "reason": "NOT_DUE",
+          "check": "def.checkedIn && size(def.disputes) == 1 && def.stayDispute != null && def.rulingDue && def.stayNight < eng.terms.nights && eng.terms.nights <= params.maxStayVariantNights",
+          "message": "Only for the guest's one open, bonded dispute filed during the stay, before its last night, once the arbiter's ruling deadline has passed. Stays longer than 14 nights have no such ending: the dispute waits for the arbiter."
+        },
+        {
+          "id": "Y2",
+          "title": "Arbiter hasn't ruled",
+          "reason": "RULED",
+          "check": "def.arbiterRuling == null",
+          "message": "Once the arbiter's ruling is on record (received by the co-signer), the automatic default never applies: the arbiter and the winning party close the deal instead."
+        },
+        {
+          "id": "Y3",
+          "title": "Valid payout",
+          "reason": "TX_SHAPE",
+          "check": "tx.matchesBlueprint('close.releaseWithDeposit')",
+          "message": "The stay chargeback pays the hotel, the fee and the guest, and closes the account, in one transaction."
+        },
+        {
+          "id": "Y4",
+          "title": "Hotel gets only the nights used",
+          "reason": "HOTEL_LEG",
+          "check": "def.toMerchant + def.toFee == def.nightly * def.stayNight && def.toFee == bps(def.toMerchant + def.toFee, params.serviceFeeBps)",
+          "message": "The hotel is paid for the nights up to and including the one in which the guest disputed (each night's share of the room price), less the service's 0.5% fee. A night counts once it has begun, from the scheduled check-in time. Of the per-night versions signed in advance, only the one for that night can be used."
+        },
+        {
+          "id": "Y5",
+          "title": "Everything else goes back to the guest",
+          "reason": "RESIDUAL",
+          "check": "tx.payouts.items.exists(p, p.partial && p.to == eng.parties.principal) && tx.payouts.items.all(p, !p.partial || p.to == eng.parties.principal) && def.toGuest + def.toMerchant + def.toFee == def.balance",
+          "message": "The guest's payment is the one that sweeps up whatever is left: the remaining nights, the whole deposit, the dispute bond and anything extra."
         }
       ]
     },

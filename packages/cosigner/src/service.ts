@@ -7,9 +7,9 @@ import { isDeepStrictEqual } from 'node:util'
 import xrpl from 'xrpl'
 import * as keypairs from 'ripple-keypairs'
 import { encodeForMultisigning } from 'ripple-binary-codec'
-import { documentHash, newNonce, parseAmount, signStatementAsync, signerBlob, verifyStatement, zero, type AssetDef, type Signer, type Statement, type Template } from '@eng/core'
+import { Amount, documentHash, formatAmount, newNonce, parseAmount, signStatementAsync, signerBlob, verifyStatement, zero, type AssetDef, type Signer, type Statement, type Template } from '@eng/core'
 import {
-  Assets, LedgerFacts, REGISTRY, TxFacts, decide, decisionStatementBody, layerHash,
+  Assets, LedgerFacts, REGISTRY, TxFacts, celDurationMs, decide, decisionStatementBody, layerHash, nightsElapsed,
   type Decision, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc, verifyStatements,
 } from '@eng/policy'
 import type { LedgerSource } from './snapshot.ts'
@@ -100,6 +100,14 @@ export interface CosignerOptions {
 }
 
 const DAY = 86400
+
+/** register() could not read the ledger it needs (the neutrality gate): retryable, not a verdict on the deal (HTTP 503). */
+export class LedgerUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super(`LEDGER_UNAVAILABLE: ${String((cause as Error)?.message ?? cause)}`)
+    this.name = 'LedgerUnavailableError'
+  }
+}
 /** A statement may not be received more than this long after its issuedAt (bounds backdating). */
 const MAX_ISSUE_LAG_SECS = 300
 
@@ -119,7 +127,19 @@ export class CosignerService {
    * Registering an existing engagementId again is accepted only with the identical record and mandate, and keeps
    * all state (receipts, pre-signed defaults, completed decisions); anything else is ALREADY_REGISTERED.
    */
-  register(record: EngagementRecord, mandate: Statement | null = null): { ok: true; layers: string[] } {
+  async register(record: EngagementRecord, mandate: Statement | null = null): Promise<{ ok: true; layers: string[] }> {
+    return this.serialized(record?.engagementId, () => this.registerLocked(record, mandate))
+  }
+
+  /**
+   * Arbiter neutrality (chargeback spec §4.2): for a template with a role declaring `accreditation: "service"`, read a
+   * fresh validated ledger and require that role's account to hold an accepted, unexpired credential of the effective
+   * policy's `arbiterCredentialType` from one of its `arbiterIssuers`, to be none of the other parties, and to be in the
+   * mandate's `allowedArbiters` when it lists any. Otherwise NOT_NEUTRAL and nothing is registered (a ledger error
+   * is a LedgerUnavailableError, also registering nothing). For a template with per-night outcomes, the record's
+   * terms must also check out first (stayTermsFindings, R30), or INVALID_TERMS and nothing is registered.
+   */
+  private async registerLocked(record: EngagementRecord, mandate: Statement | null): Promise<{ ok: true; layers: string[] }> {
     const existing = this.engagements.get(record?.engagementId)
     if (existing) {
       if (!isDeepStrictEqual(existing.registered, { record, mandate })) throw new Error(`ALREADY_REGISTERED: ${record.engagementId} is registered with a different record`)
@@ -142,6 +162,18 @@ export class CosignerService {
       const p = this.o.policies.find((x) => x.layer === 'template' && x.appliesTo.includes(record.template))
       if (!p) throw new Error(`no template policy for ${record.template}`)
       layers = [p]
+    }
+    const termsError = stayTermsFindings(record, mandate, template, [baseline, ...layers])
+    if (termsError) throw new Error(`INVALID_TERMS: ${termsError}`)
+    const accredited = Object.entries(template.roles).filter(([, r]) => r.accreditation === 'service').map(([n]) => n)
+    if (accredited.length) {
+      const all = [baseline, ...layers]
+      const assets = this.assetsOf(all)
+      const subjects = accredited.map((r) => record.parties[r]).filter((a): a is string => typeof a === 'string')
+      let ledger: LedgerSnapshot
+      try { ledger = await this.o.source.snapshot({ account: record.account, assets, accounts: [], credentialSubjects: subjects, historySecs: 0 }) } catch (e) { throw new LedgerUnavailableError(e) }
+      const codes = neutralityFindings(record, mandate, accredited, all, new LedgerFacts(ledger, new Assets(assets)))
+      if (codes.length) throw new Error(`NOT_NEUTRAL: ${codes.join(', ')}`)
     }
     this.engagements.set(record.engagementId, { record: structuredClone({ consumed: [], ...record }), registered: structuredClone({ record, mandate }), mandate, layers: [baseline, ...layers], template, attestations: new Map(), presigned: new Map(), completed: new Map() })
     return { ok: true, layers: [baseline, ...layers].map((l) => `${l.policyId}@${l.version} ${layerHash(l)}`) }
@@ -204,6 +236,16 @@ export class CosignerService {
       if (Number.isNaN(deadline)) throw new Error(`NO_DEADLINE: engagement has no timer ${window}`)
       if (received > deadline) throw new Error(`LATE: ${s.type} after ${window}`)
     }
+    if (s.type === 'party.ruling/1' && attester === st.record.parties.arbiter) {
+      // A ruling is about a case: a receipted guest dispute or hotel claim. Otherwise an arbiter could pre-block defaults.
+      const opened = this.caseOpenedAt(st)
+      if (!opened) throw new Error('NO_CASE: no receipted dispute or claim for the arbiter to rule on')
+      // The policy counts only rulings issued at/after the case opened: refuse one it would ignore, so a receipted ruling always counts.
+      if (Date.parse(s.issuedAt) < opened.at) throw new Error(`EARLY_RULING: issued ${s.issuedAt}, before the case opened (${new Date(opened.at).toISOString()})`)
+      // A ruling counts only if receipted by the deal's ruling deadline, so a late one can't block a due default.
+      const due = this.rulingDeadline(st)
+      if (due != null && received > due) throw new Error(`LATE: party.ruling/1 after the ruling deadline (${new Date(due).toISOString()})`)
+    }
     const issued = Date.parse(s.issuedAt)
     if (Number.isNaN(issued) || received - issued > MAX_ISSUE_LAG_SECS * 1000) throw new Error(`STALE_ISSUED: issued ${s.issuedAt}, received ${ledger.closeTime}`)
     this.checkSequence(st, s, assets, ledger)
@@ -226,8 +268,11 @@ export class CosignerService {
 
   /**
    * Ordering rules no single statement can show (R28–R33, R38, R39): only the hotel confirms, and only once; an
-   * entry dispute is filed from check-in on, and a bonded one (principal's ENG/DISPUTE Credential on the account and
-   * the bond on the ledger at this receipt) freezes the stay — the hotel can no longer record a check-in; a claim is
+   * entry dispute is filed from check-in on, and a receipted one (bonded at ingest: principal's ENG/DISPUTE Credential on
+   * the account and the bond on the ledger) freezes the stay for good — no check-in can be recorded by either side, even
+   * if the Credential is later deleted (R27); a recorded
+   * check-in is final — once the hotel's checked_in is receipted it cannot be followed by refused (or anything else),
+   * so a stay can't be turned into a no-show; a claim is posted from checkout on, once per deal,
    * itemized, positive, and capped at the deposit of the (first) confirmation.
    */
   private checkSequence(st: EngagementState, s: Statement, assets: Record<string, AssetDef>, ledger: LedgerSnapshot): void {
@@ -239,15 +284,68 @@ export class CosignerService {
       if (s.attester.account !== parties.counterparty) throw new Error(`NOT_COUNTERPARTY: only the counterparty confirms the booking (${s.attester.account})`)
       if (firstConfirmation) throw new Error('ALREADY_CONFIRMED: the booking already has a receipted confirmation')
     }
-    if (s.type === 'party.dispute/1' && (s.claim as { phase?: unknown }).phase === 'entry') {
+    if (s.type === 'party.dispute/1') {
+      const isPrincipalDispute = (p: Statement) => p.type === 'party.dispute/1' && p.attester.account === parties.principal
+      if (isPrincipalDispute(s) && posted.some(isPrincipalDispute)) throw new Error('ALREADY_DISPUTED: the guest already has a receipted dispute on this deal; one dispute per deal')
+      const phase = (s.claim as { phase?: unknown }).phase
       const checkIn = Date.parse(st.record.timers?.checkIn ?? '')
-      if (!Number.isNaN(checkIn) && Date.parse(ledger.closeTime) < checkIn) throw new Error(`TOO_EARLY: an entry dispute can be filed from checkIn (${st.record.timers!.checkIn})`)
+      const deliveryBy = Date.parse(st.record.timers?.deliveryBy ?? '')
+      const received = Date.parse(ledger.closeTime)
+      // A dispute filed after the arbiter ruled on the hotel's claim would re-date the case and void that ruling. A claim
+      // (and so a ruling with no dispute) exists only from checkout on, so this never blocks an entry or stay dispute
+      // before checkout; at the checkout instant itself a stay dispute would re-date the case just the same.
+      const ruled = posted.some((p) => p.type === 'party.ruling/1' && p.attester.account === parties.arbiter)
+      if (isPrincipalDispute(s) && ruled && (phase === 'settlement' || (!Number.isNaN(deliveryBy) && received >= deliveryBy))) throw new Error('ALREADY_RULED: the arbiter has already ruled on the hotel\'s claim; a later dispute cannot reopen it')
+      if (phase === 'entry') {
+        if (!Number.isNaN(checkIn) && received < checkIn) throw new Error(`TOO_EARLY: an entry dispute can be filed from checkIn (${st.record.timers!.checkIn})`)
+        // The guest's own acknowledgement (it has the keys) contradicts an arrival dispute, whatever the deposit (R29).
+        const acknowledged = posted.some((p) => p.type === 'party.checkin/1' && p.attester.account === parties.principal && p.attester.account !== parties.counterparty && (p.claim as { status?: unknown }).status === 'checked_in')
+        if (acknowledged) throw new Error('ACKNOWLEDGED: the guest acknowledged the check-in (it has the keys); an entry dispute no longer applies — file a stay dispute once the deposit is in')
+        if (this.checkedIn(st, posted, assets, ledger)) throw new Error('NOT_ENTRY: the guest is checked in (check-in recorded and deposit in); file a stay dispute instead')
+      }
+      if (phase === 'settlement') {
+        if (!Number.isNaN(deliveryBy) && received < deliveryBy) throw new Error(`TOO_EARLY: a settlement dispute can be filed from checkout (deliveryBy ${st.record.timers!.deliveryBy})`)
+        // A guest never checked in has no stay to dispute (the entry/no-show track applies), and the bond threshold —
+        // room + deposit + bond for a settlement dispute — must not depend on a deposit paid in after filing.
+        if (!this.checkedIn(st, posted, assets, ledger)) throw new Error('NOT_CHECKED_IN: a settlement dispute needs a recorded check-in with the deposit in')
+      }
+      if (phase === 'stay') {
+        if (!this.checkedIn(st, posted, assets, ledger)) throw new Error('NOT_CHECKED_IN: a stay dispute needs a recorded check-in with the deposit in; before that, file an entry dispute')
+        // The stay chargeback is timed from issuedAt; it must fall in the same night (from the scheduled checkIn) as the receipt.
+        if (Number.isNaN(checkIn)) throw new Error('NO_DEADLINE: engagement has no timer checkIn')
+        const nIssued = nightsElapsed(checkIn, Date.parse(s.issuedAt))
+        const nReceived = nightsElapsed(checkIn, received)
+        if (nIssued !== nReceived) throw new Error(`NIGHT_MISMATCH: issued in night ${nIssued + 1} (${s.issuedAt}), received in night ${nReceived + 1} (${ledger.closeTime})`)
+      }
+      // The ruling clock starts only on an open dispute: the Credential and the bond must already be on the ledger.
+      if (isPrincipalDispute(s) && !this.disputeBonded(st, posted, assets, ledger, phase)) throw new Error(`NOT_BONDED: post the ${disputeCredentialType(st.layers)} Credential and the bond (room, plus the deposit for a stay or settlement dispute, plus minDisputeBond in the account) before the dispute statement`)
+    }
+    const hotelCheckedIn = (p: Statement) => p.type === 'party.checkin/1' && p.attester.account === parties.counterparty && (p.claim as { status?: unknown }).status === 'checked_in'
+    if (s.type === 'party.checkin/1' && s.attester.account === parties.counterparty && (s.claim as { status?: unknown }).status === 'checked_in') {
+      // The hotel can't record a check-in before the scheduled check-in time, so it can't foreclose the entry window early.
+      const checkIn = Date.parse(st.record.timers?.checkIn ?? '')
+      if (!Number.isNaN(checkIn) && Date.parse(ledger.closeTime) < checkIn) throw new Error(`TOO_EARLY: the hotel can record a check-in from checkIn (${st.record.timers!.checkIn})`)
+    }
+    if (s.type === 'party.checkin/1' && s.attester.account === parties.principal && s.attester.account !== parties.counterparty) {
+      // The guest's own acknowledgement (it has the keys): only "checked_in", and only after the hotel recorded the check-in.
+      if ((s.claim as { status?: unknown }).status !== 'checked_in') throw new Error('BAD_CHECKIN: the guest\'s party.checkin/1 acknowledges a check-in (status "checked_in")')
+      if (!posted.some(hotelCheckedIn)) throw new Error('NO_HOTEL_CHECKIN: the guest acknowledges a check-in only after the hotel has recorded it')
+    }
+    if (s.type === 'party.checkin/1' && s.attester.account === parties.counterparty && (s.claim as { status?: unknown }).status !== 'checked_in') {
+      if (posted.some(hotelCheckedIn)) throw new Error(`CHECKIN_FINAL: the hotel already recorded the guest as checked in; a later ${String((s.claim as { status?: unknown }).status)} is not accepted`)
     }
     if (s.type === 'party.checkin/1' && (s.claim as { status?: unknown }).status === 'checked_in') {
       const entryDispute = posted.some((p) => p.type === 'party.dispute/1' && p.attester.account === parties.principal && (p.claim as { phase?: unknown }).phase === 'entry')
-      if (entryDispute && parties.principal && this.disputeBonded(st, assets, ledger)) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
+      // Any receipted entry dispute (bonded at ingest, R12) freezes the check-in for good: deleting the Credential later
+      // withdraws nothing (R27), so neither the hotel nor the guest can record a check-in after it.
+      if (entryDispute) throw new Error('ENTRY_DISPUTED: the guest disputed entry; a check-in can no longer be recorded')
     }
     if (s.type === 'party.claim/1') {
+      // Claims are post-checkout by design: an early claim would open a "case" an arbiter could rule on before the guest
+      // has anything to dispute, and a receipted ruling blocks the guest's later dispute (ALREADY_RULED).
+      const deliveryBy = Date.parse(st.record.timers?.deliveryBy ?? '')
+      if (s.attester.account === parties.counterparty && !Number.isNaN(deliveryBy) && Date.parse(ledger.closeTime) < deliveryBy) throw new Error(`TOO_EARLY: a claim can be posted from checkout (deliveryBy ${st.record.timers!.deliveryBy})`)
+      if (s.attester.account === parties.counterparty && posted.some((p) => p.type === 'party.claim/1' && p.attester.account === parties.counterparty)) throw new Error('ALREADY_CLAIMED: the hotel already has a receipted claim on this deal; one claim per deal')
       checkClaimTotal(s, assets)
       const c = s.claim as { items: Array<{ amount: { value: string } }>; total: { currency: string; value: string } }
       const asset = Object.values(assets).find((a) => a.code === c.total.currency)!
@@ -261,15 +359,86 @@ export class CosignerService {
     }
   }
 
-  /** At this ledger: the principal's ENG/DISPUTE Credential is on the account and the balance covers booked + minDisputeBond. */
-  private disputeBonded(st: EngagementState, assets: Record<string, AssetDef>, ledger: LedgerSnapshot): boolean {
+  /**
+   * Checked in (as the policy's def.checkedIn): the hotel's checked_in and the guest's own acknowledgement (a principal
+   * party.checkin/1 "checked_in", R23) are receipted, and the balance covers booked + the first confirmation's deposit —
+   * so a hotel paying the deposit in itself can't put a guest who never got the keys on the stay track.
+   */
+  private checkedIn(st: EngagementState, posted: Statement[], assets: Record<string, AssetDef>, ledger: LedgerSnapshot): boolean {
+    const { parties, account, amount } = st.record
+    const conf = posted.find((p) => p.type === 'party.confirmation/1' && p.attester.account === parties.counterparty)
+    const says = (role: string) => posted.some((p) => p.type === 'party.checkin/1' && p.attester.account === parties[role] && (p.claim as { status?: unknown }).status === 'checked_in')
+    if (!conf || !says('counterparty') || !says('principal')) return false
+    const asset = Object.values(assets).find((a) => a.code === (amount?.asset ?? st.record.asset))
+    const dep = (conf.claim as { deposit?: { currency?: string; value?: string } }).deposit
+    if (!asset || !amount || dep?.currency !== asset.code || typeof dep.value !== 'string') return false
+    try {
+      const need = parseAmount(amount.value, asset).add(parseAmount(dep.value, asset))
+      return new LedgerFacts(ledger, new Assets(assets)).balance(account, asset.code).cmp(need) >= 0
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * The deal's ruling deadline (epoch ms), as the policy computes it: the principal's dispute's issuedAt, floored at
+   * checkout (settlement) or the scheduled check-in (entry, stay), plus the ruling window (the record's
+   * terms.rulingWindow, else the policy's params.rulingWindow). With no dispute but a hotel claim posted, the claim
+   * lapses at disputeWindowEnds + the ruling window. Undefined when neither applies or the deal has no ruling window.
+   */
+  private rulingDeadline(st: EngagementState): number | undefined {
+    const raw = st.record.terms?.rulingWindow ?? effectiveParam(st.layers, 'rulingWindow')
+    if (typeof raw !== 'string') return undefined
+    let window: number
+    try { window = celDurationMs(raw) } catch { throw new Error(`NO_DEADLINE: rulingWindow ${JSON.stringify(raw)} is not a duration`) }
+    const opened = this.caseOpenedAt(st)
+    if (!opened) return undefined
+    if (opened.kind === 'dispute') return opened.at + window
+    const end = Date.parse(st.record.timers?.disputeWindowEnds ?? '')
+    return Number.isNaN(end) ? undefined : end + window
+  }
+
+  /**
+   * When the case the arbiter rules on opened, as the policy's def.arbiterRulings filter sees it: the principal's
+   * dispute's issuedAt floored at checkout (settlement) or the scheduled check-in (entry, stay) — def.disputeOpenedAt —
+   * else the latest (by issuedAt) hotel claim's issuedAt. Undefined when neither is receipted.
+   */
+  private caseOpenedAt(st: EngagementState): { kind: 'dispute' | 'claim'; at: number } | undefined {
+    const { parties, timers } = st.record
+    const posted = [...st.attestations.values()].map((a) => a.statement)
+    const d = posted.find((p) => p.type === 'party.dispute/1' && p.attester.account === parties.principal)
+    if (d) {
+      const anchor = Date.parse(((d.claim as { phase?: unknown }).phase === 'settlement' ? timers?.deliveryBy : timers?.checkIn) ?? '')
+      const issued = Date.parse(d.issuedAt)
+      return { kind: 'dispute', at: Number.isNaN(anchor) ? issued : Math.max(issued, anchor) }
+    }
+    const claims = posted.filter((p) => p.type === 'party.claim/1' && p.attester.account === parties.counterparty).map((p) => Date.parse(p.issuedAt))
+    return claims.length ? { kind: 'claim', at: Math.max(...claims) } : undefined
+  }
+
+  /**
+   * Whether a principal dispute may be receipted (R12), at this ledger: the principal's Credential of the policy's
+   * disputeCredentialType (ENG/DISPUTE) is on the
+   * account and the balance covers booked + minDisputeBond, plus the first confirmation's deposit for a stay or settlement dispute (never
+   * for an entry dispute). The term is fixed by the dispute's phase, not by whether the guest is checked in, so no
+   * payment into the account can move an open dispute's threshold. Only ingest checks the Credential: once receipted, a
+   * dispute stays open on the balance threshold alone (the policy's def.disputeOpen, R27) — deleting the Credential
+   * withdraws nothing, so a dispute can't be withdrawn and revived after the arbiter's deadline.
+   */
+  private disputeBonded(st: EngagementState, posted: Statement[], assets: Record<string, AssetDef>, ledger: LedgerSnapshot, phase: unknown): boolean {
     const { parties, account, amount } = st.record
     const asset = Object.values(assets).find((a) => a.code === (amount?.asset ?? st.record.asset))
     if (!asset || !amount) return false
     const facts = new LedgerFacts(ledger, new Assets(assets))
-    if (!facts.credentialExists(parties.principal!, account, 'ENG/DISPUTE')) return false
+    if (!facts.credentialExists(parties.principal!, account, disputeCredentialType(st.layers))) return false
     const bond = [...st.layers].reverse().map((l) => (l.params as { minDisputeBond?: unknown } | undefined)?.minDisputeBond).find((b) => typeof b === 'string') as string | undefined
-    const need = parseAmount(amount.value, asset).add(bond ? parseAmount(bond, asset) : zero(asset.code))
+    let need = parseAmount(amount.value, asset).add(bond ? parseAmount(bond, asset) : zero(asset.code))
+    if (phase !== 'entry') {
+      const conf = posted.find((p) => p.type === 'party.confirmation/1' && p.attester.account === parties.counterparty)
+      const dep = (conf?.claim as { deposit?: { currency?: string; value?: string } } | undefined)?.deposit
+      if (dep?.currency !== asset.code || typeof dep.value !== 'string') return false
+      try { need = need.add(parseAmount(dep.value, asset)) } catch { return false }
+    }
     return facts.balance(account, asset.code).cmp(need) >= 0
   }
 
@@ -285,8 +454,20 @@ export class CosignerService {
   private storePresignedLocked(engagementId: string, outcome: string, blob: string): void {
     const st = this.engagements.get(engagementId)
     if (!st) throw new Error(`unknown engagement ${engagementId}`)
-    const o = st.template.outcomes[outcome]
-    if (!o?.presigned || !o.finalSigner) throw new Error(`NOT_PRESIGNED: ${outcome} is not a pre-signed outcome of ${st.template.templateId}`)
+    const [base, variant] = splitVariant(outcome)
+    const o = st.template.outcomes[base]
+    if (!o?.presigned || !o.finalSigner) throw new Error(`NOT_PRESIGNED: ${base} is not a pre-signed outcome of ${st.template.templateId}`)
+    if (o.variants?.perNight || variant !== undefined) {
+      // A per-night outcome is stored once per night k = 1 … nights − 1 as "<outcome>#k"; a stay longer than max + 1
+      // nights has none (spec §4.5.1). Which variant applies is the policy's call at tick time.
+      if (!o.variants?.perNight) throw new Error(`BAD_VARIANT: ${base} has no per-night variants`)
+      if (variant === undefined || !/^[1-9]\d*$/.test(variant)) throw new Error(`BAD_VARIANT: name the night of ${base} as ${base}#<k>, k = 1, 2, …`)
+      const k = Number(variant)
+      const nights = st.record.terms?.nights
+      if (typeof nights !== 'number' || !Number.isInteger(nights) || nights < 2) throw new Error(`BAD_VARIANT: the deal has no per-night terms (terms.nights ${JSON.stringify(nights ?? null)})`)
+      if (nights - 1 > o.variants.max) throw new Error(`BAD_VARIANT: a ${nights}-night stay has no ${base} variants (at most ${o.variants.max + 1} nights)`)
+      if (k > nights - 1) throw new Error(`BAD_VARIANT: ${outcome}: a ${nights}-night stay has variants #1 … #${nights - 1}`)
+    }
     let decoded: Json
     try { decoded = xrpl.decode(blob) as Json } catch (e) { throw new Error(`BAD_BLOB: ${(e as Error).message}`) }
     const signers = ((decoded.Signers ?? []) as Array<{ Signer?: { Account?: string; SigningPubKey?: string; TxnSignature?: string } }>).map((s) => s.Signer ?? {})
@@ -312,6 +493,21 @@ export class CosignerService {
 
     const facts = new TxFacts(tx, { eng: st.record, template: st.template, assets: new Assets(this.assetsOf(st.layers)), ledger: emptyLedger(st.record.account) })
     if (!facts.matchesBlueprint(o.blueprint)) throw new Error(`BLUEPRINT: blob does not match ${o.blueprint}`)
+    // A chargeback blob must match its slot: its eng/basis names the outcome, and a per-night variant #k pays the
+    // hotel (with the fee) exactly k nights, so the stored name says what the transaction does.
+    if (base.startsWith('default.chargeback') || o.variants?.perNight) {
+      const basis = facts.memo('eng/basis')
+      if (basis !== base) throw new Error(`SLOT_MISMATCH: blob's eng/basis is ${JSON.stringify(basis)}, expected ${base}`)
+      if (variant !== undefined) {
+        const code = st.template.asset.code
+        const asset = this.assetsOf(st.layers)[code]
+        let nightly
+        try { nightly = parseAmount(String(st.record.terms!.nightly), asset) } catch { throw new Error(`SLOT_MISMATCH: the deal's terms.nightly ${JSON.stringify(st.record.terms!.nightly)} is not an amount`) }
+        const hotel = facts.payouts.to(st.record.parties.counterparty!, code).add(facts.payouts.to(st.record.fee!.to, code))
+        const want = nightly.minor * BigInt(variant)
+        if (hotel.minor !== want) throw new Error(`SLOT_MISMATCH: ${outcome} pays the hotel and fee ${hotel.minor} minor units, ${variant} nights are ${want}`)
+      }
+    }
 
     // Store the canonical multisign form (outer SigningPubKey '', no TxnSignature) — exactly what the
     // signatures cover — and prove now that the co-signer's signature will combine with it.
@@ -358,7 +554,9 @@ export class CosignerService {
     const owned = ledger.accounts[st.record.account]?.ownerObjects
     const tickets = owned ? new Set(owned.tickets ?? []) : null
     for (const [outcome, stored] of [...st.presigned]) {
-      const stage = st.template.outcomes[outcome]?.policyStage ?? outcome
+      // A per-night variant ("<outcome>#k") is decided under its outcome's stage; the result keeps the #k name.
+      const base = splitVariant(outcome)[0]
+      const stage = st.template.outcomes[base]?.policyStage ?? base
       const tx = unsigned(xrpl.decode(stored) as Json)
       const txHash = documentHash(tx)
       const prior = st.completed.get(txHash)
@@ -440,7 +638,7 @@ export class CosignerService {
     const attesters = [...statements, ...(st.mandate ? [st.mandate] : [])].map((s) => s.attester?.account).filter(Boolean) as string[]
     const payees = tx ? new TxFacts(tx, { eng: st.record, template: st.template, assets: new Assets(assets), ledger: emptyLedger(st.record.account) }).payouts.destinations() : []
     const ledger = await this.o.source.snapshot({
-      account: st.record.account, assets, accounts: attesters, credentialSubjects: [...payees, ...attesters],
+      account: st.record.account, assets, accounts: attesters, credentialSubjects: [...payees, ...attesters], payees,
       historySecs: this.o.historySecs ?? 90 * DAY,
     })
 
@@ -527,6 +725,85 @@ export class CosignerService {
       fs.appendFileSync(path.join(this.o.dataDir, 'decisions.jsonl'), JSON.stringify(s) + '\n')
     }
   }
+}
+
+/** "default.chargebackStay#2" → ["default.chargebackStay", "2"]; a name without '#' → [name, undefined]. */
+function splitVariant(outcome: string): [string, string | undefined] {
+  const i = outcome.indexOf('#')
+  return i < 0 ? [outcome, undefined] : [outcome.slice(0, i), outcome.slice(i + 1)]
+}
+
+/** A policy parameter from the effective policy (the last layer that sets it wins). */
+function effectiveParam(layers: PolicyDoc[], name: string): unknown {
+  return [...layers].reverse().map((l) => (l.params as Record<string, unknown> | undefined)?.[name]).find((v) => v !== undefined)
+}
+
+/** The policy's dispute Credential type (params.disputeCredentialType); ENG/DISPUTE for policies that predate the param. */
+function disputeCredentialType(layers: PolicyDoc[]): string {
+  const t = effectiveParam(layers, 'disputeCredentialType')
+  return typeof t === 'string' ? t : 'ENG/DISPUTE'
+}
+
+/**
+ * Per-night terms (R30), for a template with a per-night outcome: the record pins terms; terms.nights is the booked
+ * stay (from the confirmation's check-in/check-out dates — none is receipted at registration, and the policy counts a
+ * confirmation only with the mandate's dates — so the mandate's); terms.nightly = floor(amount ÷ nights) in the
+ * asset's minor units; the ruling window (terms.rulingWindow, else params.rulingWindow) parses and lies within
+ * params.minRulingWindow / maxRulingWindow. Returns the first problem, or undefined.
+ */
+function stayTermsFindings(record: EngagementRecord, mandate: Statement | null, template: Template, layers: PolicyDoc[]): string | undefined {
+  if (!Object.values(template.outcomes).some((o) => o.variants?.perNight)) return undefined
+  const terms = record.terms
+  if (!terms || typeof terms !== 'object') return 'a stay deal pins its per-night terms (record.terms: nights, nightly)'
+  const dates = (((mandate?.claim as { constraints?: unknown } | undefined)?.constraints ?? {}) as { checkIn?: unknown; checkOut?: unknown })
+  const from = typeof dates.checkIn === 'string' ? Date.parse(`${dates.checkIn.slice(0, 10)}T00:00:00Z`) : NaN
+  const to = typeof dates.checkOut === 'string' ? Date.parse(`${dates.checkOut.slice(0, 10)}T00:00:00Z`) : NaN
+  if (Number.isNaN(from) || Number.isNaN(to)) return 'no stay dates (the mandate\'s checkIn/checkOut) to check terms.nights against'
+  const stay = Math.round((to - from) / (DAY * 1000))
+  if (stay < 1) return `the stay dates ${String(dates.checkIn)} → ${String(dates.checkOut)} book no night`
+  if (terms.nights !== stay) return `terms.nights ${JSON.stringify(terms.nights ?? null)} is not the booked ${stay}-night stay (${String(dates.checkIn)} → ${String(dates.checkOut)})`
+  const assets: Record<string, AssetDef> = {}
+  for (const l of layers) Object.assign(assets, l.assets ?? {})
+  const asset = assets[record.amount?.asset ?? record.asset ?? template.asset.code]
+  if (!asset || typeof record.amount?.value !== 'string') return 'the deal has no amount in a known asset to derive terms.nightly from'
+  let want: bigint
+  try { want = parseAmount(record.amount.value, asset).minor / BigInt(stay) } catch { return `the deal's amount ${JSON.stringify(record.amount.value)} is not an amount of ${asset.code}` }
+  let nightly: bigint | undefined
+  try { nightly = typeof terms.nightly === 'string' ? parseAmount(terms.nightly, asset).minor : undefined } catch { nightly = undefined }
+  if (nightly !== want) return `terms.nightly ${JSON.stringify(terms.nightly ?? null)} is not floor(${record.amount.value} ÷ ${stay}) = ${formatAmount(new Amount(asset.code, want), asset.decimals)}`
+  const ms = (name: string, v: unknown): number => {
+    try { return celDurationMs(String(v)) } catch { throw new Error(`${name} ${JSON.stringify(v)} is not a duration`) }
+  }
+  try {
+    const own = terms.rulingWindow !== undefined
+    const raw = own ? terms.rulingWindow : effectiveParam(layers, 'rulingWindow')
+    if (raw === undefined) return undefined
+    const name = own ? 'terms.rulingWindow' : 'params.rulingWindow'
+    const w = ms(name, raw)
+    const min = effectiveParam(layers, 'minRulingWindow')
+    const max = effectiveParam(layers, 'maxRulingWindow')
+    if (min !== undefined && w < ms('params.minRulingWindow', min)) return `${name} ${JSON.stringify(raw)} is shorter than the policy's minRulingWindow ${String(min)}`
+    if (max !== undefined && w > ms('params.maxRulingWindow', max)) return `${name} ${JSON.stringify(raw)} is longer than the policy's maxRulingWindow ${String(max)}`
+  } catch (e) {
+    return (e as Error).message
+  }
+  return undefined
+}
+
+/** Neutrality findings for each service-accredited role (chargeback spec §4.2); empty = neutral. */
+function neutralityFindings(record: EngagementRecord, mandate: Statement | null, roles: string[], layers: PolicyDoc[], facts: LedgerFacts): string[] {
+  const type = effectiveParam(layers, 'arbiterCredentialType')
+  const issuers = effectiveParam(layers, 'arbiterIssuers')
+  const listed = Array.isArray(issuers) ? issuers.filter((i): i is string => typeof i === 'string') : []
+  const claim = (mandate?.claim ?? {}) as { allowedArbiters?: unknown }
+  const codes = new Set<string>()
+  for (const role of roles) {
+    const account = record.parties[role]
+    if (typeof account !== 'string' || typeof type !== 'string' || !listed.length || !facts.hasCredential(account, type, listed)) codes.add('ARBITER_NOT_ACCREDITED')
+    if (Object.entries(record.parties).some(([r, a]) => r !== role && a === account)) codes.add('ARBITER_IS_PARTY')
+    if (claim.allowedArbiters !== undefined && !(Array.isArray(claim.allowedArbiters) && claim.allowedArbiters.includes(account))) codes.add('ARBITER_NOT_ALLOWED')
+  }
+  return ['ARBITER_NOT_ACCREDITED', 'ARBITER_IS_PARTY', 'ARBITER_NOT_ALLOWED'].filter((c) => codes.has(c))
 }
 
 /** A statement type whose posting is deadline-bound by the template (a `type` or `type#phase` window key). */

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Statement } from '@eng/core'
 import { decide } from '@eng/policy'
 import {
-  W, checkin, claim, concession, dispute, hotel2Close, hotel2Confirmation, hotel2Input, hotel2Ledger, memo, review, ruling, statement,
+  W, checkin, claim, guestCheckin, concession, dispute, hotel2Close, hotel2Confirmation, hotel2Engagement, hotel2Input, hotel2Ledger, memo, review, ruling, statement,
 } from './fixtures.ts'
 
 const checkinAt = (status: 'checked_in' | 'refused', t: string): Statement => statement(W.atlas, {
@@ -30,7 +30,7 @@ describe('hotel@2 — confirm', () => {
 })
 
 describe('hotel@2 — checkin', () => {
-  const input = (balance: string) => ({ stage: 'checkin', statements: [hotel2Confirmation(), checkin('checked_in')], ledger: hotel2Ledger({ balance, closeTime: '2026-11-11T16:00:00Z' }) })
+  const input = (balance: string) => ({ stage: 'checkin', statements: [hotel2Confirmation(), checkin('checked_in'), guestCheckin()], ledger: hotel2Ledger({ balance, closeTime: '2026-11-11T16:00:00Z' }) })
   it('accepts a check-in once the deposit is on-ledger (balance 562)', () => {
     expect(failing(input('562'))).toEqual([])
   })
@@ -45,7 +45,7 @@ describe('hotel@2 — settle (agreed)', () => {
     return {
       stage: 'settle',
       proposedTx: hotel2Close(payouts, { memos: [memo('eng/basis', 'settle.agreed'), memo('eng/review', rv.id)] }),
-      statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'minibar', amount: '58.00' }]), rv],
+      statements: [hotel2Confirmation(), checkin('checked_in'), guestCheckin(), claim([{ kind: 'minibar', amount: '58.00' }]), rv],
       ledger: hotel2Ledger({ balance: '562' }),
     }
   }
@@ -73,11 +73,11 @@ describe('hotel@2 — refund.conceded', () => {
     const l = hotel2Ledger({ balance: '422', dispute: true, closeTime: '2026-11-16T11:00:00Z' })
     expect(failing({ stage: 'refund.conceded', proposedTx: tx, ledger: l, statements: [hotel2Confirmation(), d, concession(d.id)] })).toEqual(['F1'])
   })
-  it('refuses when only the hotel issued the dispute Credential (F1)', () => {
+  it('a receipted entry dispute stays open without the guest\'s Credential (R27): the concession refunds even if only the hotel issued one', () => {
     const l = hotel2Ledger({ balance: '422', closeTime: '2026-11-12T10:00:00Z' })
     l.credentials.push({ issuer: hotel, subject: W.engHotel2.address, type: 'ENG/DISPUTE', accepted: false, expiration: null })
     const d = dispute('entry')
-    expect(failing({ stage: 'refund.conceded', proposedTx: tx, ledger: l, statements: [hotel2Confirmation(), d, concession(d.id)] })).toEqual(['F1'])
+    expect(failing({ stage: 'refund.conceded', proposedTx: tx, ledger: l, statements: [hotel2Confirmation(), d, concession(d.id)] })).toEqual([])
   })
 })
 
@@ -102,24 +102,24 @@ describe('hotel@2 — default.noshow', () => {
   it('releases the room to the hotel after entryDisputeBy when confirmed and not checked in', () => {
     expect(failing(input())).toEqual([])
   })
-  it('refuses once the guest checked in and paid the deposit (N3; the deposit also trips N5)', () => {
-    const f = failing(input([hotel2Confirmation(), checkin('checked_in')], hotel2Ledger({ closeTime: after, balance: '562' })))
+  it('refuses once the guest checked in and paid the deposit (N3; this exact variant also cannot leave the deposit behind, N8)', () => {
+    const f = failing(input([hotel2Confirmation(), checkin('checked_in'), guestCheckin()], hotel2Ledger({ closeTime: after, balance: '562' })))
     expect(f).toContain('N3')
-    expect(f).toContain('N5')
+    expect(f).toContain('N8')
   })
   it('a hotel-only checked_in with no deposit paid does not block the no-show (R29)', () => {
-    expect(failing(input([hotel2Confirmation(), checkin('checked_in')]))).toEqual([])
+    expect(failing(input([hotel2Confirmation(), checkin('checked_in'), guestCheckin()]))).toEqual([])
   })
-  it('the latest check-in statement counts: checked_in then refused is not checked in (R29)', () => {
+  it('a recorded check-in with the deposit in is final: a later refused statement does not make it a no-show (N3)', () => {
+    // The co-signer rejects such a refused at ingest (CHECKIN_FINAL); the policy holds even if one were present.
     const refused = checkinAt('refused', '2026-11-11T15:05:00Z')
-    const f = failing(input([hotel2Confirmation(), checkin('checked_in'), refused], hotel2Ledger({ closeTime: after, balance: '562' })))
-    expect(f).not.toContain('N3')
-    expect(f).toContain('N5') // the deposit is in, so the no-show still cannot take it
+    const f = failing(input([hotel2Confirmation(), checkin('checked_in'), guestCheckin(), refused], hotel2Ledger({ closeTime: after, balance: '562' })))
+    expect(f).toContain('N3')
   })
-  it('refuses while a guest dispute is open and the bond changed the balance (N4, N5)', () => {
+  it('refuses while a guest dispute is open (N4; the exact variant also cannot leave the bond behind, N8)', () => {
     const f = failing(input([hotel2Confirmation(), dispute('entry')], hotel2Ledger({ closeTime: after, dispute: true, balance: '422' })))
     expect(f).toContain('N4')
-    expect(f).toContain('N5')
+    expect(f).toContain('N8')
   })
   it('ignores a dispute Credential with no dispute attestation', () => {
     expect(failing(input([hotel2Confirmation()], hotel2Ledger({ closeTime: after, dispute: true, balance: '412' })))).toEqual([])
@@ -138,7 +138,7 @@ describe('hotel@2 — default.noshow', () => {
 describe('hotel@2 — default.release', () => {
   const tx = hotel2Close([{ to: hotel, value: '409.94' }, { to: fee, value: '2.06' }, { to: guest, value: '150' }], { tickets: true, memos: basis('default.release') })
   const input = (extra: ReturnType<typeof claim>[] = [], balance = '562') => ({
-    stage: 'default.release', proposedTx: tx, statements: [hotel2Confirmation(), checkin('checked_in'), ...extra], ledger: hotel2Ledger({ balance }),
+    stage: 'default.release', proposedTx: tx, statements: [hotel2Confirmation(), checkin('checked_in'), guestCheckin(), ...extra], ledger: hotel2Ledger({ balance }),
   })
   it('releases room to the hotel and the deposit to the guest after the window', () => {
     expect(failing(input())).toEqual([])
@@ -146,11 +146,11 @@ describe('hotel@2 — default.release', () => {
   it('refuses while a claim is posted (L5)', () => {
     expect(failing(input([claim([{ kind: 'minibar', amount: '58.00' }])]))).toEqual(['L5'])
   })
-  it('refuses when stray RLUSD changed the balance (L3)', () => {
-    expect(failing(input([], '563'))).toContain('L3')
+  it('refuses a fixed-deposit release that would leave stray RLUSD behind (L6; the sweep variant returns it)', () => {
+    expect(failing(input([], '563'))).toContain('L6')
   })
   it('refuses while a guest dispute is open (L2)', () => {
-    // room + deposit + 10.00 bond; the bond also trips the exact-balance locks (L3, B7, B11)
+    // room + deposit + 10.00 bond; this fixed-deposit release would also strand the bond (L6, B7, B11)
     const i = { ...input([dispute('settlement')]), ledger: hotel2Ledger({ balance: '572', dispute: true }) }
     expect(failing(i)).toContain('L2')
   })
@@ -159,6 +159,36 @@ describe('hotel@2 — default.release', () => {
     expect(failing(input([second]))).toEqual([])
     const tx100 = hotel2Close([{ to: hotel, value: '459.69' }, { to: fee, value: '2.31' }, { to: guest, value: '100' }], { tickets: true, memos: basis('default.release') })
     expect(failing({ ...input([second]), proposedTx: tx100 })).toContain('L6')
+  })
+  describe('an unanswered claim lapses when the arbiter is silent too (R6)', () => {
+    // disputeWindowEnds 11-17T11:00 + rulingWindow 5 days → the claim blocks the release until 11-22T11:00 (inclusive)
+    const posted = claim([{ kind: 'minibar', amount: '58.00' }])
+    const at = (closeTime: string, extra: Statement[] = [], engagement = hotel2Engagement()) => ({ ...input([posted, ...extra]), engagement, ledger: hotel2Ledger({ balance: '562', closeTime }) })
+    it('blocks the release up to and at disputeWindowEnds + rulingWindow; the release signs 1 s later', () => {
+      expect(failing(at('2026-11-17T11:00:01Z'))).toEqual(['L5'])
+      expect(failing(at('2026-11-22T11:00:00Z'))).toEqual(['L5'])
+      expect(failing(at('2026-11-22T11:00:01Z'))).toEqual([])
+    })
+    it('a receipted arbiter ruling keeps blocking it, for good', () => {
+      expect(failing(at('2026-11-22T11:00:01Z', [ruling(W.arbiter, [{ to: hotel, value: '470.00' }], '2026-11-20T09:00:00Z')]))).toEqual(['L5'])
+      expect(failing(at('2027-03-01T00:00:00Z', [ruling(W.arbiter, [{ to: hotel, value: '470.00' }], '2026-11-20T09:00:00Z')]))).toEqual(['L5'])
+    })
+    it('a ruling by someone other than the arbiter does not count', () => {
+      expect(failing(at('2026-11-22T11:00:01Z', [ruling(W.atlas, [{ to: hotel, value: '470.00' }], '2026-11-20T09:00:00Z')]))).toEqual([])
+    })
+    it('only an open (bonded) dispute keeps it blocked; an unbonded dispute statement does not (R9)', () => {
+      expect(failing(at('2026-11-22T11:00:01Z', [dispute('settlement')]))).toEqual([])
+      const bonded = { ...at('2026-11-22T11:00:01Z', [dispute('settlement')]), ledger: hotel2Ledger({ balance: '572', dispute: true, closeTime: '2026-11-22T11:00:01Z' }) }
+      expect(failing(bonded)).toContain('L5')
+    })
+    it('a ruling dated before the claim does not keep it blocked (R11)', () => {
+      expect(failing(at('2026-11-22T11:00:01Z', [ruling(W.arbiter, [{ to: hotel, value: '470.00' }], '2026-11-14T14:59:59Z')]))).toEqual([])
+    })
+    it('uses the deal\'s pinned ruling window (3 days → lapses after 11-20T11:00)', () => {
+      const engagement = hotel2Engagement({ terms: { nights: 3, nightly: '137.333333', rulingWindow: '259200s' } })
+      expect(failing(at('2026-11-20T11:00:00Z', [], engagement))).toEqual(['L5'])
+      expect(failing(at('2026-11-20T11:00:01Z', [], engagement))).toEqual([])
+    })
   })
   it('acts strictly after disputeWindowEnds: refuses exactly at it, signs 1 s later (L1)', () => {
     expect(failing({ ...input(), ledger: hotel2Ledger({ balance: '562', closeTime: '2026-11-17T11:00:00Z' }) })).toEqual(['L1'])
@@ -170,12 +200,11 @@ describe('hotel@2 — an entry dispute survives a later checked_in (R29)', () =>
   // Entry dispute with bond, no deposit (balance 412 + 10). A checked_in posted after it must not lift the
   // disputeOpen threshold by the deposit (it is not on the ledger), so the dispute keeps counting.
   const ledger = (closeTime: string) => hotel2Ledger({ balance: '422', dispute: true, closeTime })
-  it('backup arbiter can still rule on the entry dispute', () => {
-    const payouts = [{ to: guest, value: '422' }]
+  it('the entry chargeback still fires on it once the arbiter misses its deadline', () => {
     const d = dispute('entry')
     expect(failing({
-      stage: 'ruling.backup', proposedTx: hotel2Close(payouts, { memos: basis('ruling.backup') }),
-      statements: [hotel2Confirmation(), d, checkinAt('checked_in', '2026-11-11T21:00:00Z'), ruling(W.backupArbiter, payouts)],
+      stage: 'default.chargebackEntry', proposedTx: hotel2Close([{ to: guest, value: '0', partial: true }], { tickets: true, memos: basis('default.chargebackEntry') }),
+      statements: [hotel2Confirmation(), d, checkinAt('checked_in', '2026-11-11T21:00:00Z')],
       ledger: ledger('2026-11-21T00:00:00Z'),
     })).toEqual([])
   })
@@ -189,59 +218,151 @@ describe('hotel@2 — an entry dispute survives a later checked_in (R29)', () =>
   })
 })
 
-describe('hotel@2 — ruling.backup', () => {
-  // settlement dispute posted 2026-11-16T10:00:00Z; rulingWindow 432000 s → backup may act after 2026-11-21T10:00:00Z
-  const payouts = [{ to: hotel, value: '467.65' }, { to: fee, value: '2.35' }, { to: guest, value: '102.00' }]
-  const tx = hotel2Close(payouts, { memos: basis('ruling.backup') })
-  const input = (closeTime: string, extra: Statement[] = [], disputes = [dispute('settlement')], proposedTx = tx, backup = payouts, rulingAt?: string) => ({
-    stage: 'ruling.backup',
-    proposedTx,
-    statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'minibar', amount: '58.00' }]), ...disputes, ruling(W.backupArbiter, backup, rulingAt), ...extra],
-    ledger: hotel2Ledger({ balance: '572', dispute: true, closeTime }),
-  })
-  it('refuses 1 s before the ruling window elapses (U1)', () => {
-    expect(failing(input('2026-11-21T09:59:59Z'))).toEqual(['U1'])
-  })
-  it('refuses exactly at the end of the ruling window (U1)', () => {
-    expect(failing(input('2026-11-21T10:00:00Z'))).toEqual(['U1'])
-  })
-  it('signs after the window when the tx matches the backup ruling', () => {
-    expect(failing(input('2026-11-21T10:00:01Z'))).toEqual([])
-  })
-  it('refuses when the primary arbiter has ruled (U2)', () => {
-    expect(failing(input('2026-11-21T10:00:01Z', [ruling(W.arbiter, payouts)]))).toEqual(['U2'])
-  })
-  it('floors a backdated dispute at deliveryBy, so the backup cannot rule right after filing (U1)', () => {
-    // filed 11-16T10:00 but issuedAt backdated to 11-02; backup ruling signed a minute after filing
-    expect(failing(input('2026-11-16T10:05:00Z', [], [dispute('settlement', '2026-11-02T00:00:00Z')], tx, payouts, '2026-11-16T10:01:00Z'))).toEqual(['U1'])
-  })
-  it('times a settlement dispute from its own filing, not an older entry-phase attestation (U1)', () => {
-    // the entry attestation (11-11T20:00) alone would make the window end 11-16T20:00
-    expect(failing(input('2026-11-17T00:00:00Z', [], [dispute('entry'), dispute('settlement')], tx, payouts, '2026-11-16T10:01:00Z'))).toEqual(['U1'])
-  })
-  it('refuses a tx with an extra payee not in the ruling (U4)', () => {
-    const extra = hotel2Close([{ to: hotel, value: '467.65' }, { to: fee, value: '2.35' }, { to: guest, value: '101.00' }, { to: W.arbiter.address, value: '1.00' }], { memos: basis('ruling.backup') })
-    expect(failing(input('2026-11-21T10:00:01Z', [], undefined, extra))).toContain('U4')
-  })
-  it('refuses a ruling that names a payee twice (U4)', () => {
-    const t = hotel2Close([{ to: hotel, value: '467.65' }, { to: fee, value: '2.35' }, { to: guest, value: '102.00' }], { memos: basis('ruling.backup') })
-    const dup = [{ to: hotel, value: '467.65' }, { to: hotel, value: '0' }, { to: guest, value: '102.00' }]
-    expect(failing(input('2026-11-21T10:00:01Z', [], undefined, t, dup))).toEqual(['U4'])
-  })
-  it('refuses a ruling whose fee is not 50 bps of what the hotel receives (U6)', () => {
-    const noFee = [{ to: hotel, value: '470.00' }, { to: guest, value: '102.00' }]
-    expect(failing(input('2026-11-21T10:00:01Z', [], undefined, hotel2Close(noFee, { memos: basis('ruling.backup') }), noFee))).toEqual(['U6'])
-  })
-  it('claim-only branch: acts strictly after disputeWindowEnds + rulingWindow (U1)', () => {
-    const cp = [{ to: hotel, value: '467.65' }, { to: fee, value: '2.35' }, { to: guest, value: '92.00' }]
-    const at = (closeTime: string) => ({
-      stage: 'ruling.backup',
-      proposedTx: hotel2Close(cp, { memos: basis('ruling.backup') }),
-      statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'minibar', amount: '58.00' }]), ruling(W.backupArbiter, cp)],
-      ledger: hotel2Ledger({ balance: '562', closeTime }),
+describe('hotel@2 — chargeback-style defaults when the arbiter misses its ruling deadline', () => {
+  const sweep = { to: guest, value: '0', partial: true }
+  const cb = (stage: string, payouts: Array<{ to: string; value: string; partial?: boolean }>) => hotel2Close(payouts, { tickets: true, memos: basis(stage) })
+  const arbiterRuled = (at = '2026-11-14T09:00:00Z') => ruling(W.arbiter, [{ to: guest, value: '1.00' }], at)
+
+  describe('default.chargebackEntry', () => {
+    // entry dispute filed 11-11T20:00 (after the scheduled check-in 14:00); rulingWindow 5 days → due after 11-16T20:00
+    const tx = cb('default.chargebackEntry', [sweep])
+    const input = (closeTime: string, extra: Statement[] = [], o: { disputes?: Statement[]; balance?: string; open?: boolean; proposedTx?: Record<string, unknown>; engagement?: ReturnType<typeof hotel2Engagement> } = {}) => ({
+      stage: 'default.chargebackEntry', proposedTx: o.proposedTx ?? tx,
+      ...(o.engagement ? { engagement: o.engagement } : {}),
+      statements: [hotel2Confirmation(), ...(o.disputes ?? [dispute('entry')]), ...extra],
+      ledger: hotel2Ledger({ balance: o.balance ?? '422', dispute: o.open ?? true, closeTime }),
     })
-    expect(failing(at('2026-11-22T11:00:00Z'))).toEqual(['U1'])
-    expect(failing(at('2026-11-22T11:00:01Z'))).toEqual([])
+    it('bonded entry dispute, deadline passed, no ruling: everything (room + bond) goes to the guest', () => {
+      expect(failing(input('2026-11-16T20:00:01Z'))).toEqual([])
+    })
+    it('refuses 1 s before the deadline and exactly at it (E1)', () => {
+      expect(failing(input('2026-11-16T19:59:59Z'))).toEqual(['E1'])
+      expect(failing(input('2026-11-16T20:00:00Z'))).toEqual(['E1'])
+    })
+    it('refuses for good once the arbiter\'s ruling is receipted (E2), even long after the deadline', () => {
+      expect(failing(input('2026-11-16T20:00:01Z', [arbiterRuled()]))).toEqual(['E2'])
+      expect(failing(input('2027-03-01T00:00:00Z', [arbiterRuled()]))).toEqual(['E2'])
+    })
+    it('refuses with no dispute open (E1)', () => {
+      expect(failing(input('2026-11-16T20:00:01Z', [], { disputes: [], balance: '412', open: false }))).toEqual(['E1'])
+    })
+    it('refuses for a stay dispute (E1)', () => {
+      expect(failing(input('2026-11-21T20:00:01Z', [checkin('checked_in'), guestCheckin()], { disputes: [dispute('stay')], balance: '572' }))).toContain('E1')
+    })
+    it('refuses when more than one dispute is on file: ambiguous, the arbiter decides (E1)', () => {
+      expect(failing(input('2026-11-21T20:00:01Z', [], { disputes: [dispute('entry'), dispute('entry', '2026-11-11T21:00:00Z')] }))).toEqual(['E1'])
+    })
+    it('an unconfirmed booking never gets the entry chargeback: that is the refund\'s case (E1, R7)', () => {
+      const i = input('2026-11-16T20:00:01Z')
+      expect(failing({ ...i, statements: i.statements.filter((x) => x.type !== 'party.confirmation/1') })).toEqual(['E1'])
+    })
+    it('an entry dispute resolves to the entry chargeback whatever the balance: a deposit paid in later changes nothing (R15)', () => {
+      // entry dispute 11-11T20:00, the hotel's checked_in 21:00; at the deadline the account holds 422, or 572 with a deposit
+      // 562 / 565: a partial top-up would lift a deposit-inclusive bond threshold out of reach; for an entry dispute it is room + bond (R18)
+      for (const balance of ['422', '562', '565', '572']) {
+        expect(failing(input('2026-11-16T20:00:01Z', [checkinAt('checked_in', '2026-11-11T21:00:00Z')], { balance }))).toEqual([])
+      }
+    })
+    it('a fixed payment that leaves the bond behind is refused (E4)', () => {
+      expect(failing(input('2026-11-16T20:00:01Z', [], { proposedTx: cb('default.chargebackEntry', [{ to: guest, value: '412' }]) }))).toContain('E4')
+    })
+    it('uses the deal\'s pinned ruling window when the record has one (3 days → due after 11-14T20:00)', () => {
+      const engagement = hotel2Engagement({ terms: { nights: 3, nightly: '137.333333', rulingWindow: '259200s' } })
+      expect(failing(input('2026-11-14T20:00:00Z', [], { engagement }))).toEqual(['E1'])
+      expect(failing(input('2026-11-14T20:00:01Z', [], { engagement }))).toEqual([])
+    })
+  })
+
+  describe('default.chargebackClaim', () => {
+    // settlement dispute filed 11-16T10:00 (after checkout 11-14T11:00) → due after 11-21T10:00
+    const roomToHotel = [{ to: hotel, value: '409.94' }, { to: fee, value: '2.06' }]
+    const tx = cb('default.chargebackClaim', [...roomToHotel, sweep])
+    const input = (closeTime: string, extra: Statement[] = [], o: { disputes?: Statement[]; balance?: string; open?: boolean; proposedTx?: Record<string, unknown> } = {}) => ({
+      stage: 'default.chargebackClaim', proposedTx: o.proposedTx ?? tx,
+      statements: [hotel2Confirmation(), checkin('checked_in'), guestCheckin(), claim([{ kind: 'minibar', amount: '58.00' }]), ...(o.disputes ?? [dispute('settlement')]), ...extra],
+      ledger: hotel2Ledger({ balance: o.balance ?? '572', dispute: o.open ?? true, closeTime }),
+    })
+    it('settlement dispute past the deadline: room to the hotel (less fee), the claim ignored, deposit + bond to the guest', () => {
+      expect(failing(input('2026-11-21T10:00:01Z'))).toEqual([])
+    })
+    it('refuses 1 s before the deadline (G1)', () => {
+      expect(failing(input('2026-11-21T09:59:59Z'))).toEqual(['G1'])
+    })
+    it('refuses a hotel leg 1 short of the room (G4)', () => {
+      expect(failing(input('2026-11-21T10:00:01Z', [], { proposedTx: cb('default.chargebackClaim', [{ to: hotel, value: '408.94' }, { to: fee, value: '2.06' }, sweep]) }))).toContain('G4')
+    })
+    it('refuses when the guest leg is not the residual sweep (G5)', () => {
+      const t = cb('default.chargebackClaim', [{ to: hotel, value: '0', partial: true }, { to: fee, value: '2.06' }, { to: guest, value: '160' }])
+      expect(failing(input('2026-11-21T10:00:01Z', [], { proposedTx: t }))).toEqual(['G5'])
+    })
+    it('refuses once the arbiter\'s ruling is receipted (G2)', () => {
+      expect(failing(input('2026-11-21T10:00:01Z', [arbiterRuled('2026-11-18T09:00:00Z')]))).toEqual(['G2'])
+    })
+    it('refuses with no dispute open (G1)', () => {
+      expect(failing(input('2026-11-21T10:00:01Z', [], { disputes: [], balance: '562', open: false }))).toContain('G1')
+    })
+    it('an entry dispute never opens the claim chargeback, even with the guest checked in and the deposit in (G1, R15)', () => {
+      expect(failing(input('2026-11-21T10:00:01Z', [], { disputes: [dispute('entry')] }))).toEqual(['G1'])
+    })
+    it('an entry dispute by a guest not checked in (no deposit) stays on the entry track (G1)', () => {
+      expect(failing(input('2026-11-21T10:00:01Z', [], { disputes: [dispute('entry')], balance: '422' }))).toContain('G1')
+    })
+    it('a ruling dated before the dispute opened does not block it (R11)', () => {
+      expect(failing(input('2026-11-21T10:00:01Z', [arbiterRuled('2026-11-16T09:59:59Z')]))).toEqual([])
+      expect(failing(input('2026-11-21T10:00:01Z', [arbiterRuled('2026-11-16T10:00:00Z')]))).toEqual(['G2'])
+    })
+  })
+
+  describe('default.chargebackStay (per-night variants)', () => {
+    // 3-night deal, room 400, nightly 133.33; scheduled check-in 11-11T14:00 → night 1 [11-11T14:00, 11-12T14:00),
+    // night 2 [11-12T14:00, 11-13T14:00), night 3 from 11-13T14:00. Balance = room 400 + deposit 150 + bond 10.
+    const engagement = (nights = 3, nightly = '133.33') => hotel2Engagement({ amount: { asset: 'RLUSD', value: '400.00' }, terms: { nights, nightly } })
+    const variant = (merchant: string, f: string) => cb('default.chargebackStay', [{ to: hotel, value: merchant }, { to: fee, value: f }, sweep])
+    const night1 = variant('132.66335', '0.66665') // 133.33 less 0.5%
+    const night2 = variant('265.3267', '1.3333') // 266.66 less 0.5%
+    const night3 = variant('397.99005', '1.99995') // 399.99: no such variant exists (the last night uses the claim chargeback)
+    const claimTx = cb('default.chargebackClaim', [{ to: hotel, value: '398.00' }, { to: fee, value: '2.00' }, sweep])
+    const input = (disputeAt: string | null, proposedTx: Record<string, unknown> = night1, o: { nights?: number; nightly?: string; extra?: Statement[]; stage?: string; checkedIn?: boolean } = {}) => ({
+      stage: o.stage ?? 'default.chargebackStay', proposedTx, engagement: engagement(o.nights, o.nightly),
+      statements: [hotel2Confirmation({ total: '400.00' }), ...(o.checkedIn === false ? [] : [checkin('checked_in'), guestCheckin()]), ...(disputeAt ? [dispute('stay', disputeAt)] : []), ...(o.extra ?? [])],
+      ledger: hotel2Ledger({ balance: disputeAt ? '560' : '550', dispute: disputeAt != null, closeTime: '2026-11-20T00:00:00Z' }),
+    })
+    it('dispute in night 1: the night-1 variant pays the hotel 133.33 (less fee), the rest to the guest', () => {
+      expect(failing(input('2026-11-11T20:00:00Z'))).toEqual([])
+    })
+    it('the same blob with the dispute in night 2 is refused (Y4); the night-2 variant signs', () => {
+      expect(failing(input('2026-11-12T20:00:00Z'))).toContain('Y4')
+      expect(failing(input('2026-11-12T20:00:00Z', night2))).toEqual([])
+    })
+    it('a dispute exactly at a night boundary counts in the night that has begun', () => {
+      expect(failing(input('2026-11-12T13:59:59Z'))).toEqual([])
+      expect(failing(input('2026-11-12T14:00:00Z'))).toContain('Y4')
+      expect(failing(input('2026-11-12T14:00:00Z', night2))).toEqual([])
+    })
+    it('dispute in the last night: no stay variant applies (Y1); the claim chargeback pays the whole room', () => {
+      expect(failing(input('2026-11-13T15:00:00Z', night3))).toEqual(['Y1'])
+      expect(failing(input('2026-11-13T15:00:00Z', night2))).toContain('Y1')
+      expect(failing(input('2026-11-13T15:00:00Z', claimTx, { stage: 'default.chargebackClaim' }))).toEqual([])
+    })
+    it('a mid-stay dispute does not open the claim chargeback (G1)', () => {
+      expect(failing(input('2026-11-11T20:00:00Z', claimTx, { stage: 'default.chargebackClaim' }))).toEqual(['G1'])
+    })
+    it('stays over 14 nights get no stay variants (Y1); 14 nights do', () => {
+      expect(failing(input('2026-11-11T20:00:00Z', variant('26.5267', '0.1333'), { nights: 15, nightly: '26.66' }))).toEqual(['Y1'])
+      expect(failing(input('2026-11-11T20:00:00Z', variant('28.42715', '0.14285'), { nights: 14, nightly: '28.57' }))).toEqual([])
+    })
+    it('refuses once the arbiter\'s ruling is receipted (Y2)', () => {
+      expect(failing(input('2026-11-11T20:00:00Z', night1, { extra: [arbiterRuled('2026-11-13T09:00:00Z')] }))).toEqual(['Y2'])
+    })
+    it('refuses with no dispute open (Y1)', () => {
+      expect(failing(input(null))).toContain('Y1')
+    })
+    it('refuses a stay dispute with no recorded check-in (Y1)', () => {
+      expect(failing(input('2026-11-11T20:00:00Z', night1, { checkedIn: false }))).toContain('Y1')
+    })
+    it('refuses before the deadline (Y1)', () => {
+      expect(failing({ ...input('2026-11-11T20:00:00Z'), ledger: hotel2Ledger({ balance: '560', dispute: true, closeTime: '2026-11-16T20:00:00Z' }) })).toEqual(['Y1'])
+    })
   })
 })
 
@@ -249,7 +370,7 @@ describe('hotel@2 — ruling.default (advisory)', () => {
   const tx = hotel2Close([{ to: hotel, value: '467.65' }, { to: fee, value: '2.35' }, { to: guest, value: '92.00' }], { memos: basis('ruling.default') })
   const input = (amount: string) => ({
     stage: 'ruling.default', proposedTx: tx,
-    statements: [hotel2Confirmation(), checkin('checked_in'), claim([{ kind: 'damage', amount }])],
+    statements: [hotel2Confirmation(), checkin('checked_in'), guestCheckin(), claim([{ kind: 'damage', amount }])],
     ledger: hotel2Ledger({ balance: '562' }),
   })
   it('records an unanswered claim paid exactly after the window', () => {
@@ -260,5 +381,211 @@ describe('hotel@2 — ruling.default (advisory)', () => {
   })
   it('flags payouts that do not match the claim (D5)', () => {
     expect(failing(input('50.00'))).toEqual(['D5'])
+  })
+})
+
+describe('hotel@2 — automatic endings return extra money to the guest (residual sweep)', () => {
+  // Room 412, confirmed deposit 150. A sweep is a tfPartialPayment to the guest whose amount the engine resolves
+  // from the ledger balance (whatever is left after the fixed payouts).
+  const sweep = { to: guest, value: '0', partial: true }
+  const roomToHotel = [{ to: hotel, value: '409.94' }, { to: fee, value: '2.06' }]
+  const refundSweep = hotel2Close([sweep], { tickets: true, memos: basis('default.refund') })
+  const refundExact = hotel2Close([{ to: guest, value: '412' }], { tickets: true, memos: basis('default.refund') })
+  const noshowExact = hotel2Close(roomToHotel, { tickets: true, memos: basis('default.noshow') })
+  const noshowSweep = hotel2Close([...roomToHotel, sweep], { tickets: true, memos: basis('default.noshow') })
+  const releaseSweep = hotel2Close([...roomToHotel, sweep], { tickets: true, memos: basis('default.release') })
+  const releaseExact = hotel2Close([...roomToHotel, { to: guest, value: '150' }], { tickets: true, memos: basis('default.release') })
+  const afterConfirmBy = '2026-11-01T11:00:01Z'
+  const afterEntry = '2026-11-12T11:00:01Z'
+  const refused = checkinAt('refused', '2026-11-11T15:05:00Z')
+  const result = (i: Parameters<typeof hotel2Input>[0], id: string) => decide(hotel2Input(i)).results.find((r) => r.id === id)
+
+  describe('default.refund', () => {
+    it('stray 1 RLUSD on an unconfirmed booking: the refund signs and returns room + 1 to the guest', () => {
+      expect(failing({ stage: 'default.refund', proposedTx: refundSweep, ledger: hotel2Ledger({ balance: '413', closeTime: afterConfirmBy }) })).toEqual([])
+    })
+    it('with no extra money the sweep still delivers the whole room price', () => {
+      expect(failing({ stage: 'default.refund', proposedTx: refundSweep, ledger: hotel2Ledger({ closeTime: afterConfirmBy }) })).toEqual([])
+    })
+    it('a fixed-amount refund that would leave the extra behind is refused (R4)', () => {
+      expect(failing({ stage: 'default.refund', proposedTx: refundExact, ledger: hotel2Ledger({ balance: '413', closeTime: afterConfirmBy }) })).toEqual(['B7', 'B11', 'R4'])
+    })
+    it('still refuses when less than the room price is in the account (R2)', () => {
+      expect(failing({ stage: 'default.refund', proposedTx: refundSweep, ledger: hotel2Ledger({ balance: '400', closeTime: afterConfirmBy }) })).toContain('R2')
+    })
+  })
+
+  describe('default.noshow', () => {
+    const at = (proposedTx: Record<string, unknown>, balance: string, statements: Statement[] = [hotel2Confirmation(), refused], dispute = false) =>
+      ({ stage: 'default.noshow', proposedTx, statements, ledger: hotel2Ledger({ balance, dispute, closeTime: afterEntry }) })
+    it('partial deposit (40) + refused check-in: the sweep variant pays the hotel the room less fee and returns the 40 to the guest', () => {
+      expect(failing(at(noshowSweep, '452'))).toEqual([])
+    })
+    it('partial deposit + refused check-in: the exact variant is refused (N8; it would also strand the deposit, B7/B11)', () => {
+      expect(failing(at(noshowExact, '452'))).toEqual(['B7', 'B11', 'N8'])
+    })
+    it('a checked-in guest with the full deposit cannot be no-showed, even with a later refused statement (N3)', () => {
+      expect(failing(at(noshowSweep, '562', [hotel2Confirmation(), checkin('checked_in'), guestCheckin(), refused]))).toEqual(['N3'])
+    })
+    it('a hotel-only checked_in with only a partial deposit is not a stay: the sweep no-show returns the partial deposit', () => {
+      expect(failing(at(noshowSweep, '452', [hotel2Confirmation(), checkin('checked_in'), guestCheckin()]))).toEqual([])
+    })
+    it('a refused check-in with no deposit at all: the exact no-show signs', () => {
+      expect(failing(at(noshowExact, '412'))).toEqual([])
+    })
+    it('no extra money: the exact variant signs', () => {
+      expect(failing(at(noshowExact, '412', [hotel2Confirmation()]))).toEqual([])
+    })
+    it('no extra money: the sweep variant is refused because the sweep would deliver nothing (B11, N8)', () => {
+      expect(failing(at(noshowSweep, '412', [hotel2Confirmation()]))).toEqual(['B11', 'N8'])
+      expect(result({ ...at(noshowSweep, '412', [hotel2Confirmation()]) }, 'B11')).toMatchObject({ result: 'fail', reason: 'WOULD_FAIL' })
+    })
+    it('an unopened "bond" (no Credential, no dispute statement) is just extra money: it goes back to the guest', () => {
+      expect(failing(at(noshowSweep, '422', [hotel2Confirmation()]))).toEqual([])
+    })
+    it('an open entry dispute still blocks both variants (N4)', () => {
+      expect(failing(at(noshowSweep, '422', [hotel2Confirmation(), dispute('entry')], true))).toEqual(['N4'])
+      expect(failing(at(noshowExact, '422', [hotel2Confirmation(), dispute('entry')], true))).toContain('N4')
+    })
+    it('the guest who checked in with the full deposit is still not a no-show (N3)', () => {
+      expect(failing(at(noshowSweep, '562', [hotel2Confirmation(), checkin('checked_in'), guestCheckin()]))).toEqual(['N3'])
+    })
+    it('the hotel is paid the room only: a sweep variant that takes more than the room is refused (N8)', () => {
+      const greedy = hotel2Close([{ to: hotel, value: '449.74' }, { to: fee, value: '2.26' }, sweep], { tickets: true, memos: basis('default.noshow') })
+      expect(failing(at(greedy, '462'))).toContain('N8')
+    })
+  })
+
+  describe('default.release', () => {
+    const at = (proposedTx: Record<string, unknown>, balance: string, extra: Statement[] = [], dispute = false) =>
+      ({ stage: 'default.release', proposedTx, statements: [hotel2Confirmation(), checkin('checked_in'), guestCheckin(), ...extra], ledger: hotel2Ledger({ balance, dispute }) })
+    it('stray RLUSD after a normal stay: the release signs, the guest gets deposit + extra', () => {
+      expect(failing(at(releaseSweep, '563'))).toEqual([])
+    })
+    it('with no extra money the sweep returns exactly the deposit', () => {
+      expect(failing(at(releaseSweep, '562'))).toEqual([])
+    })
+    it('a fixed-deposit release that would leave the extra behind is refused (L6)', () => {
+      expect(failing(at(releaseExact, '563'))).toEqual(['B7', 'B11', 'L6'])
+    })
+    it('an open settlement dispute still blocks it (L2)', () => {
+      expect(failing(at(releaseSweep, '572', [dispute('settlement')], true))).toEqual(['L2'])
+    })
+    it('a posted claim still blocks it (L5)', () => {
+      expect(failing(at(releaseSweep, '563', [claim([{ kind: 'minibar', amount: '58.00' }])]))).toEqual(['L5'])
+    })
+  })
+})
+
+describe('hotel@2 — R21: a dispute\'s bond threshold is fixed by its phase, so no top-up opens or closes it', () => {
+  const roomToHotel = [{ to: hotel, value: '409.94' }, { to: fee, value: '2.06' }]
+  const sweep = { to: guest, value: '0', partial: true }
+  const tx = (b: string) => hotel2Close([...roomToHotel, sweep], { tickets: true, memos: basis(b) })
+  const after = '2026-11-17T11:00:01Z' // past entryDisputeBy and disputeWindowEnds
+  const at = (stage: string, statements: Statement[], balance: string) => ({ stage, proposedTx: tx(stage), statements: [hotel2Confirmation(), ...statements], ledger: hotel2Ledger({ balance, dispute: true, closeTime: after }) })
+
+  it('a stay or settlement dispute needs room + deposit + bond (572) even when the guest is not checked in: at 500 it is not open (N4 passes)', () => {
+    for (const phase of ['stay', 'settlement'] as const) {
+      expect(failing(at('default.noshow', [checkin('checked_in'), guestCheckin(), dispute(phase)], '500'))).toEqual([])
+      expect(failing(at('default.noshow', [dispute(phase)], '571.999999'))).toEqual([])
+    }
+  })
+  it('a stay or settlement dispute, once open, stays open at any higher balance: the release is blocked (L2)', () => {
+    for (const phase of ['stay', 'settlement'] as const) {
+      for (const balance of ['572', '572.000001', '581.999999', '712', '1000']) {
+        expect(failing(at('default.release', [checkin('checked_in'), guestCheckin(), dispute(phase)], balance)), `${phase} at ${balance}`).toEqual(['L2'])
+      }
+    }
+  })
+  it('an entry dispute stays open from room + bond (422) up, checked in or not (N4, L2)', () => {
+    for (const balance of ['422', '561.999999', '562', '572', '1000']) {
+      expect(failing(at('default.noshow', [dispute('entry')], balance))).toContain('N4')
+      expect(failing(at('default.release', [checkin('checked_in'), guestCheckin(), dispute('entry')], balance))).toContain('L2')
+    }
+  })
+})
+
+describe('hotel@2 — B11: a pre-signed ending is refused when a payee cannot receive the token', () => {
+  // A payment the payee cannot accept fails on-ledger, failing the ALLORNOTHING Batch and burning its Tickets (F2).
+  const sweep = { to: guest, value: '0', partial: true }
+  const refund = hotel2Close([sweep], { tickets: true, memos: basis('default.refund') })
+  const release = hotel2Close([{ to: hotel, value: '409.94' }, { to: fee, value: '2.06' }, sweep], { tickets: true, memos: basis('default.release') })
+  type Receive = { depositAuth: boolean; lines: Record<string, { balance: string; limit: string }> }
+  const withPayee = (l: ReturnType<typeof hotel2Ledger>, account: string, receive: Receive | null) => {
+    l.accounts[account] = receive ? { exists: true, receive } : { exists: false }
+    return l
+  }
+  const ok: Receive = { depositAuth: false, lines: { RLUSD: { balance: '0', limit: '1000000' } } }
+  const refundAt = (receive: Receive | null) => ({ stage: 'default.refund', proposedTx: refund, ledger: withPayee(hotel2Ledger({ balance: '413', closeTime: '2026-11-01T11:00:01Z' }), guest, receive) })
+  const b11 = (i: Parameters<typeof hotel2Input>[0]) => decide(hotel2Input(i)).results.find((r) => r.id === 'B11')
+
+  it('signs when the guest can receive (trust line with room, no DepositAuth)', () => {
+    expect(failing(refundAt(ok))).toEqual([])
+  })
+  it('B11: trust-line dust beyond 36 decimals does not block a payee with room', () => {
+    expect(failing(refundAt({ depositAuth: false, lines: { RLUSD: { balance: '1e-50', limit: '1000000' } } }))).toEqual([])
+  })
+  it('refuses when the guest set DepositAuth', () => {
+    expect(failing(refundAt({ ...ok, depositAuth: true }))).toEqual(['B11'])
+    expect(b11(refundAt({ ...ok, depositAuth: true }))).toMatchObject({ result: 'fail', reason: 'WOULD_FAIL' })
+  })
+  it('refuses when the guest has no RLUSD trust line', () => {
+    expect(failing(refundAt({ depositAuth: false, lines: {} }))).toEqual(['B11'])
+  })
+  it('refuses when the guest trust line has no room for the payment (balance + amount > limit)', () => {
+    expect(failing(refundAt({ depositAuth: false, lines: { RLUSD: { balance: '0', limit: '412.999999' } } }))).toEqual(['B11'])
+    expect(failing(refundAt({ depositAuth: false, lines: { RLUSD: { balance: '587', limit: '1000' } } }))).toEqual([])
+    expect(failing(refundAt({ depositAuth: false, lines: { RLUSD: { balance: '588', limit: '1000' } } }))).toEqual(['B11'])
+  })
+  it('refuses when the guest account does not exist', () => {
+    expect(failing(refundAt(null))).toEqual(['B11'])
+  })
+  it('applies to every payee: a hotel that cannot receive blocks the release', () => {
+    const l = withPayee(hotel2Ledger({ balance: '562' }), hotel, { depositAuth: true, lines: { RLUSD: { balance: '0', limit: '1000000' } } })
+    expect(failing({ stage: 'default.release', proposedTx: release, statements: [hotel2Confirmation(), checkin('checked_in'), guestCheckin()], ledger: l })).toEqual(['B11'])
+  })
+  it('a payee the snapshot says nothing about is not assumed blocked', () => {
+    expect(failing({ stage: 'default.refund', proposedTx: refund, ledger: hotel2Ledger({ balance: '413', closeTime: '2026-11-01T11:00:01Z' }) })).toEqual([])
+  })
+})
+
+describe('minorRounded (trust-line values with extra precision)', () => {
+  it('floors and ceils beyond the asset decimals, exact values unchanged', async () => {
+    const { minorRounded } = await import('../src/facts.ts')
+    expect(minorRounded('412.9999999', 6, 'floor')).toBe(412999999n)
+    expect(minorRounded('0.0000001', 6, 'ceil')).toBe(1n)
+    expect(minorRounded('1e-7', 6, 'ceil')).toBe(1n)
+    expect(minorRounded('1000', 6, 'floor')).toBe(1000000000n)
+    expect(minorRounded('9999999999999999e80', 6, 'floor') > 0n).toBe(true)
+  })
+})
+
+describe('hotel@2 — R23: checked in needs the guest\'s own acknowledgement', () => {
+  const roomToHotel = [{ to: hotel, value: '409.94' }, { to: fee, value: '2.06' }]
+  const sweep = { to: guest, value: '0', partial: true }
+  const tx = (b: string, payouts = [...roomToHotel, sweep]) => hotel2Close(payouts, { tickets: true, memos: basis(b) })
+  const hotelOnly = [hotel2Confirmation(), checkin('checked_in')]
+  const at = (stage: string, statements: Statement[], balance: string, closeTime: string, dispute = false, proposedTx: Record<string, unknown> | null = tx(stage)) =>
+    ({ stage, proposedTx, statements, ledger: hotel2Ledger({ balance, dispute, closeTime }) })
+
+  it('the hotel\'s checked_in with the deposit in (even paid by the hotel) is not a check-in without the guest: K1', () => {
+    expect(failing(at('checkin', hotelOnly, '562', '2026-11-11T16:00:00Z', false, null))).toEqual(['K1'])
+    expect(failing(at('checkin', [...hotelOnly, guestCheckin()], '562', '2026-11-11T16:00:00Z', false, null))).toEqual([])
+  })
+  it('the guest\'s acknowledgement alone (no hotel checked_in) is not a check-in either: K1', () => {
+    expect(failing(at('checkin', [hotel2Confirmation(), guestCheckin()], '562', '2026-11-11T16:00:00Z', false, null))).toEqual(['K1'])
+  })
+  it('no acknowledgement: the release never applies (L1); the no-show does (room to the hotel, deposit swept back)', () => {
+    expect(failing(at('default.release', hotelOnly, '562', '2026-11-17T11:00:01Z'))).toEqual(['L1'])
+    expect(failing(at('default.noshow', hotelOnly, '562', '2026-11-12T11:00:01Z'))).toEqual([])
+    expect(failing(at('default.noshow', [...hotelOnly, guestCheckin()], '562', '2026-11-12T11:00:01Z'))).toEqual(['N3'])
+  })
+  it('no acknowledgement: an entry dispute (hotel-paid deposit + bond = 572) still gets the entry chargeback; the claim chargeback does not apply (G1)', () => {
+    const d = [...hotelOnly, dispute('entry', '2026-11-11T15:29:30Z')]
+    expect(failing(at('default.chargebackEntry', d, '572', '2026-11-16T15:29:31Z', true, tx('default.chargebackEntry', [sweep])))).toEqual([])
+    expect(failing(at('default.chargebackClaim', d, '572', '2026-11-21T10:00:01Z', true))).toContain('G1')
+  })
+  it('a stay or settlement dispute by a guest who never acknowledged opens no stay/claim chargeback (Y1, G1)', () => {
+    expect(failing(at('default.chargebackClaim', [...hotelOnly, dispute('settlement')], '572', '2026-11-21T10:00:01Z', true))).toContain('G1')
   })
 })

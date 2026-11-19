@@ -173,7 +173,7 @@ async function main() {
     attesters: { approver: { accounts: [controller.address] }, vendor: { accounts: [vendorA.address, vendorB.address] } },
     deleteTo: service.address, state: 'OPEN', consumed: [], policyLayers: [layerHash(policy)], mandateId: mandate.id,
   }
-  svc.register(engagement, mandate)
+  await svc.register(engagement, mandate)
   log(`co-signer ${cosigner.address} registered ${ENG_ID} (W7 x402-challenge binding active)`)
 
   // ── An in-process x402 merchant selling RESOURCE for 800 RLUSD, paid to vendor A ──
