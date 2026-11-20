@@ -232,7 +232,7 @@ ruling → backup). A claim leaves no ledger trace, so "posted" must be defined,
   would deliver nothing, so B11 refuses it and the stay must be settled by agreement or ruling.
 - The co-signer stores the pre-signed blobs (guest + hotel signatures) in the engagement record and exposes a `tick(now)`
   that completes and returns any default whose conditions hold at a pinned validated ledger. Submission is the caller's job
-  (the demo, or a future keeper).
+  (the demo, or the co-signer's tick scheduler, added later).
 
 ### 5.5 Entry disputes (end the deal immediately)
 
