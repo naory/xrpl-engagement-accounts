@@ -17,7 +17,6 @@ This file tracks what's next, highest-leverage first.
    the signer address; a signer's own master key is refused under `lsfDisableMaster` even if its
    `RegularKey` equals its address), from the t54 review. Feeds the upstream amendment's conformance
    set.
-4. **Persistent co-signer state:** registrations, in-flight counters, receipts and pre-signed defaults are in memory; a restart drops them. Needs a store, restart tests and a tick scheduler.
 
 Demo and agent tooling:
 
@@ -52,7 +51,7 @@ Automatic endings in `hotel@2` return extra funds to the guest (`default.noshowS
 
 Known limits of this vertical:
 
-- **In-memory state.** Receipts and pre-signed defaults are maps on the engagement (`packages/cosigner/src/service.ts`). Open item: persistent co-signer state, under Next.
+- **Single-writer store.** Co-signer state is durable in SQLite (one writer, enforced by a lease). Running several co-signer hosts needs the Postgres store, see [README §7](README.md#7-policy-co-signer).
 - **Accreditation issuer is a placeholder.** `pol_hotel@2.0.0` sets `arbiterIssuers` to `rArbiterAccreditorPlaceholderXXXXXX`. The chargeback design assumes that issuer is the engagement service. Recognising outside bodies remains an assumption.
 - **A lapsed arbiter is not replaced.** The backup arbiter is gone and a SignerList change needs quorum, so a deal whose accreditation lapses mid-stay cannot swap arbiters. Chargeback defaults cover silence only.
 - **Chargeback parameters.** Ruling window, split, 14-night cap and bond return are demo assumptions pending a real business.
@@ -67,6 +66,8 @@ The same label is in [`docs/SCOPE.md`](docs/SCOPE.md#product-status).
   [README §14](README.md#14-future-research), [docs/research/cosign.md](docs/research/cosign.md).
 
 ## Done (recent)
+
+- **Durable co-signer state, restart tests and a tick scheduler (T10–T12).** The co-signer keeps registrations, receipts, pre-signed defaults, in-flight payments and the decision log in a `StateStore` (SQLite by default in the server, in-memory for tests), restores them on boot, quarantines an engagement whose policy library changed, and rejects a second writer. Kill-and-restart tests cover disputes, rulings and in-flight spends. `COSIGNER_TICK_MS` runs `tick()` on a schedule. Postgres is a documented upgrade path — [README §7](README.md#7-policy-co-signer).
 
 Hotel entries below are [Research](#research). No new hotel features are merged.
 

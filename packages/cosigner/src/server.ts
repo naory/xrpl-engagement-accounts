@@ -28,6 +28,11 @@ import type { PolicyDoc } from '@eng/policy'
 import { CosignerService, LedgerUnavailableError } from './service.ts'
 import { signerProviderFromEnv, type SignerProvider } from './keys.ts'
 import { XrplLedgerSource } from './snapshot.ts'
+import { MemoryStateStore } from './store/memory.ts'
+import { SqliteStateStore } from './store/sqlite.ts'
+import type { StateStore } from './store/types.ts'
+import { startTickScheduler, submitUntilValidated } from './scheduler.ts'
+import { lookupTx, submit } from './xrpl-io.ts'
 
 export function loadLibrary(root: string, extraPolicies: PolicyDoc[] = []): { templates: Template[]; policies: PolicyDoc[] } {
   const read = <T>(dir: string) => fs.readdirSync(path.join(root, dir)).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(fs.readFileSync(path.join(root, dir, f), 'utf8')) as T)
@@ -161,9 +166,17 @@ export function createServer(svc: CosignerService, opts: ServerOptions = {}): ht
       if (e instanceof BodyTooLarge) return send(413, { error: e.message })
       // register() could not read the ledger (retryable); a refusal of the deal itself (NOT_NEUTRAL, INVALID_TERMS) stays 400.
       if (e instanceof LedgerUnavailableError) return send(503, { error: e.message })
+      // The store could not decide (locked, closed, or a SQLite error): nothing was decided, so this is retryable, not a refusal.
+      if (isStoreUnavailable(e)) return send(503, { error: String((e as Error).message ?? e) })
       return send(400, { error: String((e as Error).message ?? e) })
     }
   })
+}
+
+function isStoreUnavailable(e: unknown): boolean {
+  const err = e as { message?: unknown; code?: unknown }
+  if (typeof err?.code === 'string' && err.code.startsWith('SQLITE_')) return true
+  return /^(STORE_LOCKED|CLOSED)\b/.test(String(err?.message ?? ''))
 }
 
 /** Resolve server options from the environment and enforce the bind-safety rule. */
@@ -195,7 +208,14 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
   const client = new xrpl.Client(process.env.XRPL_URL ?? 'wss://s.altnet.rippletest.net:51233')
   await client.connect()
   const lib = loadLibrary(process.cwd())
-  const svc = new CosignerService({ signer, source: new XrplLedgerSource(client), ...lib, dataDir: process.env.DATA_DIR ?? '.cosigner' })
+  const dataDir = process.env.DATA_DIR ?? '.cosigner'
+  fs.mkdirSync(dataDir, { recursive: true })
+  const store: StateStore = process.env.COSIGNER_STORE === 'memory' ? new MemoryStateStore() : await SqliteStateStore.open({
+        file: path.join(dataDir, 'cosigner.db'),
+        // A lost lease means another co-signer owns the state: stop at once, scheduler or not.
+        onLeaseLost: () => { console.error(JSON.stringify({ t: new Date().toISOString(), level: 'error', msg: 'store lease lost; exiting' })); process.exit(1) },
+      })
+  const svc = await CosignerService.open({ signer, source: new XrplLedgerSource(client), ...lib, dataDir, store })
   const port = Number(process.env.PORT ?? 8787)
   const server = createServer(svc, {
     ...options,
@@ -205,4 +225,42 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
   server.listen(port, host, () =>
     console.log(JSON.stringify({ t: new Date().toISOString(), level: 'info', msg: 'listening', cosigner: signer.address, host, port, key: keys.source, auth: options.token ? 'required' : 'open', rate: options.rateLimit?.max ?? null })),
   )
+  const say = (e: Record<string, unknown>) => console.log(JSON.stringify({ t: new Date().toISOString(), ...e }))
+  const tickMs = Number(process.env.COSIGNER_TICK_MS ?? 0)
+  const scheduler = tickMs > 0
+    ? startTickScheduler(svc, {
+        intervalMs: tickMs,
+        onResult: async (engagementId, r) => {
+          if (!r.blob) return
+          const hash = xrpl.hashes.hashSignedTx(r.blob)
+          if (process.env.COSIGNER_TICK_SUBMIT === '1') {
+            // Throws unless validated, so the scheduler resubmits next round; a short wait keeps one round from
+            // stalling on a single blob (~4 ledgers instead of 15).
+            const sent = await submitUntilValidated(
+              { lookup: (h) => lookupTx(client, h), submit: (b) => submit(client, b, { waitLedgers: 4 }) }, r.blob, hash)
+            say({ level: 'info', msg: 'tick submitted', engagementId, outcome: r.outcome, ...sent })
+          } else say({ level: 'info', msg: 'tick signed (not submitted; COSIGNER_TICK_SUBMIT is unset)', engagementId, outcome: r.outcome, hash })
+        },
+        // A lost store lease means another co-signer owns the state: stop rather than keep signing.
+        onError: (e) => { console.error(String(e.message ?? e)); process.exit(1) },
+      })
+    : null
+  let stopping = false
+  const shutdown = async (): Promise<void> => {
+    if (stopping) return
+    stopping = true
+    // Bounded: a stuck round or connection must not leave a half-stopped co-signer running.
+    setTimeout(() => { console.error('shutdown timed out'); process.exit(1) }, 10_000).unref()
+    try {
+      await scheduler?.stop()
+      await new Promise<void>((r) => server.close(() => r()))
+      await svc.close()
+    } catch (e) {
+      console.error(String((e as Error).message ?? e))
+      process.exit(1)
+    }
+    process.exit(0)
+  }
+  process.on('SIGTERM', () => void shutdown())
+  process.on('SIGINT', () => void shutdown())
 }

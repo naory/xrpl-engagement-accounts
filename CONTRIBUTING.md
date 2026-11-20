@@ -6,7 +6,7 @@ co-signer, the policies, or the conformance vectors are especially welcome.
 
 ## Development setup
 
-Requires **Node ≥ 22.12**.
+Requires **Node ≥ 22.13** (the co-signer store uses the built-in `node:sqlite`).
 
 ```bash
 npm install
