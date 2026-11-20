@@ -2,9 +2,24 @@
   "name": "@eng/policy",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.13"
+  },
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "LICENSE", "README.md"],
   "dependencies": {
+    "@eng/core": "^0.1.0",
+    "@marcbachmann/cel-js": "8.0.0",
     "ripple-address-codec": "5.0.1"
   }
 }

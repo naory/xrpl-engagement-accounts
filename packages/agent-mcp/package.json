@@ -1,1 +1,19 @@
-{ "name": "@eng/agent-mcp", "version": "0.1.0", "private": true, "type": "module", "main": "src/index.ts" }
+{
+  "name": "@eng/agent-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@eng/core": "^0.1.0",
+    "@eng/cosigner": "^0.1.0",
+    "@eng/policy": "^0.1.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "xrpl": "5.3.0",
+    "zod": "^4.6.7"
+  }
+}
