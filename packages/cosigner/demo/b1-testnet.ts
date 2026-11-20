@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
 import { localSigner, parseAmount, signStatement, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
 import { intentHashOf, layerHash, type EngagementRecord, type PolicyDoc } from '@eng/policy'
-import { CosignerService, XrplLedgerSource, type DecideResponse } from '../src/index.ts'
+import { CosignerService, XrplLedgerSource, resolveTestnetEndpoint, type DecideResponse } from '../src/index.ts'
 import {
   ASF_DEFAULT_RIPPLE, ASF_DISABLE_MASTER, LSF_DISABLE_MASTER, TF_SET_NO_RIPPLE,
   accountInfo, addBatchSigner, buildCloseBatch, buildOpenBatch, combine, currencyHex, currentLedger, hex, inner, iou, iouBalance,
@@ -25,8 +25,8 @@ type Json = Record<string, unknown>
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '../../..')
-const URL_ = process.env.XRPL_URL ?? 'wss://s.altnet.rippletest.net:51233'
-const EXPLORER = URL_.includes('devnet') ? 'https://devnet.xrpl.org/transactions/' : 'https://testnet.xrpl.org/transactions/'
+let URL_ = ''
+let EXPLORER = 'https://testnet.xrpl.org/transactions/'
 const CUR = currencyHex('RLUSD')
 const ENG_ID = `eng_b1_${Date.now().toString(36)}`
 
@@ -74,6 +74,9 @@ async function fund(client: InstanceType<typeof xrpl.Client>, label: string): Pr
 }
 
 async function main() {
+  URL_ = await resolveTestnetEndpoint()
+  EXPLORER = URL_.includes('devnet') ? 'https://devnet.xrpl.org/transactions/' : 'https://testnet.xrpl.org/transactions/'
+  results.url = URL_
   const client = new xrpl.Client(URL_)
   await client.connect()
   console.log(`Connected to ${URL_}\n`)

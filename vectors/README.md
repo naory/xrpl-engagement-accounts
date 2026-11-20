@@ -5,11 +5,13 @@ that a co-signer behaves like the reference one. They come from the reference im
 (`packages/*`), and each case declares its own expected outcome. The build stops if the
 implementation disagrees with that expectation, so a vector can't silently record a bug.
 
+<!-- count:vectors-total -->181<!-- /count --> cases in total. <!-- count:vectors-hotel2 -->108<!-- /count --> of the policy cases are hotel@2 (the case name starts with `hotel2.`).
+
 | File | Spec | Cases | What to compare |
 |---|---|---|---|
-| `statements.json` | [attestations](../docs/spec/attestations.md) §3–§4 | 6 | JCS bytes, digest, `id`, signature verification (including tampered and wrong-key) |
-| `templates.json` | [policy](../docs/spec/policy.md), [hotel](../docs/use-cases/hotel-booking.md) §2 (V1–V12) | 17 | `ok`, error / warning / disclosure ids, minimal winning sets, tickets needed, reserve |
-| `policy.json` | [policy](../docs/spec/policy.md) §3–§8 | 158 | `decision`, `failing`, per-rule `results` (layer, id, result, reason), statements used / rejected, `inputsHash`, `effectiveHash` |
+| `statements.json` | [attestations](../docs/spec/attestations.md) §3–§4 | <!-- count:vectors-statement -->6<!-- /count --> | JCS bytes, digest, `id`, signature verification (including tampered and wrong-key) |
+| `templates.json` | [policy](../docs/spec/policy.md), [hotel](../docs/use-cases/hotel-booking.md) §2 (V1–V15) | <!-- count:vectors-template -->17<!-- /count --> | `ok`, error / warning / disclosure ids, minimal winning sets, tickets needed, reserve |
+| `policy.json` | [policy](../docs/spec/policy.md) §3–§8 | <!-- count:vectors-policy -->158<!-- /count --> | `decision`, `failing`, per-rule `results` (layer, id, result, reason), statements used / rejected, `inputsHash`, `effectiveHash` |
 
 ## Normative and non-normative fields
 

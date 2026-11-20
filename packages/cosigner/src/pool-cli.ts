@@ -9,7 +9,8 @@
 //   npm run pool:gc                          (drop spent entries: closed / orphaned-leased / error)
 //
 // Config via environment (secrets never committed):
-//   ENG_XRPL_WSS         wss endpoint            (default wss://s.altnet.rippletest.net:51233)
+//   ENG_XRPL_WSS         websocket override. If set, used as-is (no probe).
+//                        If unset, resolveServiceEndpoint (XRPL_URL, else Testnet candidates).
 //   ENG_SPONSOR_SEED     operating account seed — funds reserves, receives every reclaim (REQUIRED for topup/reclaim)
 //   ENG_SERVICE_SEED     service account seed — installed as each pooled account's RegularKey; signs reclaim (REQUIRED for topup/reclaim)
 //   ENG_POOL_SPONSORED   "1"/"true" → XLS-68 sponsored mode; anything else → self-funded (default)
@@ -22,6 +23,7 @@
 import path from 'node:path'
 import xrpl from 'xrpl'
 import { loadEnv } from './env.ts'
+import { resolveServiceEndpoint } from './testnet-endpoint.ts'
 import { PoolManager, type PoolConfig } from './pool.ts'
 import { LocalFileSeedStore, FilePoolStateStore, LocalKeys } from './pool-local.ts'
 import { XrplPoolLedger } from './xrpl-pool-ledger.ts'
@@ -89,7 +91,9 @@ async function main(): Promise<void> {
     sponsored,
   }
 
-  const client = new xrpl.Client(env('ENG_XRPL_WSS', 'wss://s.altnet.rippletest.net:51233')!)
+  // Once per process, before the long-lived client. status and gc return above and do not connect.
+  const url = await resolveServiceEndpoint({ overrideVar: 'ENG_XRPL_WSS' })
+  const client = new xrpl.Client(url)
   await client.connect()
   try {
     const pm = new PoolManager({ ledger: new XrplPoolLedger(client), state, seeds, keys: LocalKeys, sponsor, service, config })

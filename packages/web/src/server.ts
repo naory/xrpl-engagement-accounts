@@ -4,11 +4,12 @@
 //
 //   npm run web                                   # http://127.0.0.1:8080
 //   XRPL_URL=wss://s.devnet.rippletest.net:51233 PORT=8080 npm run web
+// With no XRPL_URL, the websocket is resolved once before listen (resolveServiceEndpoint).
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadEnv, type HotelPath } from '@eng/cosigner'
+import { loadEnv, resolveServiceEndpoint, type HotelPath } from '@eng/cosigner'
 import { DemoOrchestrator } from './orchestrator.ts'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -17,6 +18,15 @@ const INDEX = path.join(here, '..', 'public', 'index.html')
 const LANDING = path.join(here, '..', 'public', 'landing.html')
 const PORT = Number(process.env.PORT ?? 8080)
 const HOST = process.env.WEB_BIND ?? '127.0.0.1'
+
+// Once, before listen. Requests reuse orch.url; they do not resolve again.
+let xrplUrl: string
+try {
+  xrplUrl = await resolveServiceEndpoint()
+} catch (e) {
+  console.error((e as Error).message ?? e)
+  process.exit(1)
+}
 
 const json = (res: http.ServerResponse, code: number, bodyVal: unknown): void => {
   res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' })
@@ -36,7 +46,7 @@ function servePage(res: http.ServerResponse, file: string, inject: string): void
   res.end(doc)
 }
 
-const orch = new DemoOrchestrator()
+const orch = new DemoOrchestrator(xrplUrl)
 let connecting: Promise<void> | null = null
 const ensureConnected = (): Promise<void> => (connecting ??= orch.connect())
 

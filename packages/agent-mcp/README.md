@@ -98,8 +98,10 @@ approval threshold), `pay_vendor` without and then with the controller's approva
 threshold), `propose_payment` to a payee outside the mandate (refused, no blob), and
 `engagement_status`. Results and the signed decision log land in `demo/results/`.
 
-Needs direct XRPL websocket egress (wss to `s.altnet.rippletest.net:51233`), so run it from a normal
-network - not a proxy-only sandbox. `XRPL_URL=...` points it at Devnet or a local rippled.
+Needs direct XRPL websocket egress. With no `XRPL_URL`, the demo tries
+`wss://testnet.xrpl-labs.com` and then `wss://s.altnet.rippletest.net:51233`
+(`resolveTestnetEndpoint` in `@eng/cosigner`). `XRPL_URL=...` points it at Devnet or a
+local rippled. Run it from a normal network, not a proxy-only sandbox.
 
 ## Roadmap
 

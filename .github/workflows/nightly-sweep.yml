@@ -1,0 +1,40 @@
+name: Nightly hotel sweep
+
+# The R20/R21 hotel sweep is not part of the PR suite (`npm test` in ci.yml).
+# This job runs it every night on the default branch, on manual dispatch
+# (also default-branch only), and on pull requests that change this workflow,
+# the sweep tests, or the hotel code those tests cover.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/nightly-sweep.yml'
+      - 'packages/cosigner/test/hotel-service.sweep.test.ts'
+      - 'packages/cosigner/src/hotel/**'
+      - 'packages/cosigner/src/service.ts'
+      - 'templates/hotel*.json'
+      - 'policies/hotel*.json'
+      - 'packages/policy/src/**'
+      - 'packages/core/src/**'
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Hotel sweep (R20, R21)
+        run: npm run test:sweep

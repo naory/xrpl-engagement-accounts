@@ -18,12 +18,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
+import { resolveTestnetEndpoint } from '../src/index.ts'
 import { submit, serverFees, sleep } from '../src/xrpl-io.ts'
 import { buildSponsoredCreate, sponsorCosign, SPF_SPONSOR_FEE } from '../src/xls68.ts'
 
 type Json = Record<string, unknown>
 const here = path.dirname(fileURLToPath(import.meta.url))
-const URL_ = process.env.XRPL_URL ?? 'wss://s.altnet.rippletest.net:51233'
+let URL_ = ''
 const out: Json & { checks: Json[] } = { probe: 'xls-68 sponsor availability', url: URL_, startedAt: new Date().toISOString(), checks: [] }
 
 // temDISABLED/temMALFORMED/temINVALID_FLAG at preflight ⇒ the amendment is not enabled here.
@@ -39,6 +40,8 @@ async function fund(client: InstanceType<typeof xrpl.Client>, label: string) {
 }
 
 async function main() {
+  URL_ = await resolveTestnetEndpoint()
+  out.url = URL_
   const client = new xrpl.Client(URL_)
   await client.connect()
 
