@@ -67,9 +67,10 @@ The same label is in [`docs/SCOPE.md`](docs/SCOPE.md#product-status).
 
 ## Done (recent)
 
+- **Durable co-signer state, restart tests and a tick scheduler (T10–T12).** The co-signer keeps registrations, receipts, pre-signed defaults, in-flight payments and the decision log in a `StateStore` (SQLite by default in the server, in-memory for tests), restores them on boot, quarantines an engagement whose policy library changed, and rejects a second writer. Kill-and-restart tests cover disputes, rulings and in-flight spends. `COSIGNER_TICK_MS` runs `tick()` on a schedule. Postgres is a documented upgrade path — [README §7](README.md#7-policy-co-signer).
+
 Hotel entries below are [Research](#research). No new hotel features are merged.
 
-- **Durable co-signer state, restart tests and a tick scheduler (T10–T12).** The co-signer keeps registrations, receipts, pre-signed defaults, in-flight payments and the decision log in a `StateStore` (SQLite by default in the server, in-memory for tests), restores them on boot, quarantines an engagement whose policy library changed, and rejects a second writer. Kill-and-restart tests cover disputes, rulings and in-flight spends. `COSIGNER_TICK_MS` runs `tick()` on a schedule. Postgres is a documented upgrade path — [README §7](README.md#7-policy-co-signer).
 - **Accredited arbiter and chargeback-style defaults — live on Testnet 17/17.** The backup arbiter is
   removed (guest 3, hotel 3, arbiter 4, co-signer 2, quorum 7). The arbiter must hold an accepted
   `ENG/ARBITER` credential from the service; the co-signer refuses `NOT_NEUTRAL` before money moves.

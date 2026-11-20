@@ -1,6 +1,7 @@
 // Kill/restart tests (durable co-signer design §3): a restart never loses a receipt, a stored default or a spending
 // cap. "Kill" = close the service and its store, then CosignerService.open() a fresh pair on the same SQLite file with
 // the same signer, policies and templates and a ledger source that carries over the mock ledger state.
+import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -247,4 +248,48 @@ describe('restart: decision log', () => {
       expect(node.svc.decisions()).toHaveLength(log.length + 1)
     } finally { await node.stop() }
   })
+})
+
+describe('restart: crash (SIGKILL, no close)', () => {
+  // A real crash: a child process signs a payment and is killed with SIGKILL, so nothing is closed, flushed by us or
+  // released. The lease must hold off a new owner until it expires, then the new owner sees every committed write.
+  it('a killed co-signer keeps its lease until it expires; the next owner then recovers the in-flight spend', async () => {
+    const file = newFile()
+    const leaseMs = 800
+    // node --import tsx (not the tsx CLI, which forks a second node that SIGKILL would not reach)
+    const child = spawn(process.execPath, ['--import', 'tsx', path.join(__dirname, 'crash-child.ts'), file, String(leaseMs)], { stdio: ['ignore', 'pipe', 'pipe'] })
+    let err = ''
+    child.stderr.on('data', (d) => { err += d })
+    const line = await new Promise<string>((resolve, reject) => {
+      let out = ''
+      child.stdout.on('data', (d) => { out += d; if (out.includes('\n')) resolve(out.split('\n')[0]!) })
+      child.on('exit', (code) => reject(new Error(`child exited ${code} before signing: ${err}`)))
+    })
+    const signed = JSON.parse(line) as { decision: string; inflight: unknown[] }
+    expect(signed.decision).toBe('SIGN')
+    expect(signed.inflight).toHaveLength(1)
+    const killedAt = Date.now()
+    await new Promise<void>((resolve) => { child.on('exit', () => resolve()); child.kill('SIGKILL') })
+
+    // Within the lease window the dead owner still holds the file.
+    await expect(SqliteStateStore.open({ file, leaseMs })).rejects.toThrow(/^STORE_LOCKED/)
+    // After it expires the next owner claims it (retry, as a supervisor would).
+    let store: SqliteStateStore | undefined
+    while (!store) {
+      try { store = await SqliteStateStore.open({ file, leaseMs }) } catch (e) {
+        if (!/^STORE_LOCKED/.test(String((e as Error).message)) || Date.now() - killedAt > leaseMs * 5) throw e
+        await new Promise((r) => setTimeout(r, 100))
+      }
+    }
+    expect(Date.now() - killedAt).toBeGreaterThanOrEqual(leaseMs - 200)
+    const ledger = new Ledger(b1Ledger({ history: [historyEntry('9000', '2026-11-18T02:00:00Z')] }))
+    const svc = await CosignerService.open(opts(ledger, store))
+    try {
+      // The in-flight spend committed before the kill survives it and still counts against the cap.
+      expect(svc.inflightFor(B1)).toEqual(signed.inflight)
+      const second = await svc.decide({ engagementId: B1, stage: 'spend', tx: { ...b1Payment(W.vendorA.address, '600', { invoice: 'inv:B' }), Sequence: 22 }, statements: [b1Invoice(W.vendorA, '600.00', 'inv:B')] })
+      expect(second.decision).toBe('REFUSE')
+      expect(second.failing).toEqual(['W3'])
+    } finally { await svc.close() }
+  }, 30_000)
 })
