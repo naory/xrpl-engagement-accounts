@@ -26,6 +26,10 @@
       "default": "./dist/eng.js"
     }
   },
+  "bin": {
+    "eng": "./dist/bin/eng.js",
+    "eng-mcp": "./dist/bin/eng-mcp.js"
+  },
   "files": ["dist", "LICENSE", "README.md"],
   "dependencies": {
     "@eng/core": "^0.1.0",

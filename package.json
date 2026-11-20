@@ -31,7 +31,7 @@
     "demo:x402": "tsx --conditions=source packages/cosigner/demo/x402/b1-x402-testnet.ts",
     "demo:privy": "tsx --conditions=source packages/cosigner/demo/privy-engagement-testnet.ts",
     "demo:mpp": "tsx --conditions=source packages/cosigner/demo/mpp/b1-mpp-testnet.ts",
-    "mcp": "tsx --conditions=source packages/agent-mcp/src/server.ts",
+    "mcp": "tsx --conditions=source packages/agent-mcp/src/bin/eng-mcp.ts",
     "eng": "tsx --conditions=source packages/agent-mcp/src/eng.ts",
     "test:open": "vitest run -c vitest.open.config.ts",
     "demo:mcp": "tsx --conditions=source packages/agent-mcp/demo/b1-mcp-testnet.ts",

@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import xrpl from 'xrpl'
 import { CosignerError } from '../src/client.ts'
+import { SEED_FILE_IGNORED, resolveAgentSeed } from '../src/agent-seed.ts'
 import { TOKEN_FILE_IGNORED } from '../src/cosigner-token.ts'
 import {
   HELP, TESTNET_SEED_BANNER, assertEngNetwork, assertLoopbackCosignerUrl, assertOutsideRepo, assertTokenInsideDataDir,
@@ -445,6 +446,64 @@ describe('configFromEnv token file', () => {
     } finally {
       fs.rmSync(file, { force: true })
     }
+  })
+})
+
+describe('configFromEnv agent seed file', () => {
+  it('reads AGENT_SEED_FILE once and lets AGENT_SEED win', () => {
+    const notes: string[] = []
+    let reads = 0
+    const file = path.join(os.tmpdir(), `agent-seed-${process.pid}.txt`)
+    const fileSeed = 'sFile'
+    const envSeed = 'sEnv'
+    fs.writeFileSync(file, `${fileSeed}\n`, { mode: 0o600 })
+    try {
+      const fromFile = resolveAgentSeed({ AGENT_SEED_FILE: file }, {
+        warn: (line) => notes.push(line),
+        readFile: (p) => { reads += 1; return fs.readFileSync(p, 'utf8') },
+      })
+      expect(fromFile).toBe(fileSeed)
+      expect(reads).toBe(1)
+      expect(notes).toEqual([])
+      const fromEnv = resolveAgentSeed({ AGENT_SEED: envSeed, AGENT_SEED_FILE: file }, {
+        warn: (line) => notes.push(line),
+        readFile: () => { reads += 1; return 'sUnread' },
+      })
+      expect(fromEnv).toBe(envSeed)
+      expect(reads).toBe(1)
+      expect(notes).toEqual([SEED_FILE_IGNORED])
+      expect(notes.join('\n')).not.toContain(envSeed)
+      expect(notes.join('\n')).not.toContain(fileSeed)
+      const cfg = configFromEnv({
+        ENGAGEMENT_ID: 'eng', ENGAGEMENT_ACCOUNT: 'rA', ASSET_ISSUER: 'rI', AGENT_SEED_FILE: file,
+      }, { warn: (line) => notes.push(line) })
+      expect(cfg.seed).toBe(fileSeed)
+      expect(notes).toEqual([SEED_FILE_IGNORED])
+    } finally {
+      fs.rmSync(file, { force: true })
+    }
+  })
+
+  it('rejects a missing, unreadable, or multi-line seed file', () => {
+    expect(() => resolveAgentSeed({})).toThrow(/missing required env AGENT_SEED/)
+    const missing = path.join(os.tmpdir(), `missing-agent-seed-${process.pid}`)
+    expect(() => resolveAgentSeed({ AGENT_SEED_FILE: missing })).toThrow(`AGENT_SEED_FILE is not readable: ${missing}`)
+    const file = path.join(os.tmpdir(), `agent-seed-lines-${process.pid}.txt`)
+    fs.writeFileSync(file, 'sOne\nsTwo\n')
+    try {
+      let thrown = ''
+      try { resolveAgentSeed({ AGENT_SEED_FILE: file }) } catch (error) { thrown = (error as Error).message }
+      expect(thrown).toBe(`AGENT_SEED_FILE must be one line: ${file}`)
+      expect(thrown).not.toContain('sOne')
+      expect(thrown).not.toContain('sTwo')
+    } finally {
+      fs.rmSync(file, { force: true })
+    }
+    const privy = configFromEnv({
+      ENGAGEMENT_ID: 'eng', ENGAGEMENT_ACCOUNT: 'rA', ASSET_ISSUER: 'rI', AGENT_KEY_SOURCE: 'privy',
+    })
+    expect(privy.seed).toBe('')
+    expect(privy.keySource).toBe('privy')
   })
 })
 

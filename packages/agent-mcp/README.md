@@ -50,7 +50,8 @@ npm run mcp
 
 | Var | Required | Default | Meaning |
 |-----|----------|---------|---------|
-| `AGENT_SEED` | yes | — | Seed of the agent's signing key (a `SignerList` entry, never funded). |
+| `AGENT_SEED` | local key | — | Seed of the agent's signing key (a `SignerList` entry, never funded). Wins over `AGENT_SEED_FILE`. |
+| `AGENT_SEED_FILE` | local key | — | Path of a one-line seed file. Read once. When `AGENT_SEED` is also set, stderr gets `AGENT_SEED is in use; AGENT_SEED_FILE is ignored` and the seed is not printed. Not used when `AGENT_KEY_SOURCE=privy`. |
 | `ENGAGEMENT_ID` | yes | — | The engagement to act on. |
 | `ENGAGEMENT_ACCOUNT` | yes | — | The engagement account (sender of every payment). |
 | `ASSET_ISSUER` | yes | — | IOU issuer of the spending asset. |
@@ -61,6 +62,72 @@ npm run mcp
 | `XRPL_URL` | no | — | rippled/Clio endpoint. Present ⇒ live build + submit possible. |
 | `AGENT_ALLOW_SUBMIT` | no | off | `1`/`true` **and** `XRPL_URL` ⇒ `submit_payment`/`pay_vendor` enabled. |
 | `AGENT_STAGE` | no | `spend` | Policy stage to evaluate against. |
+
+`npm run mcp` starts the same server through `src/bin/eng-mcp.ts`. npm writes its own lines to stdout, so that script is not a client command. Stdout has to stay JSON-RPC. Use the packed bin below.
+
+## Packed server (pre-publish)
+
+`@eng/agent-mcp` is not on the npm registry (`private: true`, `0.1.0`). `npx --package` of the agent-mcp tarball alone does not install `@eng/core`, `@eng/policy`, or `@eng/ledger`.
+
+`npm run pack-smoke` installs the four tarballs together in a scratch directory. It also installs `@eng/provisioning`, which this server does not import. The same install:
+
+```bash
+npm install ./eng-core-0.1.0.tgz ./eng-policy-0.1.0.tgz ./eng-ledger-0.1.0.tgz ./eng-agent-mcp-0.1.0.tgz
+npx --no-install eng-mcp
+```
+
+`node_modules/.bin/eng-mcp` is that same command. pack-smoke runs both, with `XRPL_URL` unset and no co-signer token, and `tools/list` returns `propose_payment`, `submit_payment`, `pay_vendor`, and `engagement_status`. The process does not open a ledger connection. A later tool call that needs the co-signer or the ledger returns an error. Every stdout line is JSON-RPC. A missing env var and the seed and token notices go to stderr.
+
+`npm install -g` of those four tarballs puts `eng-mcp` on the PATH. pack-smoke uses the scratch directory, not a machine-wide `-g`.
+
+Node >= 22.13. On Windows the scratch shim is `eng-mcp.cmd`.
+
+TESTNET ONLY. A seed in a desktop config is a Testnet throwaway. Prefer `AGENT_SEED_FILE` (one line, mode 0600) so the file holds a path. `COSIGNER_API_TOKEN_FILE` is the bearer path. Do not put either value in the JSON.
+
+Claude Desktop reads `claude_desktop_config.json`. Cursor reads `.cursor/mcp.json`. Same `mcpServers` object. This is the command pack-smoke runs, via the absolute shim:
+
+```json
+{
+  "mcpServers": {
+    "eng": {
+      "command": "/absolute/path/node_modules/.bin/eng-mcp",
+      "env": {
+        "ENGAGEMENT_ID": "eng_…",
+        "ENGAGEMENT_ACCOUNT": "r…",
+        "AGENT_SEED_FILE": "/absolute/path/agent.seed",
+        "ASSET_ISSUER": "r…",
+        "COSIGNER_URL": "http://127.0.0.1:8787",
+        "COSIGNER_API_TOKEN_FILE": "/absolute/path/cosigner.token"
+      }
+    }
+  }
+}
+```
+
+## After publish (T26)
+
+Not what pack-smoke runs. Once the packages are on the registry, the client command is `npx --yes --package @eng/agent-mcp eng-mcp`.
+
+```json
+{
+  "mcpServers": {
+    "eng": {
+      "command": "npx",
+      "args": ["--yes", "--package", "@eng/agent-mcp", "eng-mcp"],
+      "env": {
+        "ENGAGEMENT_ID": "eng_…",
+        "ENGAGEMENT_ACCOUNT": "r…",
+        "AGENT_SEED_FILE": "/absolute/path/agent.seed",
+        "ASSET_ISSUER": "r…",
+        "COSIGNER_URL": "http://127.0.0.1:8787",
+        "COSIGNER_API_TOKEN_FILE": "/absolute/path/cosigner.token"
+      }
+    }
+  }
+}
+```
+
+On Windows, `"command"` is `npx.cmd`. Node >= 22.13. TESTNET ONLY, same as above: the seed file is a Testnet throwaway, and the config stores the path.
 
 ## Library
 
