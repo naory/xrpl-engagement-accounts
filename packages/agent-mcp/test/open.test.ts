@@ -15,7 +15,7 @@ import {
   DEMO_IOU_NOTE, OpenPartialError, buildProcurementMandate, buildProcurementRecord, provisionProcurement,
   type OpenIo, type Provisioned,
 } from '../src/open-procurement.ts'
-import { configFromEnv } from '../src/server.ts'
+import { configFromEnv, localSignerFromSeed } from '../src/server.ts'
 import { LSF_DISABLE_MASTER, TESTNET_ENDPOINTS, findRepoRoot } from '@eng/ledger'
 
 const TOKEN = 'sekret-token-value'
@@ -504,6 +504,30 @@ describe('configFromEnv agent seed file', () => {
     })
     expect(privy.seed).toBe('')
     expect(privy.keySource).toBe('privy')
+  })
+
+  it('rejects a malformed seed without echoing any of it', () => {
+    const seed = `s${'0'.repeat(28)}`
+    const fixed = 'AGENT_SEED is not a valid seedAGENT_SEED_FILE does not contain a valid seed'
+    for (const fromFile of [false, true]) {
+      let message = ''
+      let cause: unknown = 'unset'
+      try {
+        localSignerFromSeed(seed, fromFile)
+      } catch (error) {
+        const err = error as Error & { cause?: unknown }
+        message = err.message
+        cause = err.cause
+      }
+      expect(message).toBe(fromFile ? 'AGENT_SEED_FILE does not contain a valid seed' : 'AGENT_SEED is not a valid seed')
+      expect(cause).toBeUndefined()
+      expect(message).not.toContain(seed)
+      expect(message).not.toContain('Unknown')
+      for (const ch of new Set(seed)) {
+        if (fixed.includes(ch)) continue
+        expect(message).not.toContain(ch)
+      }
+    }
   })
 })
 

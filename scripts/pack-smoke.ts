@@ -6,7 +6,7 @@
 // The MCP check installs those tarballs and lists tools from the packed
 // `eng-mcp` bin. It does not publish and it does not run the registry command
 // `npx --yes --package <name> eng-mcp`. That command is T26.
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -46,19 +46,43 @@ const PACKED: Packed[] = [
   { dir: 'agent-mcp', required: ['dist/index.js', 'dist/server.js', 'dist/eng.js', 'dist/bin/eng.js', 'dist/bin/eng-mcp.js'] },
 ]
 
+/** Spawn in its own process group. The timeout and the finally both kill that group, so an `npx` child (`sh`, `node`) does not survive. */
 function run(
   cmd: string,
   args: string[],
   cwd: string,
   env: NodeJS.ProcessEnv = process.env,
-): { status: number; stdout: string; stderr: string } {
-  const result = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', timeout: TOOL_TIMEOUT_MS, killSignal: 'SIGKILL' })
-  return { status: result.status === null ? 1 : result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+): Promise<{ status: number; stdout: string; stderr: string }> {
+  const child = spawn(cmd, args, { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  let stdout = ''
+  let stderr = ''
+  let timer: NodeJS.Timeout | undefined
+  child.stdout?.setEncoding('utf8')
+  child.stderr?.setEncoding('utf8')
+  child.stdout?.on('data', (chunk: string) => { stdout += chunk })
+  child.stderr?.on('data', (chunk: string) => { stderr += chunk })
+  const result = new Promise<{ status: number; stdout: string; stderr: string }>((resolve) => {
+    let settled = false
+    const finish = (status: number) => {
+      if (settled) return
+      settled = true
+      resolve({ status, stdout, stderr })
+    }
+    timer = setTimeout(() => {
+      killChild(child)
+      finish(1)
+    }, TOOL_TIMEOUT_MS)
+    child.on('error', () => finish(1))
+    child.on('close', (code) => finish(code === null ? 1 : code))
+  })
+  return result.finally(() => {
+    if (timer) clearTimeout(timer)
+    killChild(child)
+  })
 }
 
 function fail(message: string): never {
-  console.error(message)
-  process.exit(1)
+  throw new Error(message)
 }
 
 function assertOutsideRepo(dir: string): void {
@@ -130,8 +154,8 @@ function assertClientReadme(name: string): void {
   }
 }
 
-function assertArchive(tgz: string, required: string[], forbid: string[]): void {
-  const listed = run('tar', ['-tzf', tgz], root)
+async function assertArchive(tgz: string, required: string[], forbid: string[]): Promise<void> {
+  const listed = await run('tar', ['-tzf', tgz], root)
   if (listed.status !== 0) fail(`tar -tzf ${tgz} failed:\n${listed.stderr}`)
   const entries = listed.stdout.split('\n').map((line) => line.trim()).filter(Boolean)
   for (const entry of entries) {
@@ -148,13 +172,13 @@ function assertArchive(tgz: string, required: string[], forbid: string[]): void 
   console.log(`tarball ${path.basename(tgz)} ${entries.length} files, no src/ test/ or .ts source`)
 }
 
-function pack(pkg: Packed, dest: string): string {
+async function pack(pkg: Packed, dest: string): Promise<string> {
   const pkgDir = path.join(root, 'packages', pkg.dir)
   const built = path.join(pkgDir, 'dist', 'index.js')
   if (!fs.existsSync(built)) fail(`${pkg.dir} has no ${built}. Run npm run build first.`)
   chmodDistBins(pkgDir)
   const out = fs.mkdtempSync(path.join(dest, 'tgz-'))
-  const packed = run('npm', ['pack', '--json', '--pack-destination', out], pkgDir)
+  const packed = await run('npm', ['pack', '--json', '--pack-destination', out], pkgDir)
   if (packed.status !== 0) fail(`npm pack ${pkg.dir} failed:\n${packed.stderr || packed.stdout}`)
   let filename = ''
   try {
@@ -166,7 +190,7 @@ function pack(pkg: Packed, dest: string): string {
   }
   if (!filename) fail(`npm pack ${pkg.dir} JSON has no filename`)
   const tgz = path.join(out, filename)
-  assertArchive(tgz, pkg.required ?? ['dist/index.js'], pkg.forbid ?? [])
+  await assertArchive(tgz, pkg.required ?? ['dist/index.js'], pkg.forbid ?? [])
   return tgz
 }
 
@@ -208,7 +232,10 @@ class RecordingStdio implements Transport {
   onclose?: () => void
   onerror?: (error: Error) => void
   onmessage?: (message: JSONRPCMessage) => void
-  readonly lines: string[] = []
+  /** Stdout lines that parsed as JSON-RPC. A banner or a blank line is not counted. */
+  readonly jsonRpcLines: string[] = []
+  /** Parse failures. listPackedTools fails when this is not empty. */
+  readonly stdoutErrors: string[] = []
   stderrText = ''
   private buf = ''
 
@@ -219,8 +246,13 @@ class RecordingStdio implements Transport {
     this.child.stderr?.on('data', (chunk: string) => { this.stderrText += chunk })
     this.child.stdout?.setEncoding('utf8')
     this.child.stdout?.on('data', (chunk: string) => this.onStdout(chunk))
-    this.child.on('error', (err) => this.onerror?.(err))
+    this.child.on('error', (err) => this.note(err.message))
     this.child.on('exit', () => this.onclose?.())
+  }
+
+  note(message: string): void {
+    if (!this.stdoutErrors.includes(message)) this.stdoutErrors.push(message)
+    this.onerror?.(new Error(message))
   }
 
   private onStdout(chunk: string): void {
@@ -231,20 +263,19 @@ class RecordingStdio implements Transport {
       this.buf = this.buf.slice(nl + 1)
       nl = this.buf.indexOf('\n')
       if (line.length === 0) {
-        this.onerror?.(new Error('eng-mcp wrote a blank stdout line'))
-        return
+        this.note('eng-mcp wrote a blank stdout line')
+        continue
       }
-      this.lines.push(line)
       if (this.secret && line.includes(this.secret)) {
-        this.onerror?.(new Error('eng-mcp stdout contains the agent seed'))
-        return
+        this.note('eng-mcp stdout contains the agent seed')
+        continue
       }
       try {
-        this.onmessage?.(deserializeMessage(line))
+        const msg = deserializeMessage(line)
+        this.jsonRpcLines.push(line)
+        this.onmessage?.(msg)
       } catch {
-        const shown = this.secret && line.includes(this.secret) ? '[redacted]' : line.slice(0, 180)
-        this.onerror?.(new Error(`eng-mcp stdout is not JSON-RPC: ${shown}`))
-        return
+        this.note(`eng-mcp stdout is not JSON-RPC: ${line.slice(0, 180)}`)
       }
     }
   }
@@ -293,6 +324,10 @@ async function listPackedTools(cwd: string, command: string, args: string[], see
   })
   const transport = new RecordingStdio(child, seed)
   const client = new Client({ name: 'pack-smoke', version: '0.1.0' })
+  client.onerror = (error) => {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!transport.stdoutErrors.includes(message)) transport.stdoutErrors.push(message)
+  }
   let timer: NodeJS.Timeout | undefined
   try {
     const listed = await Promise.race([
@@ -304,12 +339,19 @@ async function listPackedTools(cwd: string, command: string, args: string[], see
         timer = setTimeout(() => reject(new Error('eng-mcp tools/list timed out after 20s')), TOOL_TIMEOUT_MS)
       }),
     ])
+    if (transport.stdoutErrors.length > 0) throw new Error(transport.stdoutErrors.join('\n'))
     if (child.exitCode !== null) throw new Error(`eng-mcp exited ${child.exitCode} before tools/list finished`)
     const leftover = transport.leftover()
     if (leftover.length > 0) throw new Error(`eng-mcp left a partial stdout line: ${leftover.slice(0, 180)}`)
     if (seed && transport.stderrText.includes(seed)) throw new Error('eng-mcp stderr contains the agent seed')
+    const readyDeadline = Date.now() + 2_000
+    while (!transport.stderrText.includes('"msg":"agent-mcp ready"') && Date.now() < readyDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    if (!transport.stderrText.includes('"live":false')) throw new Error('eng-mcp ready log did not report "live":false')
+    if (transport.stderrText.includes('"live":true')) throw new Error('eng-mcp ready log reported a live ledger')
     const names = listed.tools.map((tool) => tool.name).sort()
-    console.log(`eng-mcp ${command} ${args.join(' ')} tools ${names.join(', ')} (${transport.lines.length} json-rpc stdout lines)`)
+    console.log(`eng-mcp ${command} ${args.join(' ')} tools ${names.join(', ')} (${transport.jsonRpcLines.length} json-rpc stdout lines)`)
     return names
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
@@ -341,54 +383,58 @@ async function main(): Promise<void> {
   assertClientReadme(agent.name)
 
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'eng-pack-'))
-  assertOutsideRepo(scratch)
-  console.log(`pack dir ${scratch}`)
-  const names = new Map(PACKED.map((pkg) => [pkg.dir, packageMeta(pkg.dir).name]))
-  const tarballs = new Map<string, string>()
-  for (const pkg of PACKED) tarballs.set(names.get(pkg.dir)!, pack(pkg, scratch))
+  try {
+    assertOutsideRepo(scratch)
+    console.log(`pack dir ${scratch}`)
+    const names = new Map(PACKED.map((pkg) => [pkg.dir, packageMeta(pkg.dir).name]))
+    const tarballs = new Map<string, string>()
+    for (const pkg of PACKED) tarballs.set(names.get(pkg.dir)!, await pack(pkg, scratch))
 
-  const installDir = path.join(scratch, 'install')
-  fs.mkdirSync(installDir)
-  assertOutsideRepo(installDir)
-  fs.writeFileSync(path.join(installDir, 'package.json'), JSON.stringify({ name: 'eng-pack-smoke', private: true, type: 'module' }, null, 2))
-  const cleanEnv: NodeJS.ProcessEnv = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', NO_UPDATE_NOTIFIER: '1' }
-  const installed = run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', ...tarballs.values()], installDir, cleanEnv)
-  if (installed.status !== 0) fail(`npm install failed:\n${installed.stderr || installed.stdout}`)
-  const agentDir = installedPkg(installDir, agent.name)
-  assertBuiltBins(agentDir)
-  for (const bin of ['eng', 'eng-mcp']) {
-    const shim = path.join(installDir, 'node_modules', '.bin', bin)
-    if (!fs.existsSync(shim)) fail(`installed .bin/${bin} is missing (no shim)`)
-    try { fs.accessSync(shim, fs.constants.X_OK) } catch { fail(`installed .bin/${bin} is not executable`) }
+    const installDir = path.join(scratch, 'install')
+    fs.mkdirSync(installDir)
+    assertOutsideRepo(installDir)
+    fs.writeFileSync(path.join(installDir, 'package.json'), JSON.stringify({ name: 'eng-pack-smoke', private: true, type: 'module' }, null, 2))
+    const cleanEnv: NodeJS.ProcessEnv = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', NO_UPDATE_NOTIFIER: '1' }
+    const installed = await run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', ...tarballs.values()], installDir, cleanEnv)
+    if (installed.status !== 0) fail(`npm install failed:\n${installed.stderr || installed.stdout}`)
+    const agentDir = installedPkg(installDir, agent.name)
+    assertBuiltBins(agentDir)
+    for (const bin of ['eng', 'eng-mcp']) {
+      const shim = path.join(installDir, 'node_modules', '.bin', bin)
+      if (!fs.existsSync(shim)) fail(`installed .bin/${bin} is missing (no shim)`)
+      try { fs.accessSync(shim, fs.constants.X_OK) } catch { fail(`installed .bin/${bin} is not executable`) }
+    }
+
+    fs.writeFileSync(path.join(installDir, 'smoke.mjs'), smokeSource({
+      core: names.get('core')!,
+      policy: names.get('policy')!,
+      ledger: names.get('ledger')!,
+      provisioning: names.get('provisioning')!,
+    }))
+    const smoked = await run(process.execPath, ['smoke.mjs'], installDir, cleanEnv)
+    if (smoked.stdout) process.stdout.write(smoked.stdout)
+    if (smoked.status !== 0) fail(`import smoke failed (exit ${smoked.status}):\n${smoked.stderr}`)
+
+    const shim = path.join(installDir, 'node_modules', '.bin', 'eng-mcp')
+    const missing = await run('npx', ['--no-install', 'eng-mcp'], installDir, cleanEnv)
+    if (missing.status !== 1 || !missing.stderr.includes('missing required env ENGAGEMENT_ID') || missing.stdout.trim() !== '') {
+      fail(`eng-mcp with no env expected exit 1, empty stdout, and missing ENGAGEMENT_ID, got exit ${missing.status}:\n${missing.stdout}${missing.stderr}`)
+    }
+    console.log(`eng-mcp missing env exit ${missing.status}: ${missing.stderr.trim()}`)
+
+    const help = await run('npx', ['--no-install', 'eng', 'open', '--help'], installDir, cleanEnv)
+    const helpOut = `${help.stdout}\n${help.stderr}`
+    if (help.status !== 0 || !help.stdout.includes('TESTNET ONLY') || !help.stdout.includes('--template')) {
+      fail(`eng open --help expected exit 0 and TESTNET ONLY help, got exit ${help.status}:\n${helpOut}`)
+    }
+    console.log('eng open --help exit 0')
+
+    assertTools(await listPackedTools(installDir, 'npx', ['--no-install', 'eng-mcp'], freshSeed()))
+    assertTools(await listPackedTools(installDir, shim, [], freshSeed()))
+    console.log('pack-smoke passed')
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true })
   }
-
-  fs.writeFileSync(path.join(installDir, 'smoke.mjs'), smokeSource({
-    core: names.get('core')!,
-    policy: names.get('policy')!,
-    ledger: names.get('ledger')!,
-    provisioning: names.get('provisioning')!,
-  }))
-  const smoked = run(process.execPath, ['smoke.mjs'], installDir, cleanEnv)
-  if (smoked.stdout) process.stdout.write(smoked.stdout)
-  if (smoked.status !== 0) fail(`import smoke failed (exit ${smoked.status}):\n${smoked.stderr}`)
-
-  const shim = path.join(installDir, 'node_modules', '.bin', 'eng-mcp')
-  const missing = run('npx', ['--no-install', 'eng-mcp'], installDir, cleanEnv)
-  if (missing.status !== 1 || !missing.stderr.includes('missing required env ENGAGEMENT_ID') || missing.stdout.trim() !== '') {
-    fail(`eng-mcp with no env expected exit 1, empty stdout, and missing ENGAGEMENT_ID, got exit ${missing.status}:\n${missing.stdout}${missing.stderr}`)
-  }
-  console.log(`eng-mcp missing env exit ${missing.status}: ${missing.stderr.trim()}`)
-
-  const help = run('npx', ['--no-install', 'eng', 'open', '--help'], installDir, cleanEnv)
-  const helpOut = `${help.stdout}\n${help.stderr}`
-  if (help.status !== 0 || !help.stdout.includes('TESTNET ONLY') || !help.stdout.includes('--template')) {
-    fail(`eng open --help expected exit 0 and TESTNET ONLY help, got exit ${help.status}:\n${helpOut}`)
-  }
-  console.log('eng open --help exit 0')
-
-  assertTools(await listPackedTools(installDir, 'npx', ['--no-install', 'eng-mcp'], freshSeed()))
-  assertTools(await listPackedTools(installDir, shim, [], freshSeed()))
-  console.log('pack-smoke passed')
 }
 
 main().catch((error: unknown) => {

@@ -138,6 +138,15 @@ export function createAgentServer(agent: EngagementAgent, opts: { client: Cosign
   return server
 }
 
+/** Parse a local seed. The thrown message is fixed and does not include the seed or the parser error. */
+export function localSignerFromSeed(seed: string, fromFile: boolean) {
+  try {
+    return localSigner(xrpl.Wallet.fromSeed(seed))
+  } catch {
+    throw new Error(fromFile ? 'AGENT_SEED_FILE does not contain a valid seed' : 'AGENT_SEED is not a valid seed')
+  }
+}
+
 /** Wire env to a stdio MCP server. stdout is the protocol channel; notices go to stderr. */
 export async function startAgentServer(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   try {
@@ -145,7 +154,7 @@ export async function startAgentServer(env: NodeJS.ProcessEnv = process.env): Pr
     const client = new CosignerClient({ baseUrl: cfg.cosignerUrl, token: cfg.token })
     const signer = cfg.keySource === 'privy'
       ? (privySignerFromEnv() ?? ((): never => { throw new Error('AGENT_KEY_SOURCE=privy but PRIVY_* env is not set') })())
-      : localSigner(xrpl.Wallet.fromSeed(cfg.seed))
+      : localSignerFromSeed(cfg.seed, !env.AGENT_SEED?.trim())
     let chain: Chain | undefined
     if (cfg.xrplUrl) {
       const xc = new xrpl.Client(cfg.xrplUrl)
