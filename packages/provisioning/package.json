@@ -1,1 +1,25 @@
-{ "name": "@eng/provisioning", "version": "0.1.0", "private": true, "type": "module", "main": "src/index.ts" }
+{
+  "name": "@eng/provisioning",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "LICENSE", "README.md"],
+  "dependencies": {
+    "@eng/core": "^0.1.0",
+    "@eng/policy": "^0.1.0",
+    "ripple-keypairs": "^3.1.0"
+  }
+}

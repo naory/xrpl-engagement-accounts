@@ -1,0 +1,35 @@
+{
+  "name": "@eng/ledger",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./privy": {
+      "source": "./src/privy-signer.ts",
+      "types": "./dist/privy-signer.d.ts",
+      "default": "./dist/privy-signer.js"
+    },
+    "./decide": {
+      "source": "./src/decide.ts",
+      "types": "./dist/decide.d.ts",
+      "default": "./dist/decide.js"
+    }
+  },
+  "files": ["dist", "LICENSE", "README.md"],
+  "dependencies": {
+    "@eng/core": "^0.1.0",
+    "@eng/policy": "^0.1.0",
+    "xrpl": "5.3.0"
+  }
+}

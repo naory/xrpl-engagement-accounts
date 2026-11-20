@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core/tsconfig.build.json" },
+    { "path": "packages/policy/tsconfig.build.json" },
+    { "path": "packages/ledger/tsconfig.build.json" },
+    { "path": "packages/provisioning/tsconfig.build.json" },
+    { "path": "packages/agent-mcp/tsconfig.build.json" }
+  ]
+}

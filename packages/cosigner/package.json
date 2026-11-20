@@ -2,9 +2,22 @@
   "name": "@eng/cosigner",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.13"
+  },
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
-    "kysely": "0.29.9"
+    "@eng/core": "^0.1.0",
+    "@eng/ledger": "^0.1.0",
+    "@eng/policy": "^0.1.0",
+    "kysely": "0.29.9",
+    "ripple-binary-codec": "2.11.0",
+    "ripple-keypairs": "^3.1.0",
+    "xrpl": "5.3.0"
+  },
+  "devDependencies": {
+    "@eng/provisioning": "^0.1.0"
   }
 }

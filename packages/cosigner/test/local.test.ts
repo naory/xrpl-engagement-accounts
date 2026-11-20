@@ -251,7 +251,7 @@ describe('local co-signer', () => {
     const dir = tempDir()
     const child = path.join(here, 'local-seed-child.ts')
     const run = () => new Promise<string>((resolve, reject) => {
-      const proc = spawn(process.execPath, ['--import', 'tsx', child, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
+      const proc = spawn(process.execPath, ['--conditions=source', '--import', 'tsx', child, dir], { stdio: ['ignore', 'pipe', 'pipe'] })
       let out = ''
       let err = ''
       proc.stdout.on('data', (chunk) => { out += chunk })

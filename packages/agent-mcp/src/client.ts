@@ -4,7 +4,7 @@
 // no signing, no keys: the co-signer holds its own key behind this boundary.
 import type { Statement } from '@eng/core'
 import type { EngagementRecord } from '@eng/policy'
-import type { DecideRequest, DecideResponse } from '@eng/cosigner'
+import type { DecideRequest, DecideResponse } from '@eng/ledger/decide'
 import type { Decider } from './agent.ts'
 
 export interface CosignerClientOptions {

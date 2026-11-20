@@ -10,6 +10,7 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
+    "customConditions": ["source"],
     "types": ["node"]
   },
   "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "packages/*/demo/**/*.ts", "vectors/**/*.ts", "scripts/**/*.ts"],

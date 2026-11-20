@@ -1,4 +1,4 @@
-// Usage: tsx packages/core/src/cli.ts validate-template <file.json> [...]
+// Usage: tsx --conditions=source packages/core/src/cli.ts validate-template <file.json> [...]
 import fs from 'node:fs'
 import { validateTemplate, type Template } from './template.ts'
 

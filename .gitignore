@@ -1,4 +1,8 @@
 node_modules/
+# tsc -b emit. Typecheck and tests resolve the "source" export and do not read dist/.
+packages/*/dist/
+*.tsbuildinfo
+
 # JSON reporter from `npm test -- --reporter=json` (input to scripts/check-counts.ts)
 .vitest-report.json
 .DS_Store

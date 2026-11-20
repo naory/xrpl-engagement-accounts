@@ -32,11 +32,23 @@ jobs:
 
       - run: npm ci
 
+      # Typecheck and the test suite resolve the "source" export. dist/ is
+      # produced later by Build, so it must not already be in the checkout.
+      - name: Dist is absent before typecheck and tests
+        run: |
+          found=$(find packages -type d -name dist -print)
+          if [ -n "$found" ]; then
+            echo "dist/ exists before the build step:"
+            echo "$found"
+            exit 1
+          fi
+          echo "no packages/*/dist before typecheck and tests"
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Trust model page
-        run: npx tsx scripts/check-trust-model.ts
+        run: npx tsx --conditions=source scripts/check-trust-model.ts
 
       # The JSON reporter is only so check-counts can read numTotalTests.
       # The suite still runs once. x402 and MPP stay on their own steps.
@@ -69,3 +81,9 @@ jobs:
 
       - name: Dependency audit
         run: npm audit --audit-level=high
+
+      - name: Build
+        run: npm run build
+
+      - name: Pack smoke
+        run: npm run pack-smoke

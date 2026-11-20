@@ -36,6 +36,9 @@ Product build-out already queued:
   ledger.
 - **Collateral bonds** — bond template + slashing by arbiter + harmed party; bond size as a trust
   signal.
+- **Co-signer npm package.** `@eng/cosigner` stays private. Packing it waits until
+  `packages/cosigner/src/hotel/flow.ts` imports `templates/hotel@2.json` from inside the package.
+  `@eng/core`, `@eng/policy`, `@eng/ledger`, `@eng/provisioning`, and `@eng/agent-mcp` build to `dist`.
 
 ## Trust-model follow-ups
 

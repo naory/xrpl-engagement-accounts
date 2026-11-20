@@ -165,7 +165,7 @@ async function main() {
   // ── The agent: a real MCP client spawning the agent-mcp server over stdio ──
   const transport = new StdioClientTransport({
     command: path.join(root, 'node_modules/.bin/tsx'),
-    args: ['packages/agent-mcp/src/server.ts'],
+    args: ['--conditions=source', 'packages/agent-mcp/src/server.ts'],
     cwd: root,
     stderr: 'inherit',
     env: {

@@ -6,7 +6,7 @@ Hotel (`hotel@1`, `hotel@2`) is Research. See [product status](SCOPE.md#product-
 
 ## What the ledger enforces
 
-Once an open Batch is validated, the ledger checks the SignerList. `buildOpenBatch` puts `SignerListSet` (`SignerQuorum`, `SignerEntries`) and a `SetRegularKey` with no key in an all-or-nothing Batch (`buildOpenBatch` (`packages/cosigner/src/xrpl-io.ts:54`), `SignerQuorum` (`packages/cosigner/src/xrpl-io.ts:60`)).
+Once an open Batch is validated, the ledger checks the SignerList. `buildOpenBatch` puts `SignerListSet` (`SignerQuorum`, `SignerEntries`) and a `SetRegularKey` with no key in an all-or-nothing Batch (`buildOpenBatch` (`packages/ledger/src/xrpl-io.ts:54`), `SignerQuorum` (`packages/ledger/src/xrpl-io.ts:60`)).
 
 Before that open, pre-create disables the master key. `buildDisableMasterPlain` is an `AccountSet` with `ASF_DISABLE_MASTER`, and it is master-signed last, after the trust line and the service `RegularKey` (`buildDisableMasterPlain` (`packages/cosigner/src/precreate.ts:27`), `ASF_DISABLE_MASTER` (`packages/cosigner/src/precreate.ts:28`)). `HotelFlow.precreate` does the same steps (`precreate` (`packages/cosigner/src/hotel/flow.ts:183`)). After the open Batch clears `RegularKey`, the SignerList is what can authorize the account.
 
