@@ -114,18 +114,22 @@ function isOutside(rootReal: string, candidate: string): boolean {
 
 /**
  * The bearer file must be a regular file inside the co-signer data dir.
- * `..` and a symlink (including one that points outside the dir) are refused before the file is read.
+ * The escape check is lexical on the unresolved data dir, so a symlink above that
+ * dir (/tmp → /private/tmp, a symlinked TMPDIR) does not make an in-dir token look outside.
+ * The lstat walk runs on the realpath of the data dir and refuses a symlink in the token path.
  */
 export function assertTokenInsideDataDir(tokenPath: string, dataDir: string): string {
+  const unresolved = path.resolve(dataDir)
+  const rel = path.relative(unresolved, path.resolve(unresolved, tokenPath))
+  if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+    throw new Error('refusing to start: token file is outside the co-signer data dir')
+  }
   let dataReal: string
   try {
-    dataReal = fs.realpathSync(dataDir)
+    dataReal = fs.realpathSync(unresolved)
   } catch {
     throw new Error(`refusing to start: co-signer data dir is not a directory: ${dataDir}`)
   }
-  const resolved = path.resolve(dataDir, tokenPath)
-  if (isOutside(dataReal, resolved)) throw new Error('refusing to start: token file is outside the co-signer data dir')
-  const rel = path.relative(dataReal, resolved)
   let cur = dataReal
   for (const part of rel.split(path.sep)) {
     if (part === '' || part === '.' || part === '..') throw new Error('refusing to start: token file is outside the co-signer data dir')
@@ -178,6 +182,8 @@ export async function resolveOpenEndpoint(opts: {
 }
 
 export function assertOutsideRepo(file: string, root: string): string {
+  // Both sides of the comparison are realpathed. The parent is realpathed before
+  // the basename is joined, so a symlink above the repo is not compared to an unresolved path.
   const rootReal = fs.realpathSync(root)
   const parent = path.dirname(path.resolve(file))
   let parentReal: string
@@ -189,6 +195,17 @@ export function assertOutsideRepo(file: string, root: string): string {
   const resolved = path.join(parentReal, path.basename(path.resolve(file)))
   if (!isOutside(rootReal, resolved)) throw new Error(`refusing to write seeds inside the repo: ${resolved}`)
   return resolved
+}
+
+/** True when a path entry exists. A symlink counts, including a dangling one. ENOENT is absent. */
+export function pathOccupied(file: string): boolean {
+  try {
+    fs.lstatSync(file)
+    return true
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw e
+  }
 }
 
 export function writeOutFile(file: string, root: string, body: string): string {
@@ -406,7 +423,7 @@ export async function runEng(argv: string[], io: EngIo): Promise<number> {
   let outPath: string | null = null
   if (flags.out) {
     outPath = assertOutsideRepo(flags.out, root)
-    if (fs.existsSync(outPath)) throw new Error(`refusing to write seeds: ${outPath} already exists`)
+    if (pathOccupied(outPath)) throw new Error(`refusing to write seeds: ${outPath} already exists`)
   }
   const token = resolveCosignerToken(io.env, { filePath: discovery.tokenPath, warn: io.stderr, readFile: io.readFile })
   if (!token) throw new Error(`refusing to start: no bearer at ${discovery.tokenPath}`)

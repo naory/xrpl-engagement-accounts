@@ -6,7 +6,7 @@ import xrpl from 'xrpl'
 import { CosignerError } from '../src/client.ts'
 import { TOKEN_FILE_IGNORED } from '../src/cosigner-token.ts'
 import {
-  HELP, TESTNET_SEED_BANNER, assertEngNetwork, assertLoopbackCosignerUrl, assertOutsideRepo,
+  HELP, TESTNET_SEED_BANNER, assertEngNetwork, assertLoopbackCosignerUrl, assertOutsideRepo, assertTokenInsideDataDir,
   formatOpen, isRetryableRegisterError, parseDiscovery, parseEngArgs, printedOpen, registerWithBackoff,
   resolveOpenEndpoint, retryCommand, runEng, writeOutFile, type EngIo,
 } from '../src/eng-cli.ts'
@@ -76,7 +76,7 @@ function io(over: Partial<EngIo> & { doc?: Record<string, unknown>; token?: stri
     cwd: root,
     stdout: (text) => { state.out += text },
     stderr: (text) => { state.err += text },
-    readFile: (file) => file.endsWith('local.json') ? JSON.stringify(doc) : file === tokenFile ? token : (() => { throw new Error(`unexpected read ${file}`) })(),
+    readFile: (file) => file.endsWith('local.json') ? JSON.stringify(doc) : (file === tokenFile || file === fs.realpathSync(tokenFile)) ? token : (() => { throw new Error(`unexpected read ${file}`) })(),
     fetch: async (input) => {
       const url = String(input)
       if (url.endsWith('/healthz')) return new Response(JSON.stringify({ ok: true, cosigner: doc.address }), { status: 200 })
@@ -151,6 +151,25 @@ describe('token file must stay inside the data dir', () => {
     } finally {
       fs.rmSync(outside, { force: true })
       fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('accepts a token when a parent of the data dir is a symlink', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'eng-x-'))
+    const real = path.join(base, 'real')
+    const link = path.join(base, 'link')
+    fs.mkdirSync(real)
+    fs.symlinkSync(real, link)
+    const data = path.join(link, 'data')
+    fs.mkdirSync(data)
+    const token = path.join(data, 'cosigner.token')
+    fs.writeFileSync(token, 'inside\n', { mode: 0o600 })
+    try {
+      const got = assertTokenInsideDataDir(token, data)
+      expect(got).toBe(fs.realpathSync(token))
+      expect(parseDiscovery(discovery({ tokenPath: token }), data).tokenPath).toBe(got)
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true })
     }
   })
 
@@ -288,7 +307,7 @@ describe('runEng', () => {
     const parsed = JSON.parse(deps.out) as { banner: string; env: Record<string, string> }
     expect(parsed.banner).toContain('TESTNET ONLY')
     expect(parsed.env.ENGAGEMENT_ID).toBe('eng_open_test')
-    expect(parsed.env.COSIGNER_API_TOKEN_FILE).toBe(path.join(deps.dir, 'cosigner.token'))
+    expect(parsed.env.COSIGNER_API_TOKEN_FILE).toBe(fs.realpathSync(path.join(deps.dir, 'cosigner.token')))
     expect(parsed.env.ASSET_CODE).toBe('RLUSD')
     expect(deps.out).not.toContain(FILE_TOKEN)
     expect(deps.err).toContain(TESTNET_SEED_BANNER)
@@ -330,7 +349,7 @@ describe('runEng', () => {
     expect(await runEng(['open', '--template', 'procurement@1'], deps)).toBe(0)
     expect(auth).toBe(`Bearer ${TOKEN}`)
     expect(deps.err).toContain(TOKEN_FILE_IGNORED)
-    expect(deps.out).toContain(`COSIGNER_API_TOKEN_FILE=${path.join(deps.dir, 'cosigner.token')}`)
+    expect(deps.out).toContain(`COSIGNER_API_TOKEN_FILE=${fs.realpathSync(path.join(deps.dir, 'cosigner.token'))}`)
     expect(deps.out).not.toContain(TOKEN)
     expect(deps.out).not.toContain(FILE_TOKEN)
     expect(deps.err).not.toContain(TOKEN)
@@ -345,16 +364,23 @@ describe('runEng', () => {
     expect(devnet.provisioned).toBe(false)
   })
 
-  it('refuses an existing --out file before the faucet', async () => {
+  it('refuses an existing --out file, including a dangling symlink, before the faucet', async () => {
     const file = path.join(os.tmpdir(), `eng-exists-${process.pid}.json`)
+    const dangling = path.join(os.tmpdir(), `eng-dangling-${process.pid}.json`)
     fs.writeFileSync(file, 'old')
+    fs.symlinkSync(path.join(os.tmpdir(), `eng-missing-${process.pid}`), dangling)
     const deps = io()
+    const again = io()
     try {
       await expect(runEng(['open', '--template', 'procurement@1', '--out', file], deps)).rejects.toThrow(/already exists/)
       expect(deps.provisioned).toBe(false)
+      await expect(runEng(['open', '--template', 'procurement@1', '--out', dangling], again)).rejects.toThrow(/already exists/)
+      expect(again.provisioned).toBe(false)
     } finally {
       fs.rmSync(file, { force: true })
+      fs.rmSync(dangling, { force: true })
       fs.rmSync(deps.dir, { recursive: true, force: true })
+      fs.rmSync(again.dir, { recursive: true, force: true })
     }
   })
 
