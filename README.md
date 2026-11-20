@@ -1,6 +1,6 @@
 # XRPL Engagement Accounts
 
-**Single-use, multi-party joint accounts on the XRP Ledger, with quorum enforced by the ledger, for agent payments, escrow-with-recourse, and stake-backed trust.**
+**Recourse for agent payments on XRPL.** A spending-capped, escrowed account per deal, with a [neutral arbiter](docs/trust-model.md#arbiter-neutrality-limits) and default outcomes. It's built for payment platforms and x402 facilitators that want to offer chargeback-style protection on stablecoin payments. Hotel booking is the reference template. Testnet reference implementation; not for mainnet funds.
 
 **▶ [Try the live demo](https://naory.github.io/xrpl-engagement-accounts/)** — an interactive, simulated walkthrough: an agent spends, gets blocked, settles a dispute, and pays across rails. (The same page also runs against live XRPL Testnet via `npm run web`.)
 
@@ -282,7 +282,7 @@ Stack: TypeScript (Node ≥ 22.13, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-ke
 
 ```bash
 npm install
-npm test                    # <!-- count:tests -->761<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
+npm test                    # <!-- count:tests -->762<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
 npm run test:sweep          # <!-- count:tests-sweep -->15<!-- /count --> hotel R20/R21 sweep tests; nightly, not part of npm test
 npm run typecheck
 npm run validate-templates  # V1–V15 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)

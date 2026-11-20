@@ -1,4 +1,5 @@
-// Check docs/trust-model.md and the README first-screen link.
+// Check docs/trust-model.md, the README first-screen links, and banned words
+// in the root README (same rule as docs/trust-model.md and packages/agent-mcp/README.md).
 //
 // Citations in the page are for readers: `Symbol` (`path:line`).
 // This script checks that each cited path exists and that the file contains the named symbol.
@@ -6,6 +7,7 @@
 //
 // Banned words are a product copy rule: no overclaiming.
 // Match on word boundaries, case-insensitive, so "security" and "insecure" pass and "Secure" fails.
+// A negation does not clear the word: "not production-ready" is still "production-ready".
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -35,13 +37,19 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-/** Banned words present in `text`. "security" and "insecure" are not hits. "Secure" is. */
+/** Banned words present in `text`. "security" and "insecure" are not hits. "Secure" is. "not production-ready" is. */
 export function bannedWordsIn(text: string): string[] {
   const hits: string[] = []
   for (const word of BANNED_WORDS) {
     if (new RegExp(`\\b${escapeRegExp(word)}\\b`, 'i').test(text)) hits.push(word)
   }
   return hits
+}
+
+/** Product-copy problems in the root README. Negated forms such as "not production-ready" fail. */
+export function readmeCopyProblems(readme: string): string[] {
+  const banned = bannedWordsIn(readme)
+  return banned.length ? [`README.md: banned words ${banned.join(', ')}`] : []
 }
 
 function read(rel: string): string {
@@ -101,9 +109,19 @@ function checkPage(problems: string[]): void {
 }
 
 function checkReadme(problems: string[]): void {
-  const screen = firstScreen(read('README.md'))
+  const readme = read('README.md')
+  const screen = firstScreen(readme)
+  // The intro names the neutral-arbiter limit, and the status block links the page.
   const hits = screen.split('docs/trust-model.md').length - 1
-  if (hits !== 1) problems.push(`README first screen: docs/trust-model.md appears ${hits} times (want 1)`)
+  if (hits !== 2) problems.push(`README first screen: docs/trust-model.md appears ${hits} times (want 2)`)
+  problems.push(...readmeCopyProblems(readme))
+}
+
+export function collectProblems(): string[] {
+  const problems: string[] = []
+  checkReadme(problems)
+  checkPage(problems)
+  return problems
 }
 
 function main(): void {
@@ -122,9 +140,7 @@ function main(): void {
     console.log('no banned words')
     return
   }
-  const problems: string[] = []
-  checkReadme(problems)
-  checkPage(problems)
+  const problems = collectProblems()
   if (problems.length) {
     for (const p of problems) console.error(p)
     process.exit(1)

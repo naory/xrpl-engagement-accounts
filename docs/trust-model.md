@@ -87,6 +87,12 @@ That matters in two places the co-signer already reads credentials. A new `regis
 
 It does not take an arbiter off a SignerList that is already installed. Arbiter weight stays. Arbiter plus counterparty still meet quorum on `hotel@2`, and `settle.ruling` is still not co-signed. The not-yet-consumed rule in the attestation draft is not what this code does. See [Revocation leaves the SignerList unchanged](../ROADMAP.md#revocation-leaves-the-signerlist-unchanged) and the note at the top of [docs/spec/attestations.md](spec/attestations.md).
 
+## Arbiter neutrality: limits
+
+Arbiter neutrality is checked only at registration. `registerLocked` runs `neutralityFindings` and throws `NOT_NEUTRAL` before it stores the engagement (`registerLocked` (`packages/cosigner/src/service.ts:274`), `neutralityFindings` (`packages/cosigner/src/service.ts:311`), `NOT_NEUTRAL` (`packages/cosigner/src/service.ts:312`)). `decide` does not run `neutralityFindings` (`decide` (`packages/cosigner/src/service.ts:371`)).
+
+An arbiter revoked later stays on the signer list. `buildOpenBatch` installs that list once (`SignerListSet` (`packages/ledger/src/xrpl-io.ts:60`)). Nothing after open removes the arbiter entry, and this repository does not submit `CredentialDelete`. Arbiter plus one party can still sign: on `hotel@2`, the arbiter's weight is 4 and each party's weight is 3, and 4 + 3 meets quorum 7 (`weight` (`templates/hotel@2.json:9`), `weight` (`templates/hotel@2.json:7`), `quorum` (`templates/hotel@2.json:12`)), and `settle.ruling` is not co-signed (`signsStage` (`packages/cosigner/src/service.ts:929`)).
+
 ## Not in this tree
 
 `signerProviderFromEnv` throws when `COSIGNER_KEY_SOURCE` is `kms`. No KMS or HSM provider is bundled (`signerProviderFromEnv` (`packages/cosigner/src/keys.ts:30`), `COSIGNER_KEY_SOURCE` (`packages/cosigner/src/keys.ts:31`)). Pool seeds are `LocalFileSeedStore`. `KmsSeedStore` is a comment on the interface, not a class in this tree (`LocalFileSeedStore` (`packages/cosigner/src/pool-local.ts:17`), `KmsSeedStore` (`packages/cosigner/src/pool.ts:64`)).
