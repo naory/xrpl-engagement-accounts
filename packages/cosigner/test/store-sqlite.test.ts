@@ -79,6 +79,44 @@ describe('SqliteStateStore lease', () => {
     await b.close()
   })
 
+  it('fences each transaction: a takeover between renewals is caught inside the transaction', async () => {
+    const file = newFile()
+    const onLeaseLost = vi.fn()
+    const a = await SqliteStateStore.open({ file, onLeaseLost })
+    const raw = new Database(file)
+    raw.prepare("update meta set value = ? where key = 'lease.heartbeat'").run(String(Date.now() - 60000))
+    raw.close()
+    const b = await SqliteStateStore.open({ file })
+    await expect(a.transaction(async (tx) => { await tx.setMeta('k', 'v') })).rejects.toThrow(/STORE_LOCKED/)
+    expect((await b.loadAll()).meta).toEqual({})
+    expect(onLeaseLost).toHaveBeenCalledTimes(1)
+    await a.close()
+    await b.close()
+  })
+
+  it('one transient renew error is not a lost lease; three in a row are', async () => {
+    const file = newFile()
+    const onLeaseLost = vi.fn()
+    const a = await SqliteStateStore.open({ file, onLeaseLost })
+    const db = (a as unknown as { db: { updateTable: (...x: unknown[]) => unknown } }).db
+    const orig = db.updateTable.bind(db)
+    const spy = vi.spyOn(db, 'updateTable').mockImplementation(() => { throw new Error('SQLITE_BUSY') })
+    await a.renewNow()
+    spy.mockImplementation(orig as never)
+    await a.renewNow() // success resets the count
+    expect(onLeaseLost).not.toHaveBeenCalled()
+    spy.mockImplementation(() => { throw new Error('SQLITE_BUSY') })
+    await a.renewNow()
+    await a.renewNow()
+    expect(onLeaseLost).not.toHaveBeenCalled()
+    await a.renewNow()
+    await a.renewNow()
+    expect(onLeaseLost).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+    await expect(a.transaction(async () => undefined)).rejects.toThrow(/STORE_LOCKED/)
+    await a.close()
+  })
+
   it('a store that lost its lease rejects later transactions with STORE_LOCKED', async () => {
     const file = newFile()
     const a = await SqliteStateStore.open({ file })

@@ -163,7 +163,7 @@ Design rules:
 - **Persist before anything leaves.** Each change is committed to the store before the in-memory copy changes or the call returns. If the write fails, the call throws and no signed blob is returned.
 - **Restore on boot.** `CosignerService.open()` rebuilds every engagement from the store. A signed payment that was in flight still counts against the caps, and a receipted claim still blocks the defaults.
 - **Pinned inputs.** Each registration pins its policy layer hashes and its template hash. If the policy library no longer matches, that engagement is quarantined with `ENGAGEMENT_STALE` and the others keep working. The co-signer's own address is pinned too, and a different one is refused with `SIGNER_MISMATCH`.
-- **One writer.** A lease in the store rejects a second process with `STORE_LOCKED`. If the server loses the lease, it exits with code 1.
+- **One writer.** A lease in the store rejects a second process with `STORE_LOCKED`. If the server loses the lease, it exits with code 1. After a crash, a lease loss or a timed-out shutdown, a restart within the lease period (15 s by default) fails with `STORE_LOCKED` until the old heartbeat goes stale, so a supervisor should retry.
 - **Old log.** An existing `decisions.jsonl` is imported once. Afterwards it is a best-effort export, not the source of truth.
 - **Tick scheduler.** Set `COSIGNER_TICK_MS` and the server ticks every open engagement on that interval. Repeated identical refusals are logged once, each SIGN is handed off once, and an engagement is closed after its account has been gone for two rounds. With `COSIGNER_TICK_SUBMIT=1` the server also submits each completed default to `XRPL_URL`. Otherwise it only logs it.
 
@@ -279,7 +279,7 @@ Stack: TypeScript (Node ≥ 22.12, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-ke
 
 ```bash
 npm install
-npm test                    # <!-- count:tests -->676<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.12). Not counted here: test:x402, test:mpp, and the sweep.
+npm test                    # <!-- count:tests -->680<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.12). Not counted here: test:x402, test:mpp, and the sweep.
 npm run test:sweep          # <!-- count:tests-sweep -->15<!-- /count --> hotel R20/R21 sweep tests; nightly, not part of npm test
 npm run typecheck
 npm run validate-templates  # V1–V15 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)

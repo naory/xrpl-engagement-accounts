@@ -45,6 +45,7 @@ export class SqliteStateStore implements StateStore {
   private timer: ReturnType<typeof setInterval> | undefined
   private closed = false
   private lost = false
+  private renewFailures = 0
 
   private constructor(private readonly db: Kysely<Tables>, private readonly token: string, private readonly onLeaseLost?: () => void) {}
 
@@ -86,9 +87,11 @@ export class SqliteStateStore implements StateStore {
         .where('key', '=', LEASE_HEARTBEAT)
         .where(({ exists, selectFrom }) => exists(selectFrom('meta').select('key').where('key', '=', LEASE_OWNER).where('value', '=', this.token)))
         .executeTakeFirst()
-      if (Number(r.numUpdatedRows) === 0) this.markLost()
+      if (Number(r.numUpdatedRows) === 0) { this.markLost(); return } // a real takeover
+      this.renewFailures = 0
     } catch {
-      this.markLost()
+      // A transient error (SQLITE_BUSY) is not a takeover: every transaction re-checks the lease, so only repeated failures count.
+      if (++this.renewFailures >= 3) this.markLost()
     }
   }
 
@@ -103,7 +106,15 @@ export class SqliteStateStore implements StateStore {
       if (this.lost) throw new Error('STORE_LOCKED: lease lost to another owner')
       const live = { open: true }
       try {
-        return await this.db.transaction().execute(async (trx) => fn(guard(txFor(trx), live)))
+        return await this.db.transaction().execute(async (trx) => {
+          // Fence: the first statement re-reads the lease owner, so a takeover between renewals can never be written over.
+          const owner = await trx.selectFrom('meta').select('value').where('key', '=', LEASE_OWNER).executeTakeFirst()
+          if (owner?.value !== this.token) {
+            this.markLost()
+            throw new Error('STORE_LOCKED: lease lost to another owner')
+          }
+          return fn(guard(txFor(trx), live))
+        })
       } finally {
         live.open = false
       }

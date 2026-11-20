@@ -166,9 +166,17 @@ export function createServer(svc: CosignerService, opts: ServerOptions = {}): ht
       if (e instanceof BodyTooLarge) return send(413, { error: e.message })
       // register() could not read the ledger (retryable); a refusal of the deal itself (NOT_NEUTRAL, INVALID_TERMS) stays 400.
       if (e instanceof LedgerUnavailableError) return send(503, { error: e.message })
+      // The store could not decide (locked, closed, or a SQLite error): nothing was decided, so this is retryable, not a refusal.
+      if (isStoreUnavailable(e)) return send(503, { error: String((e as Error).message ?? e) })
       return send(400, { error: String((e as Error).message ?? e) })
     }
   })
+}
+
+function isStoreUnavailable(e: unknown): boolean {
+  const err = e as { message?: unknown; code?: unknown }
+  if (typeof err?.code === 'string' && err.code.startsWith('SQLITE_')) return true
+  return /STORE_LOCKED|CLOSED/.test(String(err?.message ?? ''))
 }
 
 /** Resolve server options from the environment and enforce the bind-safety rule. */
