@@ -232,6 +232,11 @@ export class CosignerService {
     return [...this.engagements.values()].filter((s) => !s.closed).map((s) => s.record.engagementId)
   }
 
+  /** Whether the engagement has any stored pre-signed default (without one a tick can never complete anything). */
+  hasPendingDefaults(engagementId: string): boolean {
+    return this.live(engagementId).presigned.size > 0
+  }
+
   /** Whether the engagement's account is still on the ledger (a tick returns [] both for "gone" and "nothing due"). */
   async accountExists(engagementId: string): Promise<boolean> {
     const st = this.live(engagementId)

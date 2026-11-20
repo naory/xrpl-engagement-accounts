@@ -25,7 +25,12 @@ const LEASE_OWNER = 'lease.owner'
 const LEASE_HEARTBEAT = 'lease.heartbeat'
 const isLeaseKey = (k: string): boolean => k === LEASE_OWNER || k === LEASE_HEARTBEAT
 
-export interface SqliteStoreOptions { file: string; leaseMs?: number }
+export interface SqliteStoreOptions {
+  file: string
+  leaseMs?: number
+  /** Called once when this store finds its lease taken over (or unreadable): the state is no longer safe to write. */
+  onLeaseLost?: () => void
+}
 
 /**
  * In-process opens of one file run one at a time. better-sqlite3 waits for a busy lock synchronously, which blocks the
@@ -41,7 +46,7 @@ export class SqliteStateStore implements StateStore {
   private closed = false
   private lost = false
 
-  private constructor(private readonly db: Kysely<Tables>, private readonly token: string) {}
+  private constructor(private readonly db: Kysely<Tables>, private readonly token: string, private readonly onLeaseLost?: () => void) {}
 
   static open(o: SqliteStoreOptions): Promise<SqliteStateStore> {
     const file = path.resolve(o.file)
@@ -67,7 +72,7 @@ export class SqliteStateStore implements StateStore {
       await db.destroy()
       throw e
     }
-    const store = new SqliteStateStore(db, token)
+    const store = new SqliteStateStore(db, token, o.onLeaseLost)
     store.timer = setInterval(() => { void store.renewNow() }, Math.max(1, Math.floor(leaseMs / 3)))
     store.timer.unref()
     return store
@@ -81,10 +86,16 @@ export class SqliteStateStore implements StateStore {
         .where('key', '=', LEASE_HEARTBEAT)
         .where(({ exists, selectFrom }) => exists(selectFrom('meta').select('key').where('key', '=', LEASE_OWNER).where('value', '=', this.token)))
         .executeTakeFirst()
-      if (Number(r.numUpdatedRows) === 0) this.lost = true
+      if (Number(r.numUpdatedRows) === 0) this.markLost()
     } catch {
-      this.lost = true
+      this.markLost()
     }
+  }
+
+  private markLost(): void {
+    if (this.lost) return
+    this.lost = true
+    try { this.onLeaseLost?.() } catch { /* the callback must not break the renew timer */ }
   }
 
   transaction<T>(fn: (tx: StoreTx) => Promise<T>): Promise<T> {

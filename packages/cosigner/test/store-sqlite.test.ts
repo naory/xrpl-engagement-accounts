@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { SqliteStateStore } from '../src/store/sqlite.ts'
 import { runStoreContract } from './store-contract.ts'
 
@@ -62,6 +62,21 @@ describe('SqliteStateStore lease', () => {
     const lost = rs.find((r) => r.status === 'rejected') as PromiseRejectedResult
     expect(String(lost.reason)).toMatch(/STORE_LOCKED/)
     for (const r of rs) if (r.status === 'fulfilled') await r.value.close()
+  })
+
+  it('fires onLeaseLost once when renewNow finds the lease taken over', async () => {
+    const file = newFile()
+    const onLeaseLost = vi.fn()
+    const a = await SqliteStateStore.open({ file, onLeaseLost })
+    const raw = new Database(file)
+    raw.prepare("update meta set value = ? where key = 'lease.heartbeat'").run(String(Date.now() - 60000))
+    raw.close()
+    const b = await SqliteStateStore.open({ file })
+    await a.renewNow()
+    await a.renewNow()
+    expect(onLeaseLost).toHaveBeenCalledTimes(1)
+    await a.close()
+    await b.close()
   })
 
   it('a store that lost its lease rejects later transactions with STORE_LOCKED', async () => {

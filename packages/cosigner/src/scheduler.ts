@@ -29,17 +29,40 @@ export function startTickScheduler(svc: CosignerService, o: TickSchedulerOptions
     o.onError?.(e)
   }
 
+  /** Consecutive rounds an engagement's account was seen missing; closing needs two (one flaky read must not close it). */
+  const goneRounds = new Map<string, number>()
+  /** Signed blobs already handed to onResult, per engagement (a SIGN stays in the tick results while it is in flight). */
+  const handed = new Map<string, Set<string>>()
+
   async function tickOne(id: string): Promise<void> {
     const results = await svc.tick(id, { quiet: true })
-    if (!results.length && !(await svc.accountExists(id))) {
-      await svc.markClosed(id)
-      log('warn', 'engagement account is gone; closed', { engagementId: id })
-      return
-    }
+    if (!results.length && svc.hasPendingDefaults(id)) {
+      if (await svc.accountExists(id)) goneRounds.delete(id)
+      else {
+        const n = (goneRounds.get(id) ?? 0) + 1
+        goneRounds.set(id, n)
+        if (n >= 2) {
+          await svc.markClosed(id)
+          goneRounds.delete(id)
+          handed.delete(id)
+          log('warn', 'engagement account is gone; closed', { engagementId: id })
+        }
+        return
+      }
+    } else goneRounds.delete(id)
+    const seen = handed.get(id) ?? new Set<string>()
+    const current = new Set<string>()
     for (const r of results) {
-      if (r.decision !== 'SIGN') continue
-      try { await o.onResult?.(id, r) } catch (e) { log('error', 'onResult failed', { engagementId: id, outcome: r.outcome, error: String((e as Error).message ?? e) }) }
+      if (r.decision !== 'SIGN' || !r.blob) continue
+      current.add(r.blob)
+      if (seen.has(r.blob)) continue
+      try {
+        await o.onResult?.(id, r)
+        seen.add(r.blob)
+      } catch (e) { log('error', 'onResult failed', { engagementId: id, outcome: r.outcome, error: String((e as Error).message ?? e) }) }
     }
+    // Forget blobs that left the results (applied, expired or retired), so a later re-sign is handed off again.
+    handed.set(id, new Set([...seen].filter((b) => current.has(b))))
   }
 
   async function runRound(): Promise<void> {

@@ -56,6 +56,31 @@ describe('tick scheduler', () => {
     await svc.close()
   })
 
+  it('hands a SIGN that stays in flight to onResult once across rounds', async () => {
+    const ledger = new Ledger()
+    const svc = await disputed(ledger)
+    ledger.h2.closeTime = '2026-11-21T10:00:01Z'
+    const onResult = vi.fn()
+    const s = startTickScheduler(svc, { intervalMs: INTERVAL, onResult })
+    await vi.advanceTimersByTimeAsync(INTERVAL * 4)
+    expect(onResult).toHaveBeenCalledTimes(1)
+    await s.stop()
+    await svc.close()
+  })
+
+  it('retries onResult next round when it throws', async () => {
+    const ledger = new Ledger()
+    const svc = await disputed(ledger)
+    ledger.h2.closeTime = '2026-11-21T10:00:01Z'
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const onResult = vi.fn().mockRejectedValueOnce(new Error('submit down')).mockResolvedValue(undefined)
+    const s = startTickScheduler(svc, { intervalMs: INTERVAL, onResult })
+    await vi.advanceTimersByTimeAsync(INTERVAL * 4)
+    expect(onResult).toHaveBeenCalledTimes(2)
+    await s.stop()
+    await svc.close()
+  })
+
   it('does not log a not-due refusal again on later rounds (quiet)', async () => {
     const svc = await disputed()
     const s = startTickScheduler(svc, { intervalMs: INTERVAL })
@@ -68,14 +93,23 @@ describe('tick scheduler', () => {
     await svc.close()
   })
 
-  it('marks an engagement whose account is gone closed and skips it afterwards', async () => {
+  it('closes an engagement only after its account is missing in two consecutive rounds, then skips it', async () => {
     const ledger = new Ledger()
     const svc = await disputed(ledger)
     const snap = vi.spyOn(ledger, 'snapshot')
-    ledger.h2.accounts[W.engHotel2.address].exists = false
+    const acct = ledger.h2.accounts[W.engHotel2.address]
+    acct.exists = false
     const s = startTickScheduler(svc, { intervalMs: INTERVAL })
     await vi.advanceTimersByTimeAsync(INTERVAL)
-    expect(svc.openEngagementIds()).toEqual([])
+    expect(svc.openEngagementIds()).toEqual([H2]) // gone once: not closed
+    acct.exists = true
+    await vi.advanceTimersByTimeAsync(INTERVAL * 2)
+    expect(svc.openEngagementIds()).toEqual([H2]) // seen again: the count reset
+    acct.exists = false
+    await vi.advanceTimersByTimeAsync(INTERVAL)
+    expect(svc.openEngagementIds()).toEqual([H2]) // gone once again
+    await vi.advanceTimersByTimeAsync(INTERVAL)
+    expect(svc.openEngagementIds()).toEqual([]) // gone twice in a row
     const calls = snap.mock.calls.length
     await vi.advanceTimersByTimeAsync(INTERVAL * 3)
     expect(snap.mock.calls.length).toBe(calls)
@@ -84,19 +118,22 @@ describe('tick scheduler', () => {
   })
 
   it('never closes an engagement that merely has nothing due', async () => {
+    const ledger = new Ledger()
     const svc = await CosignerService.open({
-      signer: localSigner(W.cosigner), source: new Ledger(), store: new MemoryStateStore(),
+      signer: localSigner(W.cosigner), source: ledger, store: new MemoryStateStore(),
       templates: [templates.hotel2], policies: [policies.baseline, policies.hotel2],
     })
     await svc.register(hotel2Engagement(), hotel2Mandate())
+    const snap = vi.spyOn(ledger, 'snapshot')
     const s = startTickScheduler(svc, { intervalMs: INTERVAL })
-    await vi.advanceTimersByTimeAsync(INTERVAL * 2)
+    await vi.advanceTimersByTimeAsync(INTERVAL * 4)
     expect(svc.openEngagementIds()).toEqual([H2])
+    expect(snap).not.toHaveBeenCalled() // no stored default: no snapshot at all
     await s.stop()
     await svc.close()
   })
 
-  it('a round and a concurrent decide on the same engagement leave one in-flight entry and settle on no further signing', async () => {
+  it('a round and a concurrent decide on the same engagement leave one in-flight entry and one distinct signed tx', async () => {
     const ledger = new Ledger()
     const svc = await disputed(ledger)
     const [probe] = await svc.tick(H2)
@@ -108,11 +145,12 @@ describe('tick scheduler', () => {
     await vi.advanceTimersByTimeAsync(INTERVAL)
     await pending
     expect(svc.inflightFor(H2)).toHaveLength(1)
-    // The two calls are serialized per engagement. Re-requesting the same transaction replaces its in-flight entry
-    // (it never counts against itself), so at most these two decisions sign it, and later rounds sign nothing more.
+    // Serialized per engagement; re-requesting the same transaction replaces its in-flight entry, so exactly one
+    // distinct transaction was signed (a repeat decision for the same hash is idempotent) and later rounds add nothing.
+    const hashes = () => new Set(svc.decisions(H2).slice(-20).filter((d) => d.type === 'cosigner.decision/1' && (d.claim as { decision?: string }).decision === 'SIGN').map((d) => (d.subject as { proposedTxHash: string }).proposedTxHash))
     const settled = signs()
-    expect(settled - before).toBeGreaterThanOrEqual(1)
-    expect(settled - before).toBeLessThanOrEqual(2)
+    expect(settled).toBeGreaterThan(before)
+    expect(hashes().size).toBe(1)
     await vi.advanceTimersByTimeAsync(INTERVAL * 3)
     expect(signs()).toBe(settled)
     expect(svc.inflightFor(H2)).toHaveLength(1)

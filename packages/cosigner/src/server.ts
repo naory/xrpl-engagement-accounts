@@ -202,7 +202,11 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
   const lib = loadLibrary(process.cwd())
   const dataDir = process.env.DATA_DIR ?? '.cosigner'
   fs.mkdirSync(dataDir, { recursive: true })
-  const store: StateStore = process.env.COSIGNER_STORE === 'memory' ? new MemoryStateStore() : await SqliteStateStore.open({ file: path.join(dataDir, 'cosigner.db') })
+  const store: StateStore = process.env.COSIGNER_STORE === 'memory' ? new MemoryStateStore() : await SqliteStateStore.open({
+        file: path.join(dataDir, 'cosigner.db'),
+        // A lost lease means another co-signer owns the state: stop at once, scheduler or not.
+        onLeaseLost: () => { console.error(JSON.stringify({ t: new Date().toISOString(), level: 'error', msg: 'store lease lost; exiting' })); process.exit(1) },
+      })
   const svc = await CosignerService.open({ signer, source: new XrplLedgerSource(client), ...lib, dataDir, store })
   const port = Number(process.env.PORT ?? 8787)
   const server = createServer(svc, {
@@ -232,9 +236,16 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
   const shutdown = async (): Promise<void> => {
     if (stopping) return
     stopping = true
-    await scheduler?.stop()
-    await new Promise<void>((r) => server.close(() => r()))
-    await svc.close()
+    // Bounded: a stuck round or connection must not leave a half-stopped co-signer running.
+    setTimeout(() => { console.error('shutdown timed out'); process.exit(1) }, 10_000).unref()
+    try {
+      await scheduler?.stop()
+      await new Promise<void>((r) => server.close(() => r()))
+      await svc.close()
+    } catch (e) {
+      console.error(String((e as Error).message ?? e))
+      process.exit(1)
+    }
     process.exit(0)
   }
   process.on('SIGTERM', () => void shutdown())
