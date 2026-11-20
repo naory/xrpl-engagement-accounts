@@ -22,6 +22,7 @@
     "cosigner:local": "tsx --conditions=source packages/cosigner/src/local.ts",
     "demo:b1": "tsx --conditions=source packages/cosigner/demo/b1-testnet.ts",
     "demo:hotel": "tsx --conditions=source packages/cosigner/demo/hotel-testnet.ts",
+    "demo:hotel-dispute": "tsx --conditions=source packages/cosigner/demo/hotel-dispute-testnet.ts",
     "vectors:check": "vitest run packages/policy/test/vectors.test.ts",
     "probe:x402": "tsx --conditions=source packages/cosigner/demo/x402-probe.ts",
     "probe:sponsor": "tsx --conditions=source packages/cosigner/demo/sponsor-probe.ts",
