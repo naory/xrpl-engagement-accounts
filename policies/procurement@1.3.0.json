@@ -12,7 +12,7 @@
       "code": "RLUSD",
       "kind": "IOU",
       "currency": "524C555344000000000000000000000000000000",
-      "issuer": "rRLUSDissuerPlaceholderXXXXXXXXXX",
+      "issuer": "$slot:rlusd.issuer",
       "decimals": 6
     }
   },
@@ -27,7 +27,7 @@
   "params": {
     "approvalThreshold": "1000.00",
     "kybType": "KYB_VERIFIED",
-    "kybIssuers": []
+    "kybIssuers": ["$slot:kyb.issuer"]
   },
   "definitions": {
     "spendNow": "tx.payouts.sum('RLUSD')",

@@ -6,7 +6,7 @@
   "language": "cel-eng/1",
   "registry": "att-registry@2026.10",
   "assets": {
-    "RLUSD": { "code": "RLUSD", "kind": "IOU", "currency": "524C555344000000000000000000000000000000", "issuer": "rRLUSDissuerPlaceholderXXXXXXXXXX", "decimals": 6 }
+    "RLUSD": { "code": "RLUSD", "kind": "IOU", "currency": "524C555344000000000000000000000000000000", "issuer": "$slot:rlusd.issuer", "decimals": 6 }
   },
   "constraints": { "allowedRails": ["xrpl"], "allowedAssets": ["RLUSD"] },
   "params": {},

@@ -101,6 +101,22 @@ A policy document is itself a statement (`policy.document/1`, [attestation envel
 
 `definitions` are named expressions that rules reuse, read as `def.<name>`. Each is evaluated once per decision, in declaration order, and may use earlier definitions. A definition that errors does not fail the decision by itself: every rule that **reads** it errors instead (fail-closed), and rules that don't read it still evaluate. This keeps the refusal reasons precise.
 
+### 2.1 Deploy-time trust slots
+
+Shipped policies do not contain account addresses for the RLUSD issuer, the arbiter accreditor, or the KYB issuer. Those fields hold a slot token:
+
+| Slot | Field | Environment variable |
+|---|---|---|
+| `rlusd.issuer` | `assets.RLUSD.issuer` = `"$slot:rlusd.issuer"` | `ENG_RLUSD_ISSUER` |
+| `arbiter.accreditor` | `params.arbiterIssuers` = `["$slot:arbiter.accreditor"]` | `ENG_ARBITER_ACCREDITOR` |
+| `kyb.issuer` | `params.kybIssuers` = `["$slot:kyb.issuer"]` | `ENG_KYB_ISSUER` |
+
+**Hash rule.** `layerHash` and `effectiveHash` are the content hash of the policy document **with the slot tokens still in it**. Changing a deployment's addresses does not change those hashes, and does not quarantine an open engagement as `ENGAGEMENT_STALE`. At open, the engagement record gains `trust`: a map from slot name to a classic address (base58, XRPL alphabet, checksum). `decide` sorts those keys before computing `inputsHash`, so key order does not change the hash, and every signed `cosigner.decision/1` commits to the addresses for that deal. Evaluation (issuer checks, `arbiterIssuers`, `kybIssuers`, ledger balance reads) uses a copy of the policy with the tokens replaced. The object that was hashed is not modified.
+
+A record key that is not a slot in the pinned layers is rejected (`TRUST_KEY`). A well-formed name outside the closed set (`foo.bar`) is `UNKNOWN_SLOT`. A missing slot is `UNRESOLVED_SLOT`. A value that is not a checksummed classic address is `BAD_ADDRESS`. A `$slot:` token that is malformed (`$slot:RLUSD.issuer`), names an unknown slot, or sits outside an asset issuer or `params.arbiterIssuers` / `params.kybIssuers` is `BAD_SLOT` at `decide` and at startup, on loopback as well. One accreditor address per deployment; a list of accreditors is a follow-up.
+
+Off loopback, the co-signer refuses to start if any loaded slot is unresolved or a placeholder account string is still in a policy. On loopback it may start without the environment variables (`trust` is `{}`, not omitted). `decide` on a slotted policy with no `trust` then throws `UNRESOLVED_SLOT` rather than treating the token as an address. A later change to the environment does not rewrite an open deal: the co-signer logs `trust differs from env` with the slot name and the two addresses, and keeps using the stored map.
+
 ---
 
 ## 3. Input model
@@ -302,12 +318,13 @@ The outcome is that an MPCP-governed machine wallet can **graduate** to an owner
 | L6 | **Layer monotonicity:** an engagement layer may add rules and tighten `constraints` (smaller `maxAmountMinor`, subset of assets/destinations, earlier `expiresAt`), never remove or loosen them |
 | L7 | Each `reason` code is unique per layer and documented |
 | L8 | **Plain English:** every rule has a short `title` and a `message` explaining what it protects, for the people deciding or reviewing a deal. Non-normative: the CEL `check` is what decides |
+| L10 | **Trust slots:** `$slot:` appears only as an asset `issuer` or an entry of `params.arbiterIssuers` / `params.kybIssuers`, and only with a known name (`rlusd.issuer`, `arbiter.accreditor`, `kyb.issuer`). Placeholder account strings are rejected |
 
 **Testing:** every policy ships **test vectors**: `{inputs, stage, proposedTx, expected decision, expected failing rule ids}`. They include the four hotel paths, at least one negative case per rule, and the baseline B1–B10 attacks. The co-signer refuses to load a policy whose vectors don't reproduce.
 
 **Publishing:** sign as `policy.document/1`, which gives the content hash. Optionally anchor (memo, or MPCP's NFT/HCS anchoring).
 
-**Pinning:** the effective policy (all layer hashes) is pinned in the engagement record and the open memo.
+**Pinning:** the effective policy (all layer hashes) is pinned in the engagement record and the open memo. Layer hashes cover the slotted document (§2.1). The resolved addresses are pinned separately, on `engagement.trust`, and ride along inside `inputsHash`.
 
 **Amendment:** a new layer version applies to an open engagement only through an `amend` stage Batch signed by P + C + S (E3).
 

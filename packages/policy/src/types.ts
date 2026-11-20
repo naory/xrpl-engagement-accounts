@@ -65,6 +65,12 @@ export interface EngagementRecord {
   consumed?: string[]
   /** Policy layer hashes pinned at open, in evaluation order (baseline excluded: always applied). */
   policyLayers?: string[]
+  /**
+   * Deploy-time addresses for the policy's `$slot:` tokens, keyed by slot name (`rlusd.issuer`,
+   * `arbiter.accreditor`, `kyb.issuer`). Part of inputsHash. Not part of the policy layer hash.
+   * Keys are sorted when the record is canonicalised.
+   */
+  trust?: Record<string, string>
   mandateId?: string
 }
 
