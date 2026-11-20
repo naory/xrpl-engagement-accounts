@@ -18,7 +18,7 @@ import { localSigner, parseAmount, signStatement, newNonce, type Statement, type
 import { intentHashOf, layerHash, type PolicyDoc } from '@eng/policy'
 import { currencyHex, iouBalance, resolveTestnetEndpoint } from '@eng/ledger'
 import { CosignerService, XrplLedgerSource, createServer } from '@eng/cosigner'
-import { provisionOnEndpoint } from '../src/open-procurement.ts'
+import { OpenPartialError, provisionOnEndpoint } from '../src/open-procurement.ts'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
@@ -71,24 +71,35 @@ async function main() {
   const baseline = read<PolicyDoc>('policies/baseline@1.1.0.json')
   const policy = read<PolicyDoc>('policies/procurement@1.3.0.json')
   policy.version = '1.3.0+demo'
-  const opened = await provisionOnEndpoint(URL_, {
-    cosignerAddress: cosigner.address,
-    engagementId: ENG_ID,
-    policyLayers: [layerHash(policy)],
-    mandateId: 'mnd_mcp',
-    purpose: 'agent spend via MCP (demo)',
-    stranger: true,
-    log,
-    onAccount: (label, address) => { results.accounts[label] = address },
-  })
+  const recordOpen = (open: { ok: boolean; final: string; hash: string; inner: string; regularKey: string; quorum: unknown; balance: string }) => {
+    record('D1', 'open Batch: owner funding + SignerListSet (owner 2, agent 1, co-signer 1; quorum 2) + clear RegularKey',
+      'tesSUCCESS, all inner applied, master disabled, no RegularKey, quorum 2, balance 5000',
+      `${open.final}; inner ${open.inner}; regularKey=${open.regularKey}; quorum=${open.quorum}; balance=${open.balance}`, open.ok, { tx: open.hash })
+  }
+  let opened
+  try {
+    opened = await provisionOnEndpoint(URL_, {
+      cosignerAddress: cosigner.address,
+      engagementId: ENG_ID,
+      policyLayers: [layerHash(policy)],
+      mandateId: 'mnd_mcp',
+      purpose: 'agent spend via MCP (demo)',
+      stranger: true,
+      log,
+      onAccount: (label, address) => { results.accounts[label] = address },
+    })
+  } catch (e) {
+    if (e instanceof OpenPartialError && e.draft.open) {
+      recordOpen(e.draft.open)
+      throw new Error('open failed; stopping')
+    }
+    throw e
+  }
   const { issuer, treasury, vendorA, vendorB, kyb, agent, controller, engagement: eng } = opened
   const stranger = opened.stranger!
   const trust = opened.record.trust!
-  const open = opened.open
-  record('D1', 'open Batch: owner funding + SignerListSet (owner 2, agent 1, co-signer 1; quorum 2) + clear RegularKey',
-    'tesSUCCESS, all inner applied, master disabled, no RegularKey, quorum 2, balance 5000',
-    `${open.final}; inner ${open.inner}; regularKey=${open.regularKey}; quorum=${open.quorum}; balance=${open.balance}`, open.ok, { tx: open.hash })
-  if (!open.ok) throw new Error('open failed; stopping')
+  recordOpen(opened.open)
+  if (!opened.open.ok) throw new Error('open failed; stopping')
   const templates = fs.readdirSync(path.join(root, 'templates')).map((f) => read<Template>(`templates/${f}`))
   const dataDir = path.join(resultsDir, `decisions-${String(results.startedAt).replace(/[:.]/g, '-')}`)
   const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(client), templates, policies: [baseline, policy], dataDir, trust })

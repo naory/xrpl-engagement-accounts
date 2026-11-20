@@ -61,19 +61,22 @@ function provisioned(cosignerAddress: string): Provisioned {
   }
 }
 
-function io(over: Partial<EngIo> & { doc?: Record<string, unknown>; token?: string } = {}): EngIo & { out: string; err: string; provisioned: boolean } {
-  const doc = over.doc ?? discovery()
+function io(over: Partial<EngIo> & { doc?: Record<string, unknown>; token?: string } = {}): EngIo & { out: string; err: string; provisioned: boolean; dir: string } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eng-open-'))
+  const tokenFile = path.join(dir, 'cosigner.token')
   const token = over.token ?? `${FILE_TOKEN}\n`
-  const { doc: _doc, token: _token, ...rest } = over
+  fs.writeFileSync(tokenFile, token, { mode: 0o600 })
+  const doc: Record<string, unknown> = { ...(over.doc ?? discovery()), tokenPath: tokenFile }
+  const { doc: _doc, token: _token, env: envOver, ...rest } = over
   void _doc
   void _token
   const state = { out: '', err: '', provisioned: false }
   const base: EngIo = {
-    env: {},
+    env: { DATA_DIR: dir, ...envOver },
     cwd: root,
     stdout: (text) => { state.out += text },
     stderr: (text) => { state.err += text },
-    readFile: (file) => file.endsWith('local.json') ? JSON.stringify(doc) : file === doc.tokenPath ? token : (() => { throw new Error(`unexpected read ${file}`) })(),
+    readFile: (file) => file.endsWith('local.json') ? JSON.stringify(doc) : file === tokenFile ? token : (() => { throw new Error(`unexpected read ${file}`) })(),
     fetch: async (input) => {
       const url = String(input)
       if (url.endsWith('/healthz')) return new Response(JSON.stringify({ ok: true, cosigner: doc.address }), { status: 200 })
@@ -88,10 +91,11 @@ function io(over: Partial<EngIo> & { doc?: Record<string, unknown>; token?: stri
     now: () => new Date('2026-01-01T00:00:00Z'),
     ...rest,
   }
-  const view = base as EngIo & { out: string; err: string; provisioned: boolean }
+  const view = base as EngIo & { out: string; err: string; provisioned: boolean; dir: string }
   Object.defineProperty(view, 'out', { get: () => state.out })
   Object.defineProperty(view, 'err', { get: () => state.err })
   Object.defineProperty(view, 'provisioned', { get: () => state.provisioned })
+  Object.defineProperty(view, 'dir', { get: () => dir })
   return view
 }
 
@@ -120,9 +124,49 @@ describe('eng open flags', () => {
     await expect(resolveOpenEndpoint({ flag: 'wss://s1.ripple.com', discoveryEndpoint: TESTNET_ENDPOINTS[0] })).rejects.toThrow(/not a known Testnet host/)
     expect(assertLoopbackCosignerUrl('http://127.0.0.1:8787/')).toBe('http://127.0.0.1:8787')
     expect(() => assertLoopbackCosignerUrl('https://cosigner.example')).toThrow(/not loopback/)
-    expect(() => parseDiscovery(discovery({ url: 'http://example.com:8787' }))).toThrow(/not loopback/)
-    expect(() => parseDiscovery(discovery({ endpoint: 'wss://s.devnet.rippletest.net:51233', network: 'xrpl:2' }))).toThrow(/ENG_NETWORK must be xrpl:1/)
-    expect(() => parseDiscovery(discovery({ trust: { 'rlusd.issuer': wallet().address } }))).toThrow(/ENG_RLUSD_ISSUER/)
+    expect(() => parseDiscovery(discovery({ url: 'http://example.com:8787' }), os.tmpdir())).toThrow(/not loopback/)
+    expect(() => parseDiscovery(discovery({ endpoint: 'wss://s.devnet.rippletest.net:51233', network: 'xrpl:2' }), os.tmpdir())).toThrow(/local\.json network must be xrpl:1/)
+    expect(() => parseDiscovery(discovery({ trust: { 'rlusd.issuer': wallet().address } }), os.tmpdir())).toThrow(/ENG_RLUSD_ISSUER/)
+    expect(() => parseDiscovery(discovery({ trust: { 'arbiter.accreditor': wallet().address } }), os.tmpdir())).toThrow(/ENG_ARBITER_ACCREDITOR/)
+  })
+})
+
+describe('token file must stay inside the data dir', () => {
+  it('refuses an absolute path outside the data dir', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eng-tok-'))
+    try {
+      expect(() => parseDiscovery(discovery({ tokenPath: '/etc/hostname' }), dir)).toThrow(/outside the co-signer data dir/)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses a .. escape', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eng-tok-'))
+    const outside = path.join(dir, '..', `eng-escaped-${process.pid}`)
+    fs.writeFileSync(outside, 'nope\n')
+    try {
+      expect(() => parseDiscovery(discovery({ tokenPath: outside }), dir)).toThrow(/outside the co-signer data dir/)
+      expect(() => parseDiscovery(discovery({ tokenPath: path.join('..', path.basename(outside)) }), dir)).toThrow(/outside the co-signer data dir/)
+    } finally {
+      fs.rmSync(outside, { force: true })
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses a symlink inside the dir that points outside', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eng-tok-'))
+    const outside = path.join(os.tmpdir(), `eng-secret-${process.pid}`)
+    fs.writeFileSync(outside, 'sekret-outside\n')
+    const link = path.join(dir, 'cosigner.token')
+    fs.symlinkSync(outside, link)
+    try {
+      expect(() => parseDiscovery(discovery({ tokenPath: link }), dir)).toThrow(/symlink/)
+    } finally {
+      fs.rmSync(link, { force: true })
+      fs.rmSync(outside, { force: true })
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
@@ -161,6 +205,8 @@ describe('register backoff', () => {
     expect(calls).toBe(3)
     expect(isRetryableRegisterError(new CosignerError(429, 'rate'))).toBe(false)
     expect(isRetryableRegisterError(Object.assign(new Error('down'), { code: 'ECONNRESET' }))).toBe(true)
+    expect(isRetryableRegisterError(new TypeError('not a connection'))).toBe(false)
+    expect(isRetryableRegisterError(new TypeError('fetch failed'))).toBe(false)
   })
 })
 
@@ -177,7 +223,7 @@ describe('output', () => {
     const human = formatOpen(doc, false)
     const json = formatOpen(doc, true)
     expect(human.startsWith(TESTNET_SEED_BANNER)).toBe(true)
-    expect(human).toContain('Retry: npm run eng -- open --template procurement@1')
+    expect(human).toContain('Retry (full re-open, creates a new account): npm run eng -- open --template procurement@1')
     expect(human).toContain('AGENT_SEED=')
     expect(human).not.toContain(TOKEN)
     expect(human).not.toContain(FILE_TOKEN)
@@ -188,7 +234,18 @@ describe('output', () => {
     expect(parsed.retryCommand).toContain('--template procurement@1')
     expect(parsed.env.COSIGNER_API_TOKEN_FILE).toBe('/tmp/cosigner.token')
     expect(json).not.toContain(TOKEN)
-    expect(retryCommand({ template: 'owner-wallet/procurement@1', cosignerDir: '/tmp/my dir', endpoint: null, json: true })).toBe("npm run eng -- open --template procurement@1 --cosigner-dir '/tmp/my dir' --json")
+    expect(retryCommand({ template: 'owner-wallet/procurement@1', cosignerDir: '/tmp/my dir', endpoint: null, json: true })).toBe("npm run --silent eng -- open --template procurement@1 --cosigner-dir '/tmp/my dir' --json")
+  })
+
+  it('refuses a symlink into the repo and a name that merely starts with ..', () => {
+    const link = path.join(os.tmpdir(), `eng-repo-link-${process.pid}`)
+    fs.symlinkSync(root, link)
+    try {
+      expect(() => assertOutsideRepo(path.join(link, 'x.json'), root)).toThrow(/inside the repo/)
+    } finally {
+      fs.unlinkSync(link)
+    }
+    expect(() => assertOutsideRepo(path.join(root, '..leak.json'), root)).toThrow(/inside the repo/)
   })
 
   it('refuses an --out path inside the repo and writes 0600 outside it', () => {
@@ -231,7 +288,7 @@ describe('runEng', () => {
     const parsed = JSON.parse(deps.out) as { banner: string; env: Record<string, string> }
     expect(parsed.banner).toContain('TESTNET ONLY')
     expect(parsed.env.ENGAGEMENT_ID).toBe('eng_open_test')
-    expect(parsed.env.COSIGNER_API_TOKEN_FILE).toBe(doc.tokenPath)
+    expect(parsed.env.COSIGNER_API_TOKEN_FILE).toBe(path.join(deps.dir, 'cosigner.token'))
     expect(parsed.env.ASSET_CODE).toBe('RLUSD')
     expect(deps.out).not.toContain(FILE_TOKEN)
     expect(deps.err).toContain(TESTNET_SEED_BANNER)
@@ -252,7 +309,7 @@ describe('runEng', () => {
     expect(await runEng(['open', '--template', 'owner-wallet/procurement@1'], deps)).toBe(1)
     expect(registers).toBe(1)
     expect(deps.out).toContain(TESTNET_SEED_BANNER)
-    expect(deps.out).toContain('Retry: npm run eng -- open --template procurement@1')
+    expect(deps.out).toContain('Retry (full re-open, creates a new account): npm run eng -- open --template procurement@1')
     expect(deps.out).toContain('AGENT_SEED=')
     expect(deps.out).not.toContain(FILE_TOKEN)
   })
@@ -273,7 +330,7 @@ describe('runEng', () => {
     expect(await runEng(['open', '--template', 'procurement@1'], deps)).toBe(0)
     expect(auth).toBe(`Bearer ${TOKEN}`)
     expect(deps.err).toContain(TOKEN_FILE_IGNORED)
-    expect(deps.out).toContain(`COSIGNER_API_TOKEN_FILE=${doc.tokenPath}`)
+    expect(deps.out).toContain(`COSIGNER_API_TOKEN_FILE=${path.join(deps.dir, 'cosigner.token')}`)
     expect(deps.out).not.toContain(TOKEN)
     expect(deps.out).not.toContain(FILE_TOKEN)
     expect(deps.err).not.toContain(TOKEN)
@@ -286,6 +343,57 @@ describe('runEng', () => {
     const devnet = io({ doc: discovery({ endpoint: 'wss://s.devnet.rippletest.net:51233' }) })
     await expect(runEng(['open', '--template', 'procurement@1'], devnet)).rejects.toThrow(/not a known Testnet host/)
     expect(devnet.provisioned).toBe(false)
+  })
+
+  it('refuses an existing --out file before the faucet', async () => {
+    const file = path.join(os.tmpdir(), `eng-exists-${process.pid}.json`)
+    fs.writeFileSync(file, 'old')
+    const deps = io()
+    try {
+      await expect(runEng(['open', '--template', 'procurement@1', '--out', file], deps)).rejects.toThrow(/already exists/)
+      expect(deps.provisioned).toBe(false)
+    } finally {
+      fs.rmSync(file, { force: true })
+      fs.rmSync(deps.dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not resubmit a failed Batch, prints seeds, and omits the token and AGENT_ALLOW_SUBMIT', async () => {
+    let submits = 0
+    const deps = io({
+      provision: async (_endpoint, opts) => {
+        const fake: OpenIo = {
+          fund: async () => wallet(),
+          send: async () => ({ final: 'tesSUCCESS', hash: 'h' }),
+          submit: async () => { submits += 1; return { final: 'tecUNFUNDED_PAYMENT', hash: 'BATCH' } },
+          accountInfo: async () => ({ account_data: { Sequence: 4, Flags: LSF_DISABLE_MASTER }, signer_lists: [{ SignerQuorum: 2 }] }),
+          fees: async () => ({ base: 10, reserveBase: 1, inc: 1 }),
+          iouBalance: async () => '0',
+          innerResults: async () => [{ applied: false, result: 'tecUNFUNDED_PAYMENT' }],
+          addBatchSigner: () => {},
+          signBlob: () => 'blob',
+        }
+        return provisionProcurement({
+          io: fake,
+          cosignerAddress: opts.cosignerAddress,
+          engagementId: opts.engagementId,
+          sleep: async () => {},
+          log: () => {},
+          now: () => new Date('2026-01-01T00:00:00Z'),
+        })
+      },
+    })
+    try {
+      expect(await runEng(['open', '--template', 'procurement@1'], deps)).toBe(1)
+      expect(submits).toBe(1)
+      expect(deps.out).toContain(TESTNET_SEED_BANNER)
+      expect(deps.out).toContain('AGENT_SEED=')
+      expect(deps.out).toContain('Retry (full re-open, creates a new account)')
+      expect(deps.out).not.toContain('AGENT_ALLOW_SUBMIT')
+      expect(`${deps.out}\n${deps.err}`).not.toContain(FILE_TOKEN)
+    } finally {
+      fs.rmSync(deps.dir, { recursive: true, force: true })
+    }
   })
 })
 

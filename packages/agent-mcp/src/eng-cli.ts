@@ -15,6 +15,8 @@ import {
 
 export const TESTNET_SEED_BANNER = 'TESTNET ONLY. These seeds are XRPL Testnet seeds. Do not use them on any other network.'
 export const REGISTER_BACKOFF_MS = [1_000, 2_000] as const
+export const FETCH_TIMEOUT_MS = 10_000
+const CONNECTION_CODES = /^(ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ECONNABORTED|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET|UND_ERR_HEADERS_TIMEOUT|UND_ERR_BODY_TIMEOUT)$/
 
 export const HELP = `eng open — open a Testnet owner-wallet/procurement@1 engagement
 
@@ -29,7 +31,8 @@ Usage:
 --template       procurement@1 or owner-wallet/procurement@1
 --endpoint       Testnet websocket. Default: the endpoint in local.json
 --cosigner-dir   Directory containing local.json. Default: DATA_DIR, or <repo>/.cosigner
---json           One JSON object on stdout, including the TESTNET ONLY banner
+--json           JSON on stdout, including the TESTNET ONLY banner.
+                 npm prints its own lines first. Use \`npm run --silent eng -- open --json\`, or --out.
 --out <file>     Also write that JSON outside this repo, mode 0600
 `
 
@@ -103,29 +106,63 @@ export interface Discovery {
   network: 'xrpl:1'
 }
 
-export function parseDiscovery(raw: unknown): Discovery {
+/** True when `rel` is not strictly inside `root` after both have been realpathed. */
+function isOutside(rootReal: string, candidate: string): boolean {
+  const rel = path.relative(rootReal, candidate)
+  return rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)
+}
+
+/**
+ * The bearer file must be a regular file inside the co-signer data dir.
+ * `..` and a symlink (including one that points outside the dir) are refused before the file is read.
+ */
+export function assertTokenInsideDataDir(tokenPath: string, dataDir: string): string {
+  let dataReal: string
+  try {
+    dataReal = fs.realpathSync(dataDir)
+  } catch {
+    throw new Error(`refusing to start: co-signer data dir is not a directory: ${dataDir}`)
+  }
+  const resolved = path.resolve(dataDir, tokenPath)
+  if (isOutside(dataReal, resolved)) throw new Error('refusing to start: token file is outside the co-signer data dir')
+  const rel = path.relative(dataReal, resolved)
+  let cur = dataReal
+  for (const part of rel.split(path.sep)) {
+    if (part === '' || part === '.' || part === '..') throw new Error('refusing to start: token file is outside the co-signer data dir')
+    cur = path.join(cur, part)
+    let st: fs.Stats
+    try {
+      st = fs.lstatSync(cur)
+    } catch {
+      throw new Error('refusing to start: token file is outside the co-signer data dir')
+    }
+    if (st.isSymbolicLink()) throw new Error('refusing to start: token path contains a symlink')
+  }
+  const tokenReal = fs.realpathSync(cur)
+  if (isOutside(dataReal, tokenReal)) throw new Error('refusing to start: token file is outside the co-signer data dir')
+  return tokenReal
+}
+
+export function parseDiscovery(raw: unknown, dataDir: string): Discovery {
   if (!raw || typeof raw !== 'object') throw new Error('refusing to start: local.json is not an object')
   const doc = raw as Record<string, unknown>
   if (doc.version !== 1) throw new Error('refusing to start: local.json version is not 1')
-  if (doc.network !== 'xrpl:1') throw new Error('refusing to start: ENG_NETWORK must be xrpl:1')
+  if (doc.network !== 'xrpl:1') throw new Error('refusing to start: local.json network must be xrpl:1')
   for (const key of ['url', 'address', 'endpoint', 'tokenPath'] as const) {
     if (typeof doc[key] !== 'string' || !(doc[key] as string).trim()) throw new Error(`refusing to start: local.json ${key} is missing`)
   }
   if (doc.trust != null) {
-    if (typeof doc.trust !== 'object') throw new Error('refusing to start: local.json trust is not an object')
-    const trust = doc.trust as Record<string, unknown>
-    if (typeof trust['rlusd.issuer'] === 'string' && trust['rlusd.issuer']) {
-      throw new Error('refusing to start: local co-signer has ENG_RLUSD_ISSUER set. Start npm run cosigner:local without ENG_RLUSD_ISSUER so the demo issuer can bind.')
-    }
-    if (typeof trust['kyb.issuer'] === 'string' && trust['kyb.issuer']) {
-      throw new Error('refusing to start: local co-signer has ENG_KYB_ISSUER set. Start npm run cosigner:local without ENG_KYB_ISSUER so the demo issuer can bind.')
+    if (typeof doc.trust !== 'object' || Array.isArray(doc.trust)) throw new Error('refusing to start: local.json trust is not an object')
+    const set = Object.values(doc.trust as Record<string, unknown>).some((value) => typeof value === 'string' && value.trim() !== '')
+    if (set) {
+      throw new Error('refusing to start: local.json trust is set (ENG_RLUSD_ISSUER, ENG_KYB_ISSUER, or ENG_ARBITER_ACCREDITOR). Start npm run cosigner:local without those variables so the demo issuer can bind.')
     }
   }
   return {
     url: assertLoopbackCosignerUrl(doc.url as string),
     address: doc.address as string,
     endpoint: doc.endpoint as string,
-    tokenPath: path.resolve(doc.tokenPath as string),
+    tokenPath: assertTokenInsideDataDir(doc.tokenPath as string, dataDir),
     network: 'xrpl:1',
   }
 }
@@ -141,12 +178,17 @@ export async function resolveOpenEndpoint(opts: {
 }
 
 export function assertOutsideRepo(file: string, root: string): string {
-  const abs = path.resolve(file)
-  const rel = path.relative(root, abs)
-  if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) {
-    throw new Error(`refusing to write seeds inside the repo: ${abs}`)
+  const rootReal = fs.realpathSync(root)
+  const parent = path.dirname(path.resolve(file))
+  let parentReal: string
+  try {
+    parentReal = fs.realpathSync(parent)
+  } catch {
+    throw new Error(`refusing to write seeds: directory does not exist: ${parent}`)
   }
-  return abs
+  const resolved = path.join(parentReal, path.basename(path.resolve(file)))
+  if (!isOutside(rootReal, resolved)) throw new Error(`refusing to write seeds inside the repo: ${resolved}`)
+  return resolved
 }
 
 export function writeOutFile(file: string, root: string, body: string): string {
@@ -163,10 +205,18 @@ export function writeOutFile(file: string, root: string, body: string): string {
 
 export function isRetryableRegisterError(error: unknown): boolean {
   if (error instanceof CosignerError) return error.status === 503
-  const err = error as { code?: unknown; cause?: { code?: unknown } }
-  const code = String(err?.code ?? err?.cause?.code ?? '')
-  if (/^(ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET)$/.test(code)) return true
-  return error instanceof TypeError
+  if (error instanceof DOMException && error.name === 'TimeoutError') return true
+  const err = error as { code?: unknown; cause?: { code?: unknown }; message?: string }
+  const code = String(err.code ?? err.cause?.code ?? '')
+  if (CONNECTION_CODES.test(code)) return true
+  // A TypeError is retried only when it is undici's 'fetch failed' with a connection code above.
+  // Any other TypeError is not a connection failure.
+  return false
+}
+
+export function fetchWithTimeout(doFetch: typeof fetch, input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> {
+  if (init?.signal) return doFetch(input, init)
+  return doFetch(input, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
 }
 
 export async function registerWithBackoff<T>(fn: () => Promise<T>, opts?: {
@@ -193,7 +243,7 @@ function shellQuote(value: string): string {
 }
 
 export function retryCommand(opts: { template: string; cosignerDir: string; endpoint: string | null; json: boolean }): string {
-  const parts = ['npm run eng -- open', `--template ${opts.template === PROCUREMENT_TEMPLATE ? 'procurement@1' : opts.template}`, `--cosigner-dir ${shellQuote(opts.cosignerDir)}`]
+  const parts = [opts.json ? 'npm run --silent eng -- open' : 'npm run eng -- open', `--template ${opts.template === PROCUREMENT_TEMPLATE ? 'procurement@1' : opts.template}`, `--cosigner-dir ${shellQuote(opts.cosignerDir)}`]
   if (opts.endpoint) parts.push(`--endpoint ${shellQuote(opts.endpoint)}`)
   if (opts.json) parts.push('--json')
   return parts.join(' ')
@@ -211,6 +261,8 @@ export interface PrintedOpen {
   demoIou: string
   partial?: boolean
   error?: string
+  /** Present on a partial failure. A retry is a new open, not a resume. */
+  retryNote?: string
   retryCommand?: string
   env: {
     ENGAGEMENT_ID: string
@@ -221,7 +273,8 @@ export interface PrintedOpen {
     COSIGNER_URL: string
     COSIGNER_API_TOKEN_FILE: string
     XRPL_URL: string
-    AGENT_ALLOW_SUBMIT: '1'
+    /** Omitted when the open Batch did not succeed. */
+    AGENT_ALLOW_SUBMIT?: '1'
     OWNER_SEED: string
     CONTROLLER_SEED: string
     SERVICE_SEED: string
@@ -234,6 +287,8 @@ export function printedOpen(opts: {
   cosignerUrl: string
   tokenPath: string
   endpoint: string
+  /** False when the open Batch did not succeed. Registration failure still allows submit. */
+  allowSubmit?: boolean
   partial?: { error: string; retryCommand: string }
 }): PrintedOpen {
   const account = opts.draft.engagement?.address ?? opts.draft.record?.account
@@ -244,7 +299,7 @@ export function printedOpen(opts: {
     banner: TESTNET_SEED_BANNER,
     network: 'xrpl:1',
     demoIou: DEMO_IOU_NOTE,
-    ...(opts.partial ? { partial: true, error: opts.partial.error, retryCommand: opts.partial.retryCommand } : {}),
+    ...(opts.partial ? { partial: true, error: opts.partial.error, retryNote: 'full re-open, creates a new account', retryCommand: opts.partial.retryCommand } : {}),
     env: {
       ENGAGEMENT_ID: opts.draft.engagementId,
       ENGAGEMENT_ACCOUNT: account,
@@ -254,7 +309,7 @@ export function printedOpen(opts: {
       COSIGNER_URL: opts.cosignerUrl,
       COSIGNER_API_TOKEN_FILE: opts.tokenPath,
       XRPL_URL: opts.endpoint,
-      AGENT_ALLOW_SUBMIT: '1',
+      ...(opts.allowSubmit === false ? {} : { AGENT_ALLOW_SUBMIT: '1' as const }),
       OWNER_SEED: seedOf(opts.draft.treasury, 'owner'),
       CONTROLLER_SEED: seedOf(opts.draft.controller, 'controller'),
       SERVICE_SEED: seedOf(opts.draft.service, 'service'),
@@ -272,7 +327,7 @@ export function formatOpen(doc: PrintedOpen, asJson: boolean): string {
     '',
   ]
   if (doc.partial) {
-    lines.push(`Partial failure. ${doc.error}`, 'A re-run opens a new account. This account stays as it is.', `Retry: ${doc.retryCommand}`, '')
+    lines.push(`Partial failure. ${doc.error}`, `Retry (full re-open, creates a new account): ${doc.retryCommand}`, '')
   }
   lines.push(
     `ENGAGEMENT_ID=${env.ENGAGEMENT_ID}`,
@@ -283,7 +338,9 @@ export function formatOpen(doc: PrintedOpen, asJson: boolean): string {
     `COSIGNER_URL=${env.COSIGNER_URL}`,
     `COSIGNER_API_TOKEN_FILE=${env.COSIGNER_API_TOKEN_FILE}`,
     `XRPL_URL=${env.XRPL_URL}`,
-    `AGENT_ALLOW_SUBMIT=${env.AGENT_ALLOW_SUBMIT}`,
+  )
+  if (env.AGENT_ALLOW_SUBMIT) lines.push(`AGENT_ALLOW_SUBMIT=${env.AGENT_ALLOW_SUBMIT}`)
+  lines.push(
     `OWNER_SEED=${env.OWNER_SEED}`,
     `CONTROLLER_SEED=${env.CONTROLLER_SEED}`,
     `SERVICE_SEED=${env.SERVICE_SEED}`,
@@ -315,7 +372,7 @@ function draftOf(opened: Provisioned): OpenDraft {
 async function health(url: string, address: string, doFetch: typeof fetch): Promise<void> {
   let res: Response
   try {
-    res = await doFetch(`${url}/healthz`)
+    res = await fetchWithTimeout(doFetch, `${url}/healthz`)
   } catch {
     throw new Error(`refusing to start: local co-signer is not reachable at ${url}`)
   }
@@ -344,9 +401,13 @@ export async function runEng(argv: string[], io: EngIo): Promise<number> {
   } catch {
     throw new Error(`refusing to start: no local.json at ${discoveryPath}. Run npm run cosigner:local first.`)
   }
-  const discovery = parseDiscovery(raw)
+  const discovery = parseDiscovery(raw, dataDir)
   const endpoint = await resolveOpenEndpoint({ flag: flags.endpoint, discoveryEndpoint: discovery.endpoint, connect: io.connect })
-  if (flags.out) assertOutsideRepo(flags.out, root)
+  let outPath: string | null = null
+  if (flags.out) {
+    outPath = assertOutsideRepo(flags.out, root)
+    if (fs.existsSync(outPath)) throw new Error(`refusing to write seeds: ${outPath} already exists`)
+  }
   const token = resolveCosignerToken(io.env, { filePath: discovery.tokenPath, warn: io.stderr, readFile: io.readFile })
   if (!token) throw new Error(`refusing to start: no bearer at ${discovery.tokenPath}`)
   await health(discovery.url, discovery.address, io.fetch)
@@ -357,19 +418,20 @@ export async function runEng(argv: string[], io: EngIo): Promise<number> {
     endpoint: flags.endpoint,
     json: flags.json,
   })
-  const emit = (draft: OpenDraft, partial?: { error: string }): number => {
+  const emit = (draft: OpenDraft, partial?: { error: string; allowSubmit: boolean }): number => {
     const doc = printedOpen({
       draft,
       cosignerUrl: discovery.url,
       tokenPath: discovery.tokenPath,
       endpoint,
+      allowSubmit: partial ? partial.allowSubmit : true,
       partial: partial ? { error: partial.error, retryCommand: retry } : undefined,
     })
     const text = formatOpen(doc, flags.json)
     io.stdout(text)
     if (flags.json) io.stderr(`${TESTNET_SEED_BANNER}\n`)
-    if (flags.out) {
-      const written = writeOutFile(flags.out, root, text)
+    if (outPath) {
+      const written = writeOutFile(outPath, root, text)
       io.stderr(`wrote ${written} mode 0600\n`)
     }
     return partial ? 1 : 0
@@ -384,16 +446,20 @@ export async function runEng(argv: string[], io: EngIo): Promise<number> {
     })
   } catch (error) {
     if (error instanceof OpenPartialError && error.draft.agent && error.draft.engagement) {
-      return emit(error.draft, { error: error.message })
+      return emit(error.draft, { error: error.message, allowSubmit: false })
     }
     throw error
   }
   try {
-    const client = new CosignerClient({ baseUrl: discovery.url, token, fetch: io.fetch })
+    const client = new CosignerClient({
+      baseUrl: discovery.url,
+      token,
+      fetch: (input, init) => fetchWithTimeout(io.fetch, input, init),
+    })
     await registerWithBackoff(() => client.register(opened.record, opened.mandate), { sleep: io.sleep })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    return emit(draftOf(opened), { error: `registration failed: ${message}` })
+    return emit(draftOf(opened), { error: `registration failed: ${message}`, allowSubmit: true })
   }
   return emit(draftOf(opened))
 }

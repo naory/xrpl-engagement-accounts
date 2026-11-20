@@ -100,9 +100,9 @@ only on `SIGN`, and the same flow runs over the real HTTP server through `Cosign
 npm run eng -- open --template procurement@1
 ```
 
-TESTNET ONLY. The command refuses Devnet, mainnet, a non-loopback co-signer URL, and a local co-signer that was started with `ENG_RLUSD_ISSUER`. It faucet-funds a cast, mints a **demo IOU (not RLUSD)**, opens `owner-wallet/procurement@1`, and `POST`s `/v1/engagements` with the bearer from `tokenPath`. A 503 or a connection error is retried three times (1s, then 2s). A 4xx is not retried.
+TESTNET ONLY. The command refuses Devnet, mainnet, a non-loopback co-signer URL, and a local co-signer whose `local.json` `trust` is set (`ENG_RLUSD_ISSUER`, `ENG_KYB_ISSUER`, or `ENG_ARBITER_ACCREDITOR`). It faucet-funds a cast, mints a **demo IOU (not RLUSD)**, opens `owner-wallet/procurement@1`, and `POST`s `/v1/engagements` with the bearer from `tokenPath`. A 503 or a connection error is retried three times (1s, then 2s). A 4xx is not retried.
 
-Stdout starts with `TESTNET ONLY` (the same sentence is the `banner` field of `--json`) and lists `ENGAGEMENT_ID`, `ENGAGEMENT_ACCOUNT`, `AGENT_SEED`, `ASSET_ISSUER`, `COSIGNER_URL`, `COSIGNER_API_TOKEN_FILE`, and `XRPL_URL`. The bearer is not printed. `--out <file>` writes that text outside the repo, mode 0600; a path inside the repo is refused. There is no `--resume`. If the Batch lands and registration still fails, stdout includes a `Retry:` command that opens a new account.
+`npm run` writes its own lines before the command's stdout, so the TESTNET ONLY banner is not the first line of the terminal. The banner is the first field of the JSON from `npm run --silent eng -- open --json`, and `--out <file>` writes that same document outside the repo, mode 0600. A path inside the repo is refused. The text lists `ENGAGEMENT_ID`, `ENGAGEMENT_ACCOUNT`, `AGENT_SEED`, `ASSET_ISSUER`, `COSIGNER_URL`, `COSIGNER_API_TOKEN_FILE`, and `XRPL_URL`. The bearer is not printed. There is no `--resume`. If the Batch lands and registration still fails, the output's Retry line is a full re-open that creates a new account.
 
 `npm run mcp` with the printed env keeps working after `cosigner:local` is restarted: the registration is in `<DATA_DIR>/cosigner.db`, and the next start rewrites `local.json` with the same address and token path.
 

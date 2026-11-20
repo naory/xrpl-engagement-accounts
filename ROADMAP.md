@@ -40,6 +40,7 @@ Product build-out already queued:
   `packages/cosigner/src/hotel/flow.ts` imports `templates/hotel@2.json` from inside the package.
   `@eng/core`, `@eng/policy`, `@eng/ledger`, `@eng/provisioning`, and `@eng/agent-mcp` build to `dist`.
 - **Packaging follow-ups.** (1) Rename the `source` export condition to a project-specific name such as `@eng/source`. A consumer running Node with `--conditions=source` would load this repo's unshipped `src`. (2) `@eng/agent-mcp`'s `.d.ts` references `NodeJS.ProcessEnv`, so a consumer needs `@types/node` or `skipLibCheck`. (3) `@eng/ledger` depends on `@eng/policy` only for a type.
+- **Demo IOU currency code.** `eng open` labels its minted demo token `RLUSD`. Follow-up: use a distinct code such as `DMO` so the demo issuer cannot be read as RLUSD.
 
 ## Trust-model follow-ups
 
