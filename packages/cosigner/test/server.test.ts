@@ -85,6 +85,23 @@ describe('co-signer HTTP hardening', () => {
   })
 })
 
+describe('store failures', () => {
+  const failing = (err: Error) => ({ ...stub(), tick: async () => { throw err } }) as unknown as CosignerService
+  const post = async (svc: CosignerService) => {
+    const server = createServer(svc, {}).listen(0, '127.0.0.1')
+    servers.push(server)
+    await new Promise((r) => server.once('listening', r))
+    return fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/engagements/eng1/tick`, { method: 'POST', body: '{}' })
+  }
+  it('maps STORE_LOCKED and SQLite errors to 503', async () => {
+    expect((await post(failing(new Error('STORE_LOCKED: lease lost')))).status).toBe(503)
+    expect((await post(failing(Object.assign(new Error('database is busy'), { code: 'SQLITE_BUSY' })))).status).toBe(503)
+  })
+  it('keeps policy errors at 400', async () => {
+    expect((await post(failing(new Error('unknown engagement x')))).status).toBe(400)
+  })
+})
+
 describe('serverOptionsFromEnv bind-safety', () => {
   it('refuses a non-loopback bind without a token', () => {
     expect(() => serverOptionsFromEnv('0.0.0.0', {})).toThrow(/COSIGNER_API_TOKEN/)

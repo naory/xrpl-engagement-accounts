@@ -95,10 +95,10 @@ const micro = (v: string) => parseAmount(v, ASSET).minor
 const fmt = (m: bigint) => formatAmount(new Amount('RLUSD', m), ASSET.decimals)
 const money = (v: string) => ({ currency: 'RLUSD', value: v })
 
+const HOTEL_TRUST = { 'arbiter.accreditor': W.accreditor.address, 'rlusd.issuer': W.issuer.address }
+
 function loadLibrary(): { template: Template; policies: PolicyDoc[]; policy: PolicyDoc } {
   const policy = readJson<PolicyDoc>('policies/hotel@2.0.0.json')
-  for (const a of Object.values(policy.assets ?? {})) if (a.kind === 'IOU') a.issuer = W.issuer.address
-  if (policy.params) policy.params.arbiterIssuers = [W.accreditor.address]
   if (policy.params?.rulingWindow !== `${RULING_WINDOW_SECS}s`) throw new Error(`hotel-sim assumes rulingWindow ${RULING_WINDOW_SECS}s, policy has ${String(policy.params?.rulingWindow)}`)
   return { template: readJson<Template>('templates/hotel@2.json'), policies: [readJson<PolicyDoc>('policies/baseline@1.1.0.json'), policy], policy }
 }
@@ -142,7 +142,7 @@ class PathSim {
       credentials: [{ issuer: W.accreditor.address, subject: W.arbiter.address, type: 'ENG/ARBITER', accepted: true, expiration: null }], history: {},
     })
     this.setClock(TIMERS.openedAt)
-    this.svc = new CosignerService({ signer: localSigner(W.cosigner), source: this.source, templates: [lib.template], policies: lib.policies })
+    this.svc = new CosignerService({ signer: localSigner(W.cosigner), source: this.source, templates: [lib.template], policies: lib.policies, trust: HOTEL_TRUST })
   }
 
   private get snap(): LedgerSnapshot { return this.source.snap }
@@ -180,7 +180,7 @@ class PathSim {
       engagementId: this.id, template: TEMPLATE, account: this.eng.address, asset: 'RLUSD',
       parties: { principal: W.guest.address, counterparty: W.hotel.address, arbiter: W.arbiter.address, cosigner: W.cosigner.address },
       fee: { bps: Number(FEE_BPS), to: W.service.address }, deleteTo: W.service.address,
-      amount: { asset: 'RLUSD', value: BOOKING.room }, timers: { ...TIMERS }, terms: hotelTerms(BOOKING.room, NIGHTS), state: 'OPEN', consumed: [], mandateId: this.mandate.id,
+      amount: { asset: 'RLUSD', value: BOOKING.room }, timers: { ...TIMERS }, terms: hotelTerms(BOOKING.room, NIGHTS), state: 'OPEN', consumed: [], mandateId: this.mandate.id, trust: HOTEL_TRUST,
     }
     await this.svc.register(record, this.mandate)
     await this.presign('default.refund', [SWEEP_TO_GUEST])

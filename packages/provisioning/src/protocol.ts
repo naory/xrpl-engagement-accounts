@@ -31,6 +31,8 @@ export interface SessionSpec {
   fundingAmount: string
   mandate?: Statement | null
   policyLayers?: string[]
+  /** Slot name → classic address, copied onto the engagement record. Not part of the policy hash. */
+  trust?: Record<string, string>
 }
 
 export interface Enrollment {
@@ -169,7 +171,7 @@ export class ProvisioningCoordinator {
     const engagement: EngagementRecord = {
       engagementId: s.spec.engagementId, template: s.spec.template, account: s.spec.account, asset: s.spec.asset,
       parties, attesters: s.spec.attesters, deleteTo: s.spec.deleteTo, state: 'OPEN', consumed: [],
-      policyLayers: s.spec.policyLayers, mandateId: s.spec.mandate?.id,
+      policyLayers: s.spec.policyLayers, mandateId: s.spec.mandate?.id, ...(s.spec.trust ? { trust: s.spec.trust } : {}),
     }
     return { engagementId: s.spec.engagementId, account: s.spec.account, asset: s.spec.asset, signerEntries, quorum: s.spec.quorum, engagement, mandate: s.spec.mandate ?? null, funder: s.spec.funder, fundingAmount: s.spec.fundingAmount }
   }

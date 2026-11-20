@@ -237,8 +237,7 @@ export class DemoOrchestrator {
     const baseline = this.read<PolicyDoc>('policies/baseline@1.1.0.json')
     const policy = this.read<PolicyDoc>('policies/procurement@1.3.0.json')
     policy.version = '1.3.0+web'
-    policy.assets!.RLUSD.issuer = issuer.address
-    policy.params!.kybIssuers = [kyb.address]
+    const trust = { 'kyb.issuer': kyb.address, 'rlusd.issuer': issuer.address }
     this.policy = policy
     const templates = fs.readdirSync(path.join(root, 'templates')).map((f) => this.read<Template>(`templates/${f}`))
 
@@ -251,7 +250,7 @@ export class DemoOrchestrator {
       engagementId: this.engagementId, template: 'owner-wallet/procurement@1', account: eng.address, asset: 'RLUSD', quorum: 2,
       roles: [{ role: 'owner', weight: 2 }, { role: 'agent', weight: 1 }, { role: 'cosigner', weight: 1 }],
       attesters: { approver: { accounts: [controller.address] }, vendor: { accounts: [vendorA.address, vendorB.address] } },
-      deleteTo: service.address, funder: treasury.address, fundingAmount: '5000', mandate, policyLayers: [layerHash(policy)],
+      deleteTo: service.address, funder: treasury.address, fundingAmount: '5000', mandate, policyLayers: [layerHash(policy)], trust,
     })
     const enrolments = { owner: makeEnrolment(session, 'owner', treasury), agent: makeEnrolment(session, 'agent', agent), cosigner: makeEnrolment(session, 'cosigner', cosigner) }
     for (const e of Object.values(enrolments)) coord.enrol(e)
@@ -272,7 +271,7 @@ export class DemoOrchestrator {
 
     // Register with an in-process co-signer and build the agent.
     const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
-    this.svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir })
+    this.svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir, trust })
     await this.svc.register(plan.engagement, mandate)
     this.agent = new EngagementAgent({ engagementId: this.engagementId, account: eng.address, signer: localSigner(agent), asset: { code: 'RLUSD', currency: CUR, issuer: issuer.address }, decider: this.svc, chain: new XrplChain(this.client), stage: 'spend' })
     this.provisioned = true
@@ -326,8 +325,7 @@ export class DemoOrchestrator {
     const baseline = this.read<PolicyDoc>('policies/baseline@1.1.0.json')
     const policy = this.read<PolicyDoc>('policies/procurement@1.3.0.json')
     policy.version = '1.3.0+web'
-    policy.assets!.RLUSD.issuer = issuer.address
-    policy.params!.kybIssuers = [kyb.address]
+    const trust = { 'kyb.issuer': kyb.address, 'rlusd.issuer': issuer.address }
     this.policy = policy
     const templates = fs.readdirSync(path.join(root, 'templates')).map((f) => this.read<Template>(`templates/${f}`))
 
@@ -340,7 +338,7 @@ export class DemoOrchestrator {
       engagementId: this.engagementId, template: 'owner-wallet/procurement@1', account: eng.address, asset: 'RLUSD', quorum: 2,
       roles: [{ role: 'owner', weight: 2 }, { role: 'agent', weight: 1 }, { role: 'cosigner', weight: 1 }],
       attesters: { approver: { accounts: [controller.address] }, vendor: { accounts: [vendorA.address, vendorB.address] } },
-      deleteTo: this.poolSponsor.address, funder: treasury.address, fundingAmount: '5000', mandate, policyLayers: [layerHash(policy)],
+      deleteTo: this.poolSponsor.address, funder: treasury.address, fundingAmount: '5000', mandate, policyLayers: [layerHash(policy)], trust,
     })
     const enrolments = { owner: makeEnrolment(session, 'owner', treasury), agent: makeEnrolment(session, 'agent', agent), cosigner: makeEnrolment(session, 'cosigner', cosigner) }
     for (const e of Object.values(enrolments)) coord.enrol(e)
@@ -362,7 +360,7 @@ export class DemoOrchestrator {
 
     // Register with an in-process co-signer and build the agent.
     const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
-    this.svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir })
+    this.svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates, policies: [baseline, policy], dataDir, trust })
     await this.svc.register(plan.engagement, mandate)
     this.agent = new EngagementAgent({ engagementId: this.engagementId, account: eng.address, signer: localSigner(agent), asset: { code: 'RLUSD', currency: CUR, issuer: issuer.address }, decider: this.svc, chain: new XrplChain(this.client), stage: 'spend' })
     this.provisioned = true
@@ -496,16 +494,15 @@ export class DemoOrchestrator {
     const baseline = this.read<PolicyDoc>('policies/baseline@1.1.0.json')
     const policy = this.read<PolicyDoc>('policies/hotel@2.0.0.json')
     policy.version = '2.0.0-web'
-    policy.assets!.RLUSD.issuer = issuer.address
     policy.params!.rulingWindow = '60s'
-  // The demo's own ruling-window bounds around its 60 s window (the stock policy allows 3–7 days; register() checks them).
-  policy.params!.minRulingWindow = '30s'
-  policy.params!.maxRulingWindow = '120s'
-    policy.params!.arbiterIssuers = [accreditor.address]
+    // The demo's own ruling-window bounds around its 60 s window (the stock policy allows 3–7 days; register() checks them).
+    policy.params!.minRulingWindow = '30s'
+    policy.params!.maxRulingWindow = '120s'
+    const trust = { 'arbiter.accreditor': accreditor.address, 'rlusd.issuer': issuer.address }
     this.policy = policy
     const template = this.read<Template>('templates/hotel@2.json')
     const dataDir = path.join(here, '..', '.web-decisions', this.engagementId)
-    const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates: [template], policies: [baseline, policy], dataDir })
+    const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(this.client), templates: [template], policies: [baseline, policy], dataDir, trust })
     this.svc = svc
     const cast: HotelCast = { issuer, guest, hotel, arbiter, accreditor, service, currency: CUR }
 

@@ -44,7 +44,7 @@ moves money toward the inactive party, against the other side's raised flag, is 
 **Non-goals** (this build)
 - A real arbiter service, evidence API or AI/human queue. Arbiters are scripted parties (a key that signs a fixed ruling).
 - The indexer / reputation records.
-- Persistent engagement store or a production "keeper" daemon. In-memory + an explicit tick is enough.
+- Persistent engagement store or a production "keeper" daemon. In-memory + an explicit tick was enough here. Both were added later, see [the durable co-signer design](2026-11-19-durable-cosigner-design.md).
 - Mainnet, Privy custody for parties, XLS-68 sponsored mode, the x402 `engagement` scheme.
 - Recovering hotel claims larger than the deposit. Claims are capped at the deposit; anything beyond is off-ledger.
 
@@ -232,7 +232,7 @@ ruling → backup). A claim leaves no ledger trace, so "posted" must be defined,
   would deliver nothing, so B11 refuses it and the stay must be settled by agreement or ruling.
 - The co-signer stores the pre-signed blobs (guest + hotel signatures) in the engagement record and exposes a `tick(now)`
   that completes and returns any default whose conditions hold at a pinned validated ledger. Submission is the caller's job
-  (the demo, or a future keeper).
+  (the demo, or the co-signer's tick scheduler, added later).
 
 ### 5.5 Entry disputes (end the deal immediately)
 

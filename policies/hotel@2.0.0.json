@@ -12,7 +12,7 @@
       "code": "RLUSD",
       "kind": "IOU",
       "currency": "524C555344000000000000000000000000000000",
-      "issuer": "rRLUSDissuerPlaceholderXXXXXXXXXX",
+      "issuer": "$slot:rlusd.issuer",
       "decimals": 6
     }
   },
@@ -33,7 +33,7 @@
     "arbiterCredentialType": "ENG/ARBITER",
     "disputeCredentialType": "ENG/DISPUTE",
     "arbiterIssuers": [
-      "rArbiterAccreditorPlaceholderXXXXXX"
+      "$slot:arbiter.accreditor"
     ],
     "maxStayVariantNights": 14
   },

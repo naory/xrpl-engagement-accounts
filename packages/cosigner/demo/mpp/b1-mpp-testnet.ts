@@ -167,11 +167,10 @@ async function main() {
   const baseline = read<PolicyDoc>('policies/baseline@1.1.0.json')
   const policy = read<PolicyDoc>('policies/procurement@1.3.0.json')
   policy.version = '1.3.0+mppdemo'
-  policy.assets!.RLUSD.issuer = issuer.address
-  policy.params!.kybIssuers = [kyb.address]
+  const trust = { 'kyb.issuer': kyb.address, 'rlusd.issuer': issuer.address }
   const tmpl = fs.readdirSync(path.join(root, 'templates')).map((f) => read<Template>(`templates/${f}`))
   const dataDir = path.join(resultsDir, `decisions-${String(results.startedAt).replace(/[:.]/g, '-')}`)
-  const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(client), templates: tmpl, policies: [baseline, policy], dataDir })
+  const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(client), templates: tmpl, policies: [baseline, policy], dataDir, trust })
 
   const expires = new Date(Date.now() + 7 * 86400_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
   const mandate = stmt(treasury, 'PRINCIPAL', 'party.mandate/1', { mandateId: 'mnd_mpp' }, { purpose: 'agentic MPP data purchases (demo)', budget: '5000.00', dailyCap: '3000.00', vendors: [vendorA.address, vendorB.address], expires })
@@ -179,7 +178,7 @@ async function main() {
     engagementId: ENG_ID, template: 'owner-wallet/procurement@1', account: eng.address, asset: 'RLUSD',
     parties: { owner: treasury.address, agent: agent.address, cosigner: cosigner.address },
     attesters: { approver: { accounts: [controller.address] }, vendor: { accounts: [vendorA.address, vendorB.address] } },
-    deleteTo: service.address, state: 'OPEN', consumed: [], policyLayers: [layerHash(policy)], mandateId: mandate.id,
+    deleteTo: service.address, state: 'OPEN', consumed: [], policyLayers: [layerHash(policy)], mandateId: mandate.id, trust,
   }
   await svc.register(engagement, mandate)
   log(`co-signer ${cosigner.address} registered ${ENG_ID} (W7 payment-challenge binding active, rail-neutral)`)
