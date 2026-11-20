@@ -39,6 +39,7 @@ Product build-out already queued:
 - **Co-signer npm package.** `@eng/cosigner` stays private. Packing it waits until
   `packages/cosigner/src/hotel/flow.ts` imports `templates/hotel@2.json` from inside the package.
   `@eng/core`, `@eng/policy`, `@eng/ledger`, `@eng/provisioning`, and `@eng/agent-mcp` build to `dist`.
+- **Packaging follow-ups.** (1) Rename the `source` export condition to a project-specific name such as `@eng/source`. A consumer running Node with `--conditions=source` would load this repo's unshipped `src`. (2) `@eng/agent-mcp`'s `.d.ts` references `NodeJS.ProcessEnv`, so a consumer needs `@types/node` or `skipLibCheck`. (3) `@eng/ledger` depends on `@eng/policy` only for a type.
 
 ## Trust-model follow-ups
 
@@ -92,6 +93,7 @@ The same label is in [`docs/SCOPE.md`](docs/SCOPE.md#product-status).
 
 ## Done (recent)
 
+- **`eng open` (T23).** `npm run eng -- open --template procurement@1` funds a Testnet cast, mints a demo IOU (not RLUSD), opens `owner-wallet/procurement@1`, and registers it with the local co-signer from `local.json`. Seeds go to stdout with a TESTNET ONLY banner. The bearer is not printed; `COSIGNER_API_TOKEN_FILE` is the path. Registration retries a 503 or a connection error three times and does not retry 4xx. Devnet and a co-signer started with `ENG_RLUSD_ISSUER` are refused.
 - **One-command local co-signer (T17).** `npm run cosigner:local` binds loopback, generates an ed25519 Testnet key and a bearer token under the data dir on first run, keeps SQLite state and the tick scheduler across a restart, and writes `local.json` (url, address, public key, network, token path) for `eng open`. `/v1` requires the bearer. Known Testnet hosts only. `npm run cosigner` is unchanged.
 
 - **Durable co-signer state, restart tests and a tick scheduler (T10–T12).** The co-signer keeps registrations, receipts, pre-signed defaults, in-flight payments and the decision log in a `StateStore` (SQLite by default in the server, in-memory for tests), restores them on boot, quarantines an engagement whose policy library changed, and rejects a second writer. Kill-and-restart tests cover disputes, rulings and in-flight spends. `COSIGNER_TICK_MS` runs `tick()` on a schedule. Postgres is a documented upgrade path — [README §7](README.md#7-policy-co-signer).

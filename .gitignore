@@ -19,6 +19,9 @@ cosigner.seed
 cosigner.token
 **/cosigner.token
 **/.cosigner.token.*.tmp
+# eng open --out. The CLI also refuses any path inside the repo.
+eng-open.out
+*.eng-open.json
 /spike/
 packages/*/demo/results/
 packages/web/.web-decisions/

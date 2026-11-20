@@ -19,6 +19,11 @@
       "source": "./src/server.ts",
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
+    },
+    "./eng": {
+      "source": "./src/eng.ts",
+      "types": "./dist/eng.d.ts",
+      "default": "./dist/eng.js"
     }
   },
   "files": ["dist", "LICENSE", "README.md"],

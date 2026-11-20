@@ -4,9 +4,10 @@
 // verdict and, on SIGN, a ready-to-submit quorum blob — and broadcasting is fail-closed: it is
 // refused unless the operator explicitly turns it on (XRPL_URL + AGENT_ALLOW_SUBMIT=1).
 //
-//   COSIGNER_URL=http://127.0.0.1:8787 COSIGNER_API_TOKEN=… \
+//   COSIGNER_URL=http://127.0.0.1:8787 COSIGNER_API_TOKEN_FILE=… \
 //   AGENT_SEED=s… ENGAGEMENT_ID=eng_… ENGAGEMENT_ACCOUNT=r… ASSET_ISSUER=r… \
 //   [ASSET_CODE=RLUSD] [XRPL_URL=wss://…] [AGENT_ALLOW_SUBMIT=1] npm run mcp
+// COSIGNER_API_TOKEN, when set, wins over COSIGNER_API_TOKEN_FILE. The token is not logged.
 import path from 'node:path'
 import xrpl from 'xrpl'
 import { z } from 'zod'
@@ -17,6 +18,7 @@ import { currencyHex } from '@eng/ledger'
 import { privySignerFromEnv } from '@eng/ledger/privy'
 import { EngagementAgent, XrplChain, type Chain, type Proposal } from './agent.ts'
 import { CosignerClient } from './client.ts'
+import { resolveCosignerToken } from './cosigner-token.ts'
 
 export interface AgentServerConfig {
   cosignerUrl: string
@@ -34,14 +36,14 @@ export interface AgentServerConfig {
 }
 
 /** Resolve server config from the environment (fail-closed on submission). */
-export function configFromEnv(env: NodeJS.ProcessEnv = process.env): AgentServerConfig {
+export function configFromEnv(env: NodeJS.ProcessEnv = process.env, opts?: { warn?: (line: string) => void }): AgentServerConfig {
   const need = (k: string): string => { const v = env[k]; if (!v) throw new Error(`missing required env ${k}`); return v }
   const code = env.ASSET_CODE ?? 'RLUSD'
   const xrplUrl = env.XRPL_URL ?? null
   const allow = /^(1|true|yes)$/i.test(env.AGENT_ALLOW_SUBMIT ?? '')
   return {
     cosignerUrl: env.COSIGNER_URL ?? 'http://127.0.0.1:8787',
-    token: env.COSIGNER_API_TOKEN || null,
+    token: resolveCosignerToken(env, { warn: opts?.warn }),
     engagementId: need('ENGAGEMENT_ID'),
     account: need('ENGAGEMENT_ACCOUNT'),
     keySource: env.AGENT_KEY_SOURCE ?? 'local',
