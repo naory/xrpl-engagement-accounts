@@ -10,6 +10,7 @@
   "main": "src/index.ts",
   "dependencies": {
     "@eng/core": "^0.1.0",
+    "@eng/ledger": "^0.1.0",
     "@eng/policy": "^0.1.0",
     "kysely": "0.29.9",
     "ripple-binary-codec": "2.11.0",

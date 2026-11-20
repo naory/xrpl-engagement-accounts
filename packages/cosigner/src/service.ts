@@ -16,9 +16,13 @@ import type { LedgerSource } from './snapshot.ts'
 import { combine, unsigned } from './xrpl-io.ts'
 import { MemoryStateStore } from './store/memory.ts'
 import { pinsOf, readDecisionsJsonl, resolvePins } from './store/restore.ts'
+import type { DecideRequest, DecideResponse } from '@eng/ledger/decide'
 import type { StateStore, StoreTx } from './store/types.ts'
 
 type Json = Record<string, unknown>
+
+// Compatibility shim. DecideRequest and DecideResponse live in @eng/ledger.
+export type { DecideRequest, DecideResponse }
 
 export interface InflightRecord extends InflightEntry {
   engagementId: string
@@ -31,30 +35,6 @@ export interface InflightRecord extends InflightEntry {
   decidedAtLedger: number
   /** documentHash of the evaluated transaction: re-requests for the same transaction are idempotent. */
   proposedTxHash: string
-}
-
-export interface DecideRequest {
-  engagementId: string
-  stage: string
-  /** Transaction JSON, or a (partially) signed blob from another signer. */
-  tx?: Json | null
-  txBlob?: string
-  statements?: Statement[]
-}
-
-export interface DecideResponse {
-  decision: Decision['decision']
-  failing: string[]
-  results: Decision['results']
-  statementsRejected: Decision['statementsRejected']
-  /** Signed cosigner.decision/1 record. */
-  record: Statement
-  /** The co-signer's multisig signature on the evaluated transaction (SIGN only); combine with xrpl.multisign. */
-  signerBlob?: string
-  /** The exact transaction evaluated and signed. */
-  tx?: Json | null
-  /** Set when the stage is not one the co-signer signs (advisory evaluation only). */
-  advisory?: true
 }
 
 /** One stored pre-signed default, evaluated by tick(). */

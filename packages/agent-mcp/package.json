@@ -7,13 +7,30 @@
     "node": ">=22.13"
   },
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "source": "./src/server.ts",
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "files": ["dist", "LICENSE", "README.md"],
   "dependencies": {
     "@eng/core": "^0.1.0",
-    "@eng/cosigner": "^0.1.0",
+    "@eng/ledger": "^0.1.0",
     "@eng/policy": "^0.1.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "xrpl": "5.3.0",
     "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eng/cosigner": "^0.1.0"
   }
 }

@@ -7,10 +7,11 @@
 // funds alone, so a compromised agent cannot pay anyone the policy would not have signed for.
 import xrpl from 'xrpl'
 import { signerBlob, type Signer, type Statement } from '@eng/core'
+import type { DecideRequest, DecideResponse } from '@eng/ledger/decide'
 import {
   combine, accountInfo, currentLedger, serverFees, multisigFee, iou, memo, submit,
-  type DecideRequest, type DecideResponse, type Fees, type SubmitResult,
-} from '@eng/cosigner'
+  type Fees, type SubmitResult,
+} from '@eng/ledger'
 
 type Json = Record<string, unknown>
 type XrplClient = InstanceType<typeof xrpl.Client>

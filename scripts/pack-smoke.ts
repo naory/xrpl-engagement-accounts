@@ -13,12 +13,16 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 interface Packed {
   name: string
   dir: string
+  /** Paths that must be present inside the tarball, under its package root. */
+  required?: string[]
 }
 
 const PACKED: Packed[] = [
   { name: '@eng/core', dir: 'core' },
   { name: '@eng/policy', dir: 'policy' },
+  { name: '@eng/ledger', dir: 'ledger' },
   { name: '@eng/provisioning', dir: 'provisioning' },
+  { name: '@eng/agent-mcp', dir: 'agent-mcp', required: ['dist/index.js', 'dist/server.js'] },
 ]
 
 function run(
@@ -43,7 +47,7 @@ function assertOutsideRepo(dir: string): void {
   }
 }
 
-function assertArchive(tgz: string): void {
+function assertArchive(tgz: string, required: string[]): void {
   const listed = run('tar', ['-tzf', tgz], root)
   if (listed.status !== 0) fail(`tar -tzf ${tgz} failed:\n${listed.stderr}`)
   const entries = listed.stdout.split('\n').map((line) => line.trim()).filter(Boolean)
@@ -53,7 +57,9 @@ function assertArchive(tgz: string): void {
     const file = parts[parts.length - 1] ?? ''
     if (file.endsWith('.ts') && !file.endsWith('.d.ts')) fail(`${path.basename(tgz)} contains TypeScript source ${entry}`)
   }
-  if (!entries.some((entry) => entry.endsWith('/dist/index.js'))) fail(`${path.basename(tgz)} has no dist/index.js`)
+  for (const rel of required) {
+    if (!entries.some((entry) => entry.endsWith(`/${rel}`))) fail(`${path.basename(tgz)} has no ${rel}`)
+  }
   console.log(`tarball ${path.basename(tgz)} ${entries.length} files, no src/ test/ or .ts source`)
 }
 
@@ -73,7 +79,7 @@ function pack(pkg: Packed, dest: string): string {
   }
   if (!filename) fail(`npm pack ${pkg.name} JSON has no filename`)
   const tgz = path.join(out, filename)
-  assertArchive(tgz)
+  assertArchive(tgz, pkg.required ?? ['dist/index.js'])
   return tgz
 }
 
@@ -81,12 +87,16 @@ function smokeSource(): string {
   return `
 import { parseAmount } from '@eng/core'
 import { layerHash } from '@eng/policy'
+import { currencyHex } from '@eng/ledger'
 import { ProvisioningCoordinator } from '@eng/provisioning'
 
 const amount = parseAmount('1.50', { code: 'USD', kind: 'IOU', currency: 'USD', decimals: 2 })
 if (amount.minor !== 150n) throw new Error('parseAmount(1.50) minor was ' + amount.minor.toString())
 const hash = layerHash({ policyId: 'smoke', version: '0', layer: 'baseline', appliesTo: [], language: 'cel-eng/1', stages: {} })
 if (!hash.startsWith('att:') || hash.length < 16) throw new Error('layerHash returned ' + hash)
+if (currencyHex('USD') !== 'USD') throw new Error('currencyHex(USD) was ' + currencyHex('USD'))
+const rlusd = currencyHex('RLUSD')
+if (rlusd !== '524C555344'.padEnd(40, '0')) throw new Error('currencyHex(RLUSD) was ' + rlusd)
 if (typeof ProvisioningCoordinator !== 'function') throw new Error('ProvisioningCoordinator missing')
 console.log('pack-smoke imports ok', hash.slice(0, 12))
 `
@@ -116,6 +126,12 @@ function main(): void {
   const smoked = run(process.execPath, ['smoke.mjs'], installDir, cleanEnv)
   if (smoked.stdout) process.stdout.write(smoked.stdout)
   if (smoked.status !== 0) fail(`import smoke failed (exit ${smoked.status}):\n${smoked.stderr}`)
+  const server = run(process.execPath, ['node_modules/@eng/agent-mcp/dist/server.js'], installDir, cleanEnv)
+  const serverErr = server.stderr.trim()
+  if (server.status !== 1 || !serverErr.includes('missing required env ENGAGEMENT_ID')) {
+    fail(`agent-mcp entry expected exit 1 and missing ENGAGEMENT_ID, got exit ${server.status}:\n${server.stdout}${serverErr}`)
+  }
+  console.log(`agent-mcp entry exit ${server.status}: ${serverErr}`)
   console.log('pack-smoke passed')
 }
 
