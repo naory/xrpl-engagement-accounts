@@ -239,6 +239,7 @@ describe('output', () => {
       tokenPath: '/tmp/cosigner.token',
       endpoint: TESTNET_ENDPOINTS[0],
       partial: { error: 'registration failed: ledger', retryCommand: 'npm run eng -- open --template procurement@1 --cosigner-dir /tmp/c' },
+      now: new Date('2026-01-01T00:00:00Z'),
     })
     const human = formatOpen(doc, false)
     const json = formatOpen(doc, true)
@@ -263,6 +264,26 @@ describe('output', () => {
     expect(human).toContain(`VENDOR_SEED=${vendorSeed}`)
     expect(human.indexOf('Operator only')).toBeGreaterThan(human.indexOf('Agent env'))
     expect(retryCommand({ template: 'owner-wallet/procurement@1', cosignerDir: '/tmp/my dir', endpoint: null, json: true })).toBe("npm run --silent eng -- open --template procurement@1 --cosigner-dir '/tmp/my dir' --json")
+  })
+
+  it('omits the demo invoice when the open Batch failed', () => {
+    const opened = provisioned('rCosigner')
+    opened.open = { ...opened.open, ok: false, final: 'tecUNFUNDED_PAYMENT' }
+    const doc = printedOpen({
+      draft: opened,
+      cosignerUrl: 'http://127.0.0.1:8787',
+      tokenPath: '/tmp/cosigner.token',
+      endpoint: TESTNET_ENDPOINTS[0],
+      allowSubmit: false,
+      partial: { error: 'open Batch did not satisfy the procurement checks (tecUNFUNDED_PAYMENT)', retryCommand: 'npm run eng -- open --template procurement@1' },
+      now: new Date('2026-01-01T00:00:00Z'),
+    })
+    expect(doc.invoice).toBeUndefined()
+    expect(doc.env.AGENT_ALLOW_SUBMIT).toBeUndefined()
+    const human = formatOpen(doc, false)
+    expect(human).not.toContain('Invoice for pay_vendor')
+    expect(human).not.toContain('"type": "party.invoice/1"')
+    expect(human).toContain('Partial failure')
   })
 
   it('refuses a symlink into the repo and a name that merely starts with ..', () => {
@@ -327,7 +348,7 @@ describe('runEng', () => {
     expect(parsed.invoice.engagementId).toBe('eng_open_test')
     expect(parsed.invoice.claim.amount).toBe('800.00')
     expect(parsed.invoice.claim.invoiceRef).toBe('inv:open-001')
-    expect(parsed.invoice.validUntil).toBe('2026-01-02T00:00:00Z')
+    expect(parsed.invoice.validUntil).toBe('2026-01-02T00:00:00.000Z')
     expect(JSON.stringify(parsed.env)).not.toContain(parsed.operator.VENDOR_SEED)
     expect(parsed.operator.note).toContain('W6')
     expect(deps.out).not.toContain(FILE_TOKEN)
@@ -437,6 +458,7 @@ describe('runEng', () => {
       expect(deps.out).toContain('AGENT_SEED=')
       expect(deps.out).toContain('Retry (full re-open, creates a new account)')
       expect(deps.out).not.toContain('AGENT_ALLOW_SUBMIT')
+      expect(deps.out).not.toContain('Invoice for pay_vendor')
       expect(`${deps.out}\n${deps.err}`).not.toContain(FILE_TOKEN)
     } finally {
       fs.rmSync(deps.dir, { recursive: true, force: true })

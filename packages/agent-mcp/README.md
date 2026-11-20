@@ -196,7 +196,7 @@ Without `statements`, `pay_vendor` is refused on W6 and nothing is submitted. Th
 npm run eng -- invoice --vendor-seed-file /absolute/path/vendor.seed --engagement-id eng_… --amount 800.00 --expires 2026-01-02T00:00:00Z --invoice-ref inv:open-002
 ```
 
-`--vendor-seed-file` is one line. The command reads it and does not print it. Stdout is the invoice JSON. `--amount` has to be greater than zero and under `1000.00`. `--expires` is `validUntil` and has to be in the future.
+`--vendor-seed-file` is one line. The command reads it and does not print it. Stdout is the invoice JSON. `--amount` has to be greater than zero and under `1000.00`. `--expires` is a full ISO-8601 time with a zone (`2026-01-02T00:00:00Z`). It has to be strictly after now, and it is stored as UTC `toISOString()`. A bare year is rejected. An expiry after the earlier of `--mandate-expires` and 7 days from now is rejected, not shortened.
 
 The ledger checks the SignerList quorum. The policy co-signer checks the invoice, the cap, and the expiry: ledger-enforced quorum plus policy co-signer.
 
