@@ -167,6 +167,7 @@ Design rules:
 - **One writer.** A lease in the store rejects a second process with `STORE_LOCKED`. If the server loses the lease, it exits with code 1. After a crash, a lease loss or a timed-out shutdown, a restart within the lease period (15 s by default) fails with `STORE_LOCKED` until the old heartbeat goes stale, so a supervisor should retry.
 - **Old log.** An existing `decisions.jsonl` is imported once. Afterwards it is a best-effort export, not the source of truth.
 - **Tick scheduler.** Set `COSIGNER_TICK_MS` and the server ticks every open engagement on that interval. Repeated identical refusals are logged once, and an engagement is closed after its account has been gone for two rounds. With `COSIGNER_TICK_SUBMIT=1` the server also submits each completed default to `XRPL_URL`, and resubmits it each round until it is in a validated ledger (pre-signed defaults carry no `LastLedgerSequence`, so a rejected or unconfirmed submit must stay retryable). Otherwise it logs only the transaction hash; the signed blob comes from `POST /v1/engagements/:id/tick`.
+- **Local co-signer.** `npm run cosigner:local` is the one command from a fresh clone. It binds `127.0.0.1` only, generates an ed25519 key on first run at `<DATA_DIR>/cosigner.seed` (mode 0600; the co-signer is never funded), and reads that file on later runs. `DATA_DIR` is resolved against the repo root — the directory whose `package.json` has `workspaces` — not the shell's current directory. An absolute `DATA_DIR` is used as given. The default is `<root>/.cosigner`. The websocket is `resolveServiceEndpoint`, then refused unless it is a known Testnet host (`wss://testnet.xrpl-labs.com` or `wss://s.altnet.rippletest.net:51233`); a Devnet URL exits 1. `ENG_NETWORK`, checked only by this command, must be `xrpl:1` when set. The tick scheduler runs every `COSIGNER_TICK_MS` milliseconds, or 30000 when that is unset or not positive. Submit stays off unless `COSIGNER_TICK_SUBMIT=1`. A set `COSIGNER_SEED` is ignored, and the warning names only the key file. On listen it writes `<DATA_DIR>/local.json` (`version`, `url`, `address`, `publicKey`, `network`, `endpoint`, `pid`, `startedAt`, and `trust` when a slot is set) and prints `local co-signer <url> <address>`. A clean shutdown deletes `local.json`. Trust slots stay optional on this loopback bind: set `ENG_RLUSD_ISSUER` (and the other `ENG_*` slot variables) to pin a demo issuer, or leave them unset and put `trust` on the engagement record. `eng open` will read `local.json` from that same path with no extra env.
 
 Kill-and-restart tests are in [`packages/cosigner/test/restart.test.ts`](packages/cosigner/test/restart.test.ts).
 
@@ -280,7 +281,7 @@ Stack: TypeScript (Node ≥ 22.13, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-ke
 
 ```bash
 npm install
-npm test                    # <!-- count:tests -->711<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
+npm test                    # <!-- count:tests -->724<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
 npm run test:sweep          # <!-- count:tests-sweep -->15<!-- /count --> hotel R20/R21 sweep tests; nightly, not part of npm test
 npm run typecheck
 npm run validate-templates  # V1–V15 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)
@@ -291,6 +292,7 @@ npm run demo:x402           # live x402 engagement-account purchase on Testnet (
 npm run demo:mpp            # live MPP (push) engagement-account purchase on Testnet (needs x402-xrpl-settlement-adapter)
 npm run probe:x402          # probe a hosted facilitator for engagement-account support
 COSIGNER_SEED=s… npm run cosigner   # HTTP co-signer on 127.0.0.1:8787 (test seeds only; set COSIGNER_API_TOKEN + COSIGNER_BIND to expose it; off loopback also set ENG_RLUSD_ISSUER, ENG_ARBITER_ACCREDITOR, ENG_KYB_ISSUER)
+npm run cosigner:local           # loopback Testnet co-signer; generates <repo>/.cosigner/cosigner.seed and prints the URL and address
 AGENT_SEED=s… ENGAGEMENT_ID=… ENGAGEMENT_ACCOUNT=r… ASSET_ISSUER=r… npm run mcp   # agent-side MCP server for an AI agent (see packages/agent-mcp/README.md)
 npm run web                 # end-to-end demo UI on http://127.0.0.1:8080 (simulated + live Testnet; see packages/web/README.md)
 npm run demo:mcp            # agent drives the MCP tools end-to-end on Testnet (see packages/agent-mcp/README.md)

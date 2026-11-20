@@ -69,6 +69,8 @@ The same label is in [`docs/SCOPE.md`](docs/SCOPE.md#product-status).
 
 ## Done (recent)
 
+- **One-command local co-signer (T17).** `npm run cosigner:local` binds loopback, generates an ed25519 Testnet key under the data dir on first run, keeps SQLite state and the tick scheduler across a restart, and writes `local.json` (url, address, public key, network) for `eng open`. Known Testnet hosts only. `npm run cosigner` is unchanged.
+
 - **Durable co-signer state, restart tests and a tick scheduler (T10–T12).** The co-signer keeps registrations, receipts, pre-signed defaults, in-flight payments and the decision log in a `StateStore` (SQLite by default in the server, in-memory for tests), restores them on boot, quarantines an engagement whose policy library changed, and rejects a second writer. Kill-and-restart tests cover disputes, rulings and in-flight spends. `COSIGNER_TICK_MS` runs `tick()` on a schedule. Postgres is a documented upgrade path — [README §7](README.md#7-policy-co-signer).
 
 Hotel entries below are [Research](#research). No new hotel features are merged.
