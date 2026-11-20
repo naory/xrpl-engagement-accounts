@@ -1,5 +1,7 @@
 # Attestation format (extension E2)
 
+> **Code versus this draft.** The `ENG/ARBITER` paragraph and the validity rule below are ahead of the code. The co-signer checks that credential at `register` only. It does not submit `CredentialDelete`, and it does not apply the not-yet-consumed rule. The accreditor is the address in `ENG_ARBITER_ACCREDITOR`, and that address is not compared with the service account. Deleting or expiring the credential does not take the arbiter off the SignerList. See the [trust model](../trust-model.md).
+
 > **Status:** design draft (October 2026). **Depends on:** [hotel-booking use case](../use-cases/hotel-booking.md) (co-signer model, §5) and the [use-case catalog](../use-cases/catalog.md) (requirements, E2).
 > **Purpose:** one format for every signed, off-ledger statement that the co-signer's policy, the arbiter or the indexer acts on, whether it comes from a carrier, an inspector, a registry, a monitor or an internal approver.
 
