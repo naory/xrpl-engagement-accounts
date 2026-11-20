@@ -2,7 +2,7 @@
 // The co-signer URL comes from local.json and must be loopback. The bearer is never printed.
 import fs from 'node:fs'
 import path from 'node:path'
-import { DEMO_INVOICE_AMOUNT, DEMO_INVOICE_REF, DEMO_INVOICE_TTL_MS, issueVendorInvoice, type Statement } from '@eng/core'
+import { DEMO_INVOICE_AMOUNT, DEMO_INVOICE_REF, DEMO_INVOICE_TTL_MS, assertInvoiceExpiry, issueVendorInvoice, type Statement } from '@eng/core'
 import { CosignerError, CosignerClient } from './client.ts'
 import { resolveCosignerToken } from './cosigner-token.ts'
 import { runInvoice } from './invoice-cmd.ts'
@@ -330,14 +330,19 @@ export function printedOpen(opts: {
   const vendor = opts.draft.vendorA
   const now = opts.now ?? new Date()
   const issued = isoNoMillis(now)
-  const invoice = vendor ? issueVendorInvoice({
+  // A failed open Batch has no account to spend from. Registration can still fail after a good Batch.
+  const batchOk = opts.allowSubmit !== false && opts.draft.open?.ok !== false
+  const mandateExpires = opts.draft.mandate?.claim && typeof opts.draft.mandate.claim.expires === 'string'
+    ? opts.draft.mandate.claim.expires
+    : undefined
+  const invoice = vendor && batchOk ? issueVendorInvoice({
     engagementId: opts.draft.engagementId,
     vendorAddress: vendor.address,
     amount: DEMO_INVOICE_AMOUNT,
     invoiceRef: DEMO_INVOICE_REF,
     observedAt: issued,
     issuedAt: issued,
-    validUntil: isoNoMillis(new Date(now.getTime() + DEMO_INVOICE_TTL_MS)),
+    validUntil: assertInvoiceExpiry(new Date(now.getTime() + DEMO_INVOICE_TTL_MS).toISOString(), now, mandateExpires),
     po: 'PO-OPEN',
   }, vendor) : undefined
   const vendorSeed = vendor ? seedOf(vendor, 'vendor') : undefined

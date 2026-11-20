@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import xrpl from 'xrpl'
 import { currencyHex, type Fees, type SubmitResult } from '@eng/ledger'
 import { CosignerService, FixtureLedgerSource, createServer } from '@eng/cosigner'
-import { issueVendorInvoice, localSigner } from '@eng/core'
+import { issueVendorInvoice, localSigner, signStatement, vendorInvoiceBody, type Statement } from '@eng/core'
 import { W, LEDGER_INDEX, b1Engagement, b1Invoice, b1Mandate, b1Ledger, policies, templates } from '../../policy/test/fixtures.ts'
 import { EngagementAgent, type Chain } from '../src/agent.ts'
 import { CosignerClient } from '../src/client.ts'
@@ -152,5 +152,88 @@ describe('engagement agent', () => {
     expect(second.proposal.decision.statementsRejected.map((s) => s.code)).toContain('CONSUMED')
     expect(second.submit).toBeUndefined()
     expect(submitted).toHaveLength(1)
+  })
+
+  function demoInvoice(over: Partial<Parameters<typeof issueVendorInvoice>[0]> = {}, signer: InstanceType<typeof xrpl.Wallet> = W.vendorA): Statement {
+    return issueVendorInvoice({
+      engagementId: ENG,
+      vendorAddress: signer.address,
+      amount: '800.00',
+      invoiceRef: 'inv:neg-001',
+      observedAt: '2026-11-18T09:00:00Z',
+      issuedAt: '2026-11-18T09:00:01Z',
+      validUntil: '2026-11-19T09:00:01Z',
+      po: 'PO-OPEN',
+      nonce: 'neg-invoice',
+      ...over,
+    }, signer)
+  }
+
+  async function refused(statements: Statement[], amount = '800.00', destination = W.vendorA.address) {
+    const chain = new FakeChain(21)
+    const agent = agentFor(await service(), chain)
+    const result = await agent.payVendor({ destination, amount, invoiceRef: 'inv:neg-001', statements })
+    expect(result.proposal.decision.decision).toBe('REFUSE')
+    expect(result.submit).toBeUndefined()
+    expect(chain.submitted).toEqual([])
+    return result.proposal.decision
+  }
+
+  it('refuses an invoice bound to another engagement (NOT_BOUND) and submits nothing', async () => {
+    const decision = await refused([demoInvoice({ engagementId: 'eng_other', nonce: 'other-eng' })])
+    expect(decision.statementsRejected.map((s) => s.code)).toContain('NOT_BOUND')
+  })
+
+  it('refuses another vendor\'s invoice when paying vendor A (W6) and submits nothing', async () => {
+    const decision = await refused([demoInvoice({ nonce: 'vendor-b' }, W.vendorB)])
+    expect(decision.failing).toContain('W6')
+    expect(decision.statementsRejected).toEqual([])
+  })
+
+  it('refuses an invoice for 800 when the payment is 900 (W6) and submits nothing', async () => {
+    const decision = await refused([demoInvoice()], '900.00')
+    expect(decision.failing).toContain('W6')
+    expect(decision.statementsRejected).toEqual([])
+  })
+
+  it('refuses an expired invoice (EXPIRED) and submits nothing', async () => {
+    const decision = await refused([demoInvoice({
+      observedAt: '2026-11-18T08:00:00Z',
+      issuedAt: '2026-11-18T08:00:01Z',
+      validUntil: '2026-11-18T09:00:00Z',
+      nonce: 'expired',
+    })])
+    expect(decision.statementsRejected.map((s) => s.code)).toContain('EXPIRED')
+  })
+
+  it('refuses a tampered claim (BAD_ID) and submits nothing', async () => {
+    const invoice = demoInvoice({ nonce: 'tamper-claim' })
+    invoice.claim = { ...invoice.claim, amount: '1.00' }
+    const decision = await refused([invoice])
+    expect(decision.statementsRejected.map((s) => s.code)).toContain('BAD_ID')
+  })
+
+  it('refuses a tampered signature (BAD_SIGNATURE) and submits nothing', async () => {
+    const invoice = demoInvoice({ nonce: 'tamper-sig' })
+    const sig = invoice.proof.signature
+    invoice.proof = { ...invoice.proof, signature: `${sig.slice(0, -1)}${sig.endsWith('A') ? 'B' : 'A'}` }
+    const decision = await refused([invoice])
+    expect(decision.statementsRejected.map((s) => s.code)).toContain('BAD_SIGNATURE')
+  })
+
+  it('refuses an invoice the agent signed as the vendor (KEY_NOT_AUTHORIZED) and submits nothing', async () => {
+    const body = vendorInvoiceBody({
+      engagementId: ENG,
+      vendorAddress: W.vendorA.address,
+      amount: '800.00',
+      invoiceRef: 'inv:neg-001',
+      observedAt: '2026-11-18T09:00:00Z',
+      issuedAt: '2026-11-18T09:00:01Z',
+      validUntil: '2026-11-19T09:00:01Z',
+      nonce: 'agent-as-vendor',
+      po: 'PO-OPEN',
+    })
+    const decision = await refused([signStatement(body, W.agent)])
+    expect(decision.statementsRejected.map((s) => s.code)).toContain('KEY_NOT_AUTHORIZED')
   })
 })

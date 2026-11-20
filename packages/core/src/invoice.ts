@@ -25,6 +25,15 @@ export const DEMO_INVOICE_REF = 'inv:open-001'
 
 export const DEMO_INVOICE_TTL_MS = 24 * 60 * 60 * 1000
 
+/** Hard ceiling on `validUntil`. A mandate that ends sooner tightens this. */
+export const INVOICE_MAX_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * Full ISO-8601 date-time with a zone. Bare years (`2027`), dates without a time,
+ * and offsets without a colon are rejected. Fractional seconds are 1–3 digits.
+ */
+const ISO_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-](\d{2}):(\d{2}))$/
+
 export interface InvoiceSigner {
   address?: string
   classicAddress?: string
@@ -98,11 +107,66 @@ export function assertInvoiceAmountUnderCap(amount: string): void {
   }
 }
 
-/** Keep a caller-supplied expiry when it parses and is strictly after `now`. */
-export function assertInvoiceExpiry(expires: string, now: Date): string {
-  const text = expires.trim()
-  const t = Date.parse(text)
-  if (!text || Number.isNaN(t)) throw new Error('refusing to invoice: expires is not an ISO-8601 time')
-  if (t <= now.getTime()) throw new Error('refusing to invoice: expires is not in the future')
-  return text
+function parseStrictIso(text: string, label: string): Date {
+  const m = ISO_TIME.exec(text.trim())
+  if (!m) throw new Error(`refusing to invoice: ${label} must be a full ISO-8601 time with a zone`)
+  const year = Number(m[1])
+  const month = Number(m[2])
+  const day = Number(m[3])
+  const hour = Number(m[4])
+  const minute = Number(m[5])
+  const second = Number(m[6])
+  const ms = Number((m[7] ?? '').padEnd(3, '0') || '0')
+  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59) {
+    throw new Error(`refusing to invoice: ${label} must be a full ISO-8601 time with a zone`)
+  }
+  let offsetMin = 0
+  if (m[8] !== 'Z') {
+    const sign = m[8]!.startsWith('+') ? 1 : -1
+    const oh = Number(m[9])
+    const om = Number(m[10])
+    if (oh > 23 || om > 59) throw new Error(`refusing to invoice: ${label} must be a full ISO-8601 time with a zone`)
+    offsetMin = sign * (oh * 60 + om)
+  }
+  const utc = Date.UTC(year, month - 1, day, hour, minute, second, ms) - offsetMin * 60_000
+  const shifted = new Date(utc + offsetMin * 60_000)
+  if (
+    shifted.getUTCFullYear() !== year
+    || shifted.getUTCMonth() !== month - 1
+    || shifted.getUTCDate() !== day
+    || shifted.getUTCHours() !== hour
+    || shifted.getUTCMinutes() !== minute
+    || shifted.getUTCSeconds() !== second
+  ) {
+    throw new Error(`refusing to invoice: ${label} must be a full ISO-8601 time with a zone`)
+  }
+  return new Date(utc)
+}
+
+/**
+ * The latest `validUntil` this helper will sign: the earlier of the mandate expiry
+ * (when the caller supplies one) and `now` plus 7 days.
+ */
+export function invoiceExpiryCap(now: Date, mandateExpires?: string): Date {
+  const week = new Date(now.getTime() + INVOICE_MAX_TTL_MS)
+  if (!mandateExpires) return week
+  const mandate = parseStrictIso(mandateExpires, 'mandate expiry')
+  return mandate.getTime() < week.getTime() ? mandate : week
+}
+
+/**
+ * Parse `expires`, require it to be strictly after `now`, and return `Date.toISOString()`.
+ *
+ * Over-cap values are rejected, not clamped. Clamping would store a shorter expiry than
+ * the caller asked for and still exit 0. A bare year such as `2027` used to pass
+ * `Date.parse` and was stored as the literal `"2027"`.
+ */
+export function assertInvoiceExpiry(expires: string, now: Date, mandateExpires?: string): string {
+  const at = parseStrictIso(expires, 'expires')
+  if (at.getTime() <= now.getTime()) throw new Error('refusing to invoice: expires is not in the future')
+  const cap = invoiceExpiryCap(now, mandateExpires)
+  if (at.getTime() > cap.getTime()) {
+    throw new Error(`refusing to invoice: expires is after ${cap.toISOString()} (the earlier of the mandate expiry and 7 days from now)`)
+  }
+  return at.toISOString()
 }
