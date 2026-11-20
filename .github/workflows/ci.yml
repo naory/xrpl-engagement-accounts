@@ -35,6 +35,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Trust model page
+        run: npx tsx scripts/check-trust-model.ts
+
       # The JSON reporter is only so check-counts can read numTotalTests.
       # The suite still runs once. x402 and MPP stay on their own steps.
       - name: Test (core, policy, co-signer, vectors)

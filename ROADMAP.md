@@ -37,6 +37,26 @@ Product build-out already queued:
 - **Collateral bonds** — bond template + slashing by arbiter + harmed party; bond size as a trust
   signal.
 
+## Trust-model follow-ups
+
+Described in [docs/trust-model.md](docs/trust-model.md). Not implemented.
+
+### Re-check arbiter neutrality at decide time
+
+`neutralityFindings` runs inside `register`. A later `decide` does not read the arbiter credential again. Re-check arbiter neutrality at decide time, and treat a missing, unaccepted, or expired credential as a revocation then, not only at register.
+
+### Revocation leaves the SignerList unchanged
+
+Deleting or expiring an `ENG/ARBITER` credential does not remove that account from the SignerList installed at open. Changing the SignerList needs quorum. The not-yet-consumed revocation rule in [docs/spec/attestations.md](docs/spec/attestations.md) is not implemented for this credential. Chargeback defaults cover a silent arbiter. They do not cover an arbiter who still signs with the counterparty.
+
+### Accreditor address is not the service account
+
+`ENG_ARBITER_ACCREDITOR` is the classic address the deployment sets. The co-signer does not check that it is the service account. The chargeback design assumes the service is that issuer. One address per deployment. A list of outside bodies, and the trust-list file from the neutrality design, remain a follow-up (see the Research limits below).
+
+### The RLUSD issuer name is used twice
+
+`ENG_RLUSD_ISSUER` is the pool CLI trust-line issuer. When it is unset, the pool CLI uses Testnet RLUSD `rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV`. The same name is the policy slot `$slot:rlusd.issuer`. The hotel Testnet script issues its own test IOU and does not spend that default issuer.
+
 ## Research
 
 **Research: designed and tested on Testnet, not maintained for production or new features.**

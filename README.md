@@ -10,6 +10,7 @@
 > - **x402** — engagement accounts pay x402 merchants today through our own settlement adapter ([`x402-xrpl-settlement-adapter`](https://www.npmjs.com/package/x402-xrpl-settlement-adapter), published), using the `prepaid` scheme with the co-signer's W7 binding; proven on Testnet (4/4). Walkthrough: [`docs/demo/x402-purchase.md`](docs/demo/x402-purchase.md).
 > - **Not built yet:** the arbiter, the engagement-store facilitator, and the indexer.
 > - What is supported, and when: [`docs/SCOPE.md`](docs/SCOPE.md).
+> - What the ledger enforces and what the policy co-signer enforces: [Trust model](docs/trust-model.md).
 
 ---
 
