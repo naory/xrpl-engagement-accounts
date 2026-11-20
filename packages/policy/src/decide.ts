@@ -5,6 +5,7 @@ import { AttFacts, astSize, createEnvironment } from './env.ts'
 import { toCel } from './convert.ts'
 import { REGISTRY_VERSION, verifyStatements } from './pipeline.ts'
 import type { Decision, DecideInput, PolicyDoc, Rule, RuleResult } from './types.ts'
+import { resolvePolicy, withCanonicalTrust } from './trust.ts'
 
 const DEFAULT_COST_BUDGET = 100_000
 
@@ -13,17 +14,24 @@ export function layerHash(l: PolicyDoc): string {
 }
 
 export function decide(input: DecideInput): Decision {
-  const { stage, engagement: eng, template, layers, ledger } = input
+  const { stage, template, layers, ledger } = input
   const results: RuleResult[] = []
   const budget = input.costBudget ?? DEFAULT_COST_BUDGET
   let cost = 0
 
-  // Assets: union of all layers' declarations (later layers can't redefine a code differently).
-  const assetDefs: Record<string, AssetDef> = {}
-  for (const l of layers) for (const [code, def] of Object.entries(l.assets ?? {})) {
-    if (assetDefs[code] && JSON.stringify(assetDefs[code]) !== JSON.stringify(def)) throw new Error(`asset ${code} redefined by ${l.policyId}`)
-    assetDefs[code] = def
+  // Redefinition is judged on the slotted documents (the ones layerHash covers).
+  for (let i = 0; i < layers.length; i++) for (const [code, def] of Object.entries(layers[i].assets ?? {})) {
+    for (let j = 0; j < i; j++) {
+      const prior = layers[j].assets?.[code]
+      if (prior && JSON.stringify(prior) !== JSON.stringify(def)) throw new Error(`asset ${code} redefined by ${layers[i].policyId}`)
+    }
   }
+  // Trust is canonicalised (sorted keys, exact slot set) before it enters inputsHash.
+  // Evaluation uses a copy; `layers` stay byte-identical.
+  const eng = withCanonicalTrust(input.engagement, layers)
+  const resolved = layers.map((l) => resolvePolicy(l, eng.trust))
+  const assetDefs: Record<string, AssetDef> = {}
+  for (const l of resolved) Object.assign(assetDefs, l.assets ?? {})
   const assets = new Assets(assetDefs)
   const env = createEnvironment({ assets })
 
@@ -69,7 +77,7 @@ export function decide(input: DecideInput): Decision {
   if (!stageKnown) results.push({ layer: '-', id: 'NO_RULES_FOR_STAGE', result: 'fail', reason: 'NO_RULES_FOR_STAGE', message: `no policy layer defines stage "${stage}"` })
 
   let constraints: Record<string, unknown> = {}
-  for (const layer of layers) {
+  for (const layer of resolved) {
     constraints = { ...constraints, ...(layer.constraints ?? {}) }
     const ctx: Record<string, unknown> = { ...baseCtx, params: toCel(layer.params ?? {}), constraints: toCel(constraints), def: {} }
     // Definitions: evaluated eagerly in order; a failing definition makes the rules that use it error.

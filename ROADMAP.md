@@ -52,7 +52,8 @@ Automatic endings in `hotel@2` return extra funds to the guest (`default.noshowS
 Known limits of this vertical:
 
 - **Single-writer store.** Co-signer state is durable in SQLite (one writer, enforced by a lease). Running several co-signer hosts needs the Postgres store, see [README §7](README.md#7-policy-co-signer).
-- **Accreditation issuer is a placeholder.** `pol_hotel@2.0.0` sets `arbiterIssuers` to `rArbiterAccreditorPlaceholderXXXXXX`. The chargeback design assumes that issuer is the engagement service. Recognising outside bodies remains an assumption.
+- **Accreditation issuer is one address per deployment.** `pol_hotel@2.0.0` names `$slot:arbiter.accreditor` (`ENG_ARBITER_ACCREDITOR`). The chargeback design assumes that issuer is the engagement service.
+- **Accreditor list / trust-list file.** A deployment still names one accreditor. Recognising several outside bodies, and the trust-list file sketched in the neutrality design, remains a follow-up.
 - **A lapsed arbiter is not replaced.** The backup arbiter is gone and a SignerList change needs quorum, so a deal whose accreditation lapses mid-stay cannot swap arbiters. Chargeback defaults cover silence only.
 - **Chargeback parameters.** Ruling window, split, 14-night cap and bond return are demo assumptions pending a real business.
 

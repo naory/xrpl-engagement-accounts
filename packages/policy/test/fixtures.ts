@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import xrpl from 'xrpl'
 import { createHash } from 'node:crypto'
 import { signStatement, type Statement, type StatementBody, type Template } from '@eng/core'
-import type { DecideInput, EngagementRecord, InflightEntry, LedgerSnapshot, PolicyDoc } from '@eng/policy'
+import { canonicalTrust, slotsInLayers, type DecideInput, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc } from '@eng/policy'
 
 const root = new URL('../../../', import.meta.url)
 const readJson = <T>(p: string): T => JSON.parse(fs.readFileSync(new URL(p, root), 'utf8')) as T
@@ -46,12 +46,17 @@ export const RLUSD_HEX = '524C555344000000000000000000000000000000'
 export const NOW = '2026-11-18T09:33:10Z'
 export const LEDGER_INDEX = 98811234
 
-export function withIssuer(p: PolicyDoc, issuer = W.issuer.address): PolicyDoc {
-  const c = structuredClone(p)
-  for (const a of Object.values(c.assets ?? {})) if (a.kind === 'IOU') a.issuer = issuer
-  if (c.params && 'kybIssuers' in c.params) c.params.kybIssuers = [W.kybIssuer.address]
-  if (c.params && 'arbiterIssuers' in c.params) c.params.arbiterIssuers = [W.accreditor.address]
-  return c
+const FIXTURE_ADDRESSES: Record<string, string> = {
+  'arbiter.accreditor': W.accreditor.address,
+  'kyb.issuer': W.kybIssuer.address,
+  'rlusd.issuer': W.issuer.address,
+}
+
+/** Fixture deploy config for the slots those layers name. Keys are sorted. */
+export function fixtureTrust(layers: PolicyDoc[]): Record<string, string> | undefined {
+  const raw: Record<string, string> = {}
+  for (const name of slotsInLayers(layers)) raw[name] = FIXTURE_ADDRESSES[name]
+  return canonicalTrust(layers, raw)
 }
 
 export const templates = {
@@ -62,10 +67,10 @@ export const templates = {
 }
 export const policies = {
   baseline: readJson<PolicyDoc>('policies/baseline@1.1.0.json'),
-  procurement: withIssuer(readJson<PolicyDoc>('policies/procurement@1.3.0.json')),
-  hotel: withIssuer(readJson<PolicyDoc>('policies/hotel@1.1.0.json')),
-  hotel2: withIssuer(readJson<PolicyDoc>('policies/hotel@2.0.0.json')),
-  shopping: withIssuer(readJson<PolicyDoc>('policies/shopping@1.0.0.json')),
+  procurement: readJson<PolicyDoc>('policies/procurement@1.3.0.json'),
+  hotel: readJson<PolicyDoc>('policies/hotel@1.1.0.json'),
+  hotel2: readJson<PolicyDoc>('policies/hotel@2.0.0.json'),
+  shopping: readJson<PolicyDoc>('policies/shopping@1.0.0.json'),
 }
 
 let nonceCounter = 0
@@ -95,6 +100,7 @@ export function b1Engagement(over: Partial<EngagementRecord> = {}): EngagementRe
     attesters: { approver: { accounts: [W.controller.address] }, vendor: { accounts: [W.vendorA.address, W.vendorB.address] } },
     state: 'OPEN',
     consumed: [],
+    trust: fixtureTrust([policies.baseline, policies.procurement]),
     ...over,
   }
 }
@@ -182,6 +188,7 @@ export function hotelEngagement(over: Partial<EngagementRecord> = {}): Engagemen
     state: 'AWAITING_SETTLEMENT',
     consumed: [],
     mandateId: 'att:MANDATE',
+    trust: fixtureTrust([policies.baseline, policies.hotel]),
     ...over,
   }
 }
@@ -262,6 +269,7 @@ export function hotel2Engagement(over: Partial<EngagementRecord> = {}): Engageme
     state: 'OPEN',
     consumed: [],
     mandateId: hotel2Mandate().id,
+    trust: fixtureTrust([policies.baseline, policies.hotel2]),
     ...over,
   }
 }
@@ -392,6 +400,7 @@ export function r2Engagement(over: Partial<EngagementRecord> = {}): EngagementRe
     attesters: { classifier: { accounts: [W.classifier.address] } },
     state: 'OPEN',
     consumed: [],
+    trust: fixtureTrust([policies.baseline, policies.shopping]),
     ...over,
   }
 }

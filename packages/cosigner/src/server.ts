@@ -24,7 +24,7 @@ import http from 'node:http'
 import path from 'node:path'
 import xrpl from 'xrpl'
 import type { Template } from '@eng/core'
-import type { PolicyDoc } from '@eng/policy'
+import { isClassicAddress, PLACEHOLDERS, slotsInLayers, type PolicyDoc } from '@eng/policy'
 import { CosignerService, LedgerUnavailableError } from './service.ts'
 import { signerProviderFromEnv, type SignerProvider } from './keys.ts'
 import { XrplLedgerSource } from './snapshot.ts'
@@ -179,6 +179,44 @@ function isStoreUnavailable(e: unknown): boolean {
   return /^(STORE_LOCKED|CLOSED)\b/.test(String(err?.message ?? ''))
 }
 
+const SLOT_ENV: Record<string, string> = {
+  'arbiter.accreditor': 'ENG_ARBITER_ACCREDITOR',
+  'kyb.issuer': 'ENG_KYB_ISSUER',
+  'rlusd.issuer': 'ENG_RLUSD_ISSUER',
+}
+
+/** Slot name → classic address from ENG_RLUSD_ISSUER, ENG_ARBITER_ACCREDITOR, ENG_KYB_ISSUER. Empty values are absent. */
+export function loadTrustConfig(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [slot, key] of Object.entries(SLOT_ENV)) {
+    const value = env[key]?.trim()
+    if (value) out[slot] = value
+  }
+  return out
+}
+
+/**
+ * Off loopback, every slot in the loaded policies must resolve to a classic address and no placeholder
+ * account string may remain in the library. Loopback may start without the env; a value that is set
+ * must still be a classic address. A slotted policy with no trust then fails at decide with UNRESOLVED_SLOT.
+ */
+export function assertDeployTrust(host: string, policies: PolicyDoc[], config: Record<string, string>): void {
+  const loopback = isLoopback(host)
+  const text = JSON.stringify(policies)
+  for (const placeholder of PLACEHOLDERS) {
+    if (text.includes(placeholder) && !loopback) throw new Error(`refusing to bind ${host}: policy still contains placeholder ${placeholder}`)
+  }
+  for (const [slot, value] of Object.entries(config)) {
+    const envName = SLOT_ENV[slot] ?? slot
+    if ((PLACEHOLDERS as readonly string[]).includes(value)) throw new Error(`refusing to bind ${host}: ${envName} is a placeholder account`)
+    if (!isClassicAddress(value)) throw new Error(`refusing to bind ${host}: ${envName} is not a classic address`)
+  }
+  if (loopback) return
+  for (const slot of slotsInLayers(policies)) {
+    if (!config[slot]) throw new Error(`refusing to bind ${host}: unresolved slot ${slot} (set ${SLOT_ENV[slot] ?? slot})`)
+  }
+}
+
 /** Resolve server options from the environment and enforce the bind-safety rule. */
 export function serverOptionsFromEnv(host: string, env: NodeJS.ProcessEnv = process.env): ServerOptions {
   const token = env.COSIGNER_API_TOKEN || null
@@ -197,8 +235,13 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
   const host = process.env.COSIGNER_BIND ?? '127.0.0.1'
   let options: ServerOptions
   let keys: SignerProvider
+  let trust: Record<string, string>
+  let lib: ReturnType<typeof loadLibrary>
   try {
     options = serverOptionsFromEnv(host)
+    lib = loadLibrary(process.cwd())
+    trust = loadTrustConfig()
+    assertDeployTrust(host, lib.policies, trust)
     keys = signerProviderFromEnv()
   } catch (e) {
     console.error(String((e as Error).message ?? e))
@@ -207,7 +250,6 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
   const signer = await keys.getSigner()
   const client = new xrpl.Client(process.env.XRPL_URL ?? 'wss://s.altnet.rippletest.net:51233')
   await client.connect()
-  const lib = loadLibrary(process.cwd())
   const dataDir = process.env.DATA_DIR ?? '.cosigner'
   fs.mkdirSync(dataDir, { recursive: true })
   const store: StateStore = process.env.COSIGNER_STORE === 'memory' ? new MemoryStateStore() : await SqliteStateStore.open({
@@ -215,7 +257,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
         // A lost lease means another co-signer owns the state: stop at once, scheduler or not.
         onLeaseLost: () => { console.error(JSON.stringify({ t: new Date().toISOString(), level: 'error', msg: 'store lease lost; exiting' })); process.exit(1) },
       })
-  const svc = await CosignerService.open({ signer, source: new XrplLedgerSource(client), ...lib, dataDir, store })
+  const svc = await CosignerService.open({ signer, source: new XrplLedgerSource(client), ...lib, dataDir, store, trust })
   const port = Number(process.env.PORT ?? 8787)
   const server = createServer(svc, {
     ...options,

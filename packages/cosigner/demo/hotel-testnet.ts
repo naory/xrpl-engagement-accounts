@@ -111,16 +111,15 @@ async function main() {
   const baseline = read<PolicyDoc>('policies/baseline@1.1.0.json')
   const policy = read<PolicyDoc>('policies/hotel@2.0.0.json')
   policy.version = '2.0.0-demo'
-  policy.assets!.RLUSD.issuer = issuer.address
   policy.params!.rulingWindow = '60s'
   // The demo's own ruling-window bounds around its 60 s window (the stock policy allows 3–7 days; register() checks them).
   policy.params!.minRulingWindow = '30s'
   policy.params!.maxRulingWindow = '120s'
-  policy.params!.arbiterIssuers = [accreditor.address]
+  const trust = { 'arbiter.accreditor': accreditor.address, 'rlusd.issuer': issuer.address }
   const template = read<Template>('templates/hotel@2.json')
   const dataDir = path.join(resultsDir, `decisions-hotel-${stamp}`)
-  const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(client), templates: [template], policies: [baseline, policy], dataDir })
-  log(`co-signer ${cosigner.address}; policy layer pol_hotel@2.0.0-demo ${layerHash(policy)} (rulingWindow 60s, arbiterIssuers [${accreditor.address}])`)
+  const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(client), templates: [template], policies: [baseline, policy], dataDir, trust })
+  log(`co-signer ${cosigner.address}; policy layer pol_hotel@2.0.0-demo ${layerHash(policy)} (rulingWindow 60s; trust on the engagement record)`)
 
   const cast: HotelCast = { issuer, guest, hotel, arbiter, accreditor, service, currency: CUR }
   const onTx = (label: string, r: SubmitResult) => results.txs.push({ label, hash: r.hash, final: r.final })

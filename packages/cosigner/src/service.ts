@@ -9,7 +9,7 @@ import * as keypairs from 'ripple-keypairs'
 import { encodeForMultisigning } from 'ripple-binary-codec'
 import { Amount, documentHash, formatAmount, newNonce, parseAmount, signStatementAsync, signerBlob, verifyStatement, zero, type AssetDef, type Signer, type Statement, type Template } from '@eng/core'
 import {
-  Assets, LedgerFacts, REGISTRY, TxFacts, celDurationMs, decide, decisionStatementBody, layerHash, nightsElapsed,
+  Assets, LedgerFacts, REGISTRY, TxFacts, canonicalTrust, celDurationMs, decide, decisionStatementBody, isClassicAddress, layerHash, nightsElapsed, resolvePolicy, resolvedAssets, withCanonicalTrust,
   type Decision, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc, verifyStatements,
 } from '@eng/policy'
 import type { LedgerSource } from './snapshot.ts'
@@ -134,6 +134,12 @@ export interface CosignerOptions {
   store?: StateStore
   historySecs?: number
   accreditation?: { issuer: string; credentialType: string }
+  /**
+   * Deploy config: slot name → classic address (ENG_RLUSD_ISSUER, ENG_ARBITER_ACCREDITOR, ENG_KYB_ISSUER).
+   * When set, register() requires the record's trust to match it. Unset on loopback dev and tests:
+   * the record's own trust is used, and a missing slot fails with UNRESOLVED_SLOT.
+   */
+  trust?: Record<string, string>
 }
 
 const DAY = 86400
@@ -156,6 +162,7 @@ export class CosignerService {
   private readonly log: Statement[] = []
   /** Serialize decisions per engagement so in-flight accounting is race-free. */
   private readonly locks = new Map<string, Promise<unknown>>()
+  private readonly trustDriftLogged = new Set<string>()
   private readonly store: StateStore
   private closing = false
 
@@ -201,6 +208,7 @@ export class CosignerService {
       // The store returns these lists in insertion order, so the rebuilt Maps iterate as before the restart.
       const attestations = new Map(of(snap.attestations, id).map((a) => [a.statement.id, { statement: a.statement, receipt: a.receipt }]))
       const pinned = resolvePins(e.pins, this.o.policies, this.o.templates)
+      this.noteTrustDrift(e.record)
       if ('reason' in pinned) {
         this.stale.set(id, { record: e.record, registered: e.registered, attestations, closed: e.closed })
         console.warn(`ENGAGEMENT_STALE: ${id}: ${pinned.reason}; quarantined (reads only)`)
@@ -241,7 +249,7 @@ export class CosignerService {
   async accountExists(engagementId: string): Promise<boolean> {
     const st = this.live(engagementId)
     const ledger = await this.o.source.snapshot({
-      account: st.record.account, assets: this.assetsOf(st.layers), accounts: [], credentialSubjects: [], historySecs: this.o.historySecs ?? 90 * DAY,
+      account: st.record.account, assets: this.assetsOf(st.layers, st.record), accounts: [], credentialSubjects: [], historySecs: this.o.historySecs ?? 90 * DAY,
     })
     return ledger.accounts[st.record.account]?.exists === true
   }
@@ -307,26 +315,59 @@ export class CosignerService {
       if (!p) throw new Error(`no template policy for ${record.template}`)
       layers = [p]
     }
-    const termsError = stayTermsFindings(record, mandate, template, [baseline, ...layers])
+    const all = [baseline, ...layers]
+    // Canonical trust (sorted keys, exactly the slots these layers name). Throws UNRESOLVED_SLOT / BAD_ADDRESS / TRUST_KEY.
+    const bound = withCanonicalTrust(record, all)
+    this.requireConfiguredTrust(bound)
+    const termsError = stayTermsFindings(bound, mandate, template, all)
     if (termsError) throw new Error(`INVALID_TERMS: ${termsError}`)
     const accredited = Object.entries(template.roles).filter(([, r]) => r.accreditation === 'service').map(([n]) => n)
     if (accredited.length) {
-      const all = [baseline, ...layers]
-      const assets = this.assetsOf(all)
-      const subjects = accredited.map((r) => record.parties[r]).filter((a): a is string => typeof a === 'string')
+      const assets = this.assetsOf(all, bound)
+      const subjects = accredited.map((r) => bound.parties[r]).filter((a): a is string => typeof a === 'string')
       let ledger: LedgerSnapshot
-      try { ledger = await this.o.source.snapshot({ account: record.account, assets, accounts: [], credentialSubjects: subjects, historySecs: 0 }) } catch (e) { throw new LedgerUnavailableError(e) }
-      const codes = neutralityFindings(record, mandate, accredited, all, new LedgerFacts(ledger, new Assets(assets)))
+      try { ledger = await this.o.source.snapshot({ account: bound.account, assets, accounts: [], credentialSubjects: subjects, historySecs: 0 }) } catch (e) { throw new LedgerUnavailableError(e) }
+      const codes = neutralityFindings(bound, mandate, accredited, all, new LedgerFacts(ledger, new Assets(assets)))
       if (codes.length) throw new Error(`NOT_NEUTRAL: ${codes.join(', ')}`)
     }
-    const all = [baseline, ...layers]
     const st: EngagementState = {
-      record: structuredClone({ consumed: [], ...record }), registered: jsonCopy({ record, mandate }), mandate, layers: all, template,
+      record: structuredClone({ consumed: [], ...bound }), registered: jsonCopy({ record: bound, mandate }), mandate, layers: all, template,
       attestations: new Map(), presigned: new Map(), completed: new Map(), lastRefusal: new Map(), closed: false,
     }
-    await this.store.transaction((tx) => tx.putEngagement({ engagementId: record.engagementId, registered: st.registered, record: st.record, pins: pinsOf(all, template), closed: false }))
-    this.engagements.set(record.engagementId, st)
+    await this.store.transaction((tx) => tx.putEngagement({ engagementId: bound.engagementId, registered: st.registered, record: st.record, pins: pinsOf(all, template), closed: false }))
+    this.engagements.set(bound.engagementId, st)
     return { ok: true, layers: all.map((l) => `${l.policyId}@${l.version} ${layerHash(l)}`) }
+  }
+
+  /** When deploy config is loaded, the record's addresses must be that config. Logs nothing: this is a refusal. */
+  private requireConfiguredTrust(record: EngagementRecord): void {
+    const cfg = this.o.trust
+    if (!cfg) return
+    for (const name of Object.keys(record.trust ?? {})) {
+      const configured = cfg[name]
+      const got = record.trust![name]
+      if (configured === undefined) throw new Error(`UNRESOLVED_SLOT: ${name}`)
+      if (!isClassicAddress(configured)) throw new Error(`BAD_ADDRESS: ${name}`)
+      if (configured !== got) throw new Error(`TRUST_MISMATCH: ${name} record ${got} configured ${configured}`)
+    }
+  }
+
+  /**
+   * Stored trust against the current env. Warn only: the deal keeps the addresses it committed to.
+   * The line is the slot name and the two addresses, nothing else from the record.
+   */
+  private noteTrustDrift(record: EngagementRecord): void {
+    const cfg = this.o.trust
+    if (!cfg || !record.trust) return
+    for (const name of Object.keys(record.trust).sort()) {
+      const stored = record.trust[name]
+      const configured = cfg[name]
+      if (configured === undefined || configured === stored) continue
+      const line = `trust differs from env: slot ${name} stored ${stored} configured ${configured}`
+      if (this.trustDriftLogged.has(line)) continue
+      this.trustDriftLogged.add(line)
+      console.warn(line)
+    }
   }
 
   engagement(id: string): EngagementRecord | undefined { return (this.engagements.get(id) ?? this.stale.get(id))?.record }
@@ -368,7 +409,7 @@ export class CosignerService {
     const attester = s.attester.account
     if (!Object.values(st.record.parties).includes(attester)) throw new Error(`NOT_A_PARTY: ${attester}`)
 
-    const assets = this.assetsOf(st.layers)
+    const assets = this.assetsOf(st.layers, st.record)
     const ledger = await this.o.source.snapshot({ account: st.record.account, assets, accounts: [attester], credentialSubjects: [attester], historySecs: 0 })
     const received = Date.parse(ledger.closeTime)
 
@@ -640,7 +681,7 @@ export class CosignerService {
       if (!ok) throw new Error(`BAD_SIGNATURE: ${s.Account} signature does not verify`)
     }
 
-    const facts = new TxFacts(tx, { eng: st.record, template: st.template, assets: new Assets(this.assetsOf(st.layers)), ledger: emptyLedger(st.record.account) })
+    const facts = new TxFacts(tx, { eng: st.record, template: st.template, assets: new Assets(this.assetsOf(st.layers, st.record)), ledger: emptyLedger(st.record.account) })
     if (!facts.matchesBlueprint(o.blueprint)) throw new Error(`BLUEPRINT: blob does not match ${o.blueprint}`)
     // A chargeback blob must match its slot: its eng/basis names the outcome, and a per-night variant #k pays the
     // hotel (with the fee) exactly k nights, so the stored name says what the transaction does.
@@ -649,7 +690,7 @@ export class CosignerService {
       if (basis !== base) throw new Error(`SLOT_MISMATCH: blob's eng/basis is ${JSON.stringify(basis)}, expected ${base}`)
       if (variant !== undefined) {
         const code = st.template.asset.code
-        const asset = this.assetsOf(st.layers)[code]
+        const asset = this.assetsOf(st.layers, st.record)[code]
         let nightly
         try { nightly = parseAmount(String(st.record.terms!.nightly), asset) } catch { throw new Error(`SLOT_MISMATCH: the deal's terms.nightly ${JSON.stringify(st.record.terms!.nightly)} is not an amount`) }
         const hotel = facts.payouts.to(st.record.parties.counterparty!, code).add(facts.payouts.to(st.record.fee!.to, code))
@@ -704,7 +745,7 @@ export class CosignerService {
     const st = this.live(engagementId)
     if (st.closed || !st.presigned.size) return []
     const ledger = await this.o.source.snapshot({
-      account: st.record.account, assets: this.assetsOf(st.layers), accounts: [], credentialSubjects: [], historySecs: this.o.historySecs ?? 90 * DAY,
+      account: st.record.account, assets: this.assetsOf(st.layers, st.record), accounts: [], credentialSubjects: [], historySecs: this.o.historySecs ?? 90 * DAY,
     })
     if (!ledger.accounts[st.record.account]?.exists) return []
     const draft = this.draft(st)
@@ -841,7 +882,7 @@ export class CosignerService {
       return false
     })
     const statements = [...new Map([...stored, ...passed].map((s) => [s?.id, s])).values()]
-    const assets = this.assetsOf(st.layers)
+    const assets = this.assetsOf(st.layers, st.record)
 
     // Snapshot: key state for attesters; credentials for payees, attesters and the account.
     const attesters = [...statements, ...(st.mandate ? [st.mandate] : [])].map((s) => s.attester?.account).filter(Boolean) as string[]
@@ -932,10 +973,9 @@ export class CosignerService {
     }
   }
 
-  private assetsOf(layers: PolicyDoc[]): Record<string, AssetDef> {
-    const a: Record<string, AssetDef> = {}
-    for (const l of layers) Object.assign(a, l.assets ?? {})
-    return a
+  /** Resolved asset map for ledger reads and issuer checks. Does not mutate `layers`. */
+  private assetsOf(layers: PolicyDoc[], record: EngagementRecord): Record<string, AssetDef> {
+    return resolvedAssets(layers, record.trust)
   }
 
   /** Stage the engagement's mutable state for one operation (see Draft). */
@@ -1050,8 +1090,10 @@ function stayTermsFindings(record: EngagementRecord, mandate: Statement | null, 
 
 /** Neutrality findings for each service-accredited role (chargeback spec §4.2); empty = neutral. */
 function neutralityFindings(record: EngagementRecord, mandate: Statement | null, roles: string[], layers: PolicyDoc[], facts: LedgerFacts): string[] {
-  const type = effectiveParam(layers, 'arbiterCredentialType')
-  const issuers = effectiveParam(layers, 'arbiterIssuers')
+  const trust = canonicalTrust(layers, record.trust)
+  const resolved = layers.map((l) => resolvePolicy(l, trust))
+  const type = effectiveParam(resolved, 'arbiterCredentialType')
+  const issuers = effectiveParam(resolved, 'arbiterIssuers')
   const listed = Array.isArray(issuers) ? issuers.filter((i): i is string => typeof i === 'string') : []
   const claim = (mandate?.claim ?? {}) as { allowedArbiters?: unknown }
   const codes = new Set<string>()

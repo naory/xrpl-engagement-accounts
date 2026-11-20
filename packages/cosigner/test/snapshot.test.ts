@@ -1,7 +1,10 @@
 // XrplLedgerSource against canned rippled API-v2 responses (no network).
 import { describe, expect, it } from 'vitest'
 import { XrplLedgerSource, LSF_ACCEPTED, LSF_DISABLE_MASTER, hex } from '@eng/cosigner'
-import { W, RLUSD_HEX, policies } from '../../policy/test/fixtures.ts'
+import { resolvedAssets } from '@eng/policy'
+import { W, RLUSD_HEX, fixtureTrust, policies } from '../../policy/test/fixtures.ts'
+
+const procurementAssets = resolvedAssets([policies.baseline, policies.procurement], fixtureTrust([policies.baseline, policies.procurement]))
 
 const ENG = W.engB1.address
 const LEDGER = 1000
@@ -59,7 +62,7 @@ describe('XrplLedgerSource', () => {
   it('reads every fact at one validated ledger and maps it to a snapshot', async () => {
     const { client, calls } = fakeClient()
     const snap = await new XrplLedgerSource(client).snapshot({
-      account: ENG, assets: policies.procurement.assets!, accounts: [W.treasury.address, W.controller.address],
+      account: ENG, assets: procurementAssets, accounts: [W.treasury.address, W.controller.address],
       credentialSubjects: [W.vendorA.address, W.vendorB.address], historySecs: 90 * 86400,
     })
     expect(snap.index).toBe(LEDGER)
@@ -78,7 +81,7 @@ describe('XrplLedgerSource', () => {
   it('reads whether each payee can receive: DepositAuth and its trust line to the asset issuer', async () => {
     const { client, calls } = fakeClient()
     const snap = await new XrplLedgerSource(client).snapshot({
-      account: ENG, assets: policies.procurement.assets!, accounts: [], credentialSubjects: [],
+      account: ENG, assets: procurementAssets, accounts: [], credentialSubjects: [],
       payees: [W.vendorA.address, W.vendorB.address, W.controller.address], historySecs: 90 * 86400,
     })
     expect(snap.accounts[W.vendorA.address]).toMatchObject({ exists: true, receive: { depositAuth: false, lines: { RLUSD: { balance: '12.5', limit: '1000' } } } })

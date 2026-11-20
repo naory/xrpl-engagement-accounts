@@ -1,12 +1,13 @@
 // Policy lint (docs/spec/policy.md §11): L1 parse/type/float ban, L2 stage coverage, L3 statement
 // types in the registry, L5 enforcement vs template, L7 unique rule ids, L8 plain-English text, L9 stay-terms
-// consistency (per-night variant cap vs maxStayVariantNights; rulingWindow within its bounds). (L4 static cost
-// bound and L6 layer monotonicity are follow-ups.)
+// consistency (per-night variant cap vs maxStayVariantNights; rulingWindow within its bounds), L10 slot placement.
+// (L4 static cost bound and L6 layer monotonicity are follow-ups.)
 import type { Template } from '@eng/core'
 import { Assets } from './facts.ts'
 import { celDurationMs, containsFloat, createEnvironment } from './env.ts'
 import { REGISTRY } from './pipeline.ts'
 import type { PolicyDoc } from './types.ts'
+import { KNOWN_SLOTS, PLACEHOLDERS, slotNameOf } from './trust.ts'
 
 export interface LintFinding { id: string; where: string; message: string }
 
@@ -62,6 +63,41 @@ export function lintPolicy(p: PolicyDoc, template?: Template): LintFinding[] {
     }
   }
   out.push(...rulingWindowFindings(p))
+  out.push(...slotFindings(p))
+  return out
+}
+
+const SLOT_FIELD = /^assets\.[^.]+\.issuer$|^params\.(?:arbiterIssuers|kybIssuers)\[\d+\]$/
+
+/** L10: `$slot:` only on an asset issuer or in params.arbiterIssuers / params.kybIssuers, and only a known name. */
+function slotFindings(p: PolicyDoc): LintFinding[] {
+  const out: LintFinding[] = []
+  const walk = (value: unknown, path: string): void => {
+    if (typeof value === 'string') {
+      if ((PLACEHOLDERS as readonly string[]).includes(value)) {
+        out.push({ id: 'L10', where: path || '(root)', message: `placeholder account ${value} belongs in deploy config, not the policy` })
+      }
+      if (value.includes('$slot:')) {
+        if (!SLOT_FIELD.test(path)) {
+          out.push({ id: 'L10', where: path || '(root)', message: '$slot: is only allowed on an asset issuer, params.arbiterIssuers, or params.kybIssuers' })
+          return
+        }
+        const name = slotNameOf(value)
+        if (!name || !(KNOWN_SLOTS as readonly string[]).includes(name)) {
+          out.push({ id: 'L10', where: path, message: `unknown slot ${value}` })
+        }
+      }
+      return
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item, i) => walk(item, `${path}[${i}]`))
+      return
+    }
+    if (value && typeof value === 'object') {
+      for (const [key, child] of Object.entries(value)) walk(child, path ? `${path}.${key}` : key)
+    }
+  }
+  walk(p, '')
   return out
 }
 

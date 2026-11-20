@@ -307,6 +307,11 @@ export class HotelFlow {
       },
       terms: hotelTerms(this.booking.room, nights),
       state: 'OPEN', consumed: [], mandateId: mandate.id,
+      // Sorted slot names. The demo policy keeps these tokens; the addresses are not written into it.
+      trust: {
+        'arbiter.accreditor': cast.accreditor.address,
+        'rlusd.issuer': cast.issuer.address,
+      },
       ...(this.o.policyLayers ? { policyLayers: this.o.policyLayers } : {}),
     }
   }
