@@ -12,6 +12,9 @@ node_modules/
 cosigner.seed
 **/cosigner.seed
 **/.cosigner.seed.*.tmp
+cosigner.token
+**/cosigner.token
+**/.cosigner.token.*.tmp
 /spike/
 packages/*/demo/results/
 packages/web/.web-decisions/

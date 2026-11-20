@@ -18,6 +18,7 @@ import { assertKnownTestnetEndpoint, resolveServiceEndpoint, type TestnetConnect
 import { lookupTx, submit } from './xrpl-io.ts'
 
 const SEED_NAME = 'cosigner.seed'
+const TOKEN_NAME = 'cosigner.token'
 const DISCOVERY_NAME = 'local.json'
 const HOST = '127.0.0.1'
 const DEFAULT_TICK_MS = 30_000
@@ -32,6 +33,8 @@ export interface LocalDiscovery {
   endpoint: string
   pid: number
   startedAt: string
+  /** Absolute path of the bearer-token file. The token itself is not in this document. */
+  tokenPath: string
   /** Present only when at least one T13 slot is configured. */
   trust?: Record<string, string>
 }
@@ -42,6 +45,7 @@ export interface LocalCosigner {
   publicKey: string
   dataDir: string
   seedPath: string
+  tokenPath: string
   discoveryPath: string
   endpoint: string
   network: 'xrpl:1'
@@ -111,43 +115,39 @@ function fsyncDirectory(dir: string): void {
   }
 }
 
-function readSeedFile(file: string): string {
+function readPrivateFile(file: string): string {
   if (process.platform !== 'win32') {
     const mode = fs.statSync(file).mode
     // Windows reports no Unix group/other bits (the ACL is elsewhere), so this mask cannot
-    // see a world-readable key there. Skip the check on win32.
+    // see a world-readable secret there. Skip the check on win32.
     if ((mode & 0o077) !== 0) {
       throw new Error(`refusing to start: ${file} is readable by group or other (mode ${(mode & 0o777).toString(8)}); expected 0600`)
     }
   }
-  const seed = fs.readFileSync(file, 'utf8').trim()
-  if (!seed) throw new Error(`refusing to start: ${file} is empty`)
-  return seed
+  const text = fs.readFileSync(file, 'utf8').trim()
+  if (!text) throw new Error(`refusing to start: ${file} is empty`)
+  return text
 }
 
 /**
- * Create `<dataDir>/cosigner.seed` exactly once.
- * The bytes are written to a unique temp file (wx, mode 0600), fsynced, then hard-linked
- * onto the final name. link fails with EEXIST when another first-run already published a key,
- * and unlike rename it does not overwrite. The loser reads the winner's key.
+ * Publish `create()` into `<dataDir>/<name>` exactly once.
+ * The bytes go to a unique temp file (wx, mode 0600), are fchmod'd and fsynced, then hard-linked
+ * onto the final name. link fails with EEXIST when another first-run already published the file,
+ * and unlike rename it does not overwrite. The loser reads the winner. A later run refuses the
+ * file when group or other can read it.
  */
-export function ensureLocalSeed(dataDir: string): string {
+function ensurePrivateFile(dataDir: string, name: string, create: () => string): string {
   fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 })
   if (process.platform !== 'win32') fs.chmodSync(dataDir, 0o700)
-  const finalPath = path.join(dataDir, SEED_NAME)
-  if (fs.existsSync(finalPath)) return readSeedFile(finalPath)
+  const finalPath = path.join(dataDir, name)
+  if (fs.existsSync(finalPath)) return readPrivateFile(finalPath)
 
-  const tmp = path.join(dataDir, `.${SEED_NAME}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`)
-  // ed25519, named on purpose. xrpl.js 5.3 Wallet.generate defaults to ed25519, and
-  // COSIGNER_SEED_FILE loads that seed back through Wallet.fromSeed with no algorithm
-  // argument (the seed's sEd prefix selects ed25519). Fixture wallets, including the
-  // test co-signer, are ed25519 as well. Privy stays on its own secp256k1 path.
-  const generated = xrpl.Wallet.generate(xrpl.ECDSA.ed25519)
-  if (!generated.seed) throw new Error('refusing to start: key generation produced no seed')
+  const body = create()
+  const tmp = path.join(dataDir, `.${name}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`)
   const fd = fs.openSync(tmp, 'wx', 0o600)
   try {
     fs.fchmodSync(fd, 0o600) // mode on open is masked by umask; fchmod is not
-    fs.writeFileSync(fd, `${generated.seed}\n`)
+    fs.writeFileSync(fd, `${body}\n`)
     fs.fsyncSync(fd)
   } catch (e) {
     fs.closeSync(fd)
@@ -167,14 +167,37 @@ export function ensureLocalSeed(dataDir: string): string {
     fs.rmSync(tmp, { force: true })
   }
   if (linked) fsyncDirectory(dataDir)
-  return readSeedFile(finalPath)
+  return readPrivateFile(finalPath)
 }
 
-function tickInterval(env: NodeJS.ProcessEnv): number {
-  const raw = env.COSIGNER_TICK_MS?.trim()
-  if (!raw) return DEFAULT_TICK_MS
-  const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_TICK_MS
+/**
+ * Create `<dataDir>/cosigner.seed` exactly once.
+ * ed25519, named on purpose. xrpl.js 5.3 Wallet.generate defaults to ed25519, and
+ * COSIGNER_SEED_FILE loads that seed back through Wallet.fromSeed with no algorithm
+ * argument (the seed's sEd prefix selects ed25519). Fixture wallets, including the
+ * test co-signer, are ed25519 as well. Privy stays on its own secp256k1 path.
+ */
+export function ensureLocalSeed(dataDir: string): string {
+  return ensurePrivateFile(dataDir, SEED_NAME, () => {
+    const generated = xrpl.Wallet.generate(xrpl.ECDSA.ed25519)
+    if (!generated.seed) throw new Error('refusing to start: key generation produced no seed')
+    return generated.seed
+  })
+}
+
+/** Create `<dataDir>/cosigner.token` exactly once. 32 random bytes, base64url. */
+function ensureLocalToken(dataDir: string): string {
+  return ensurePrivateFile(dataDir, TOKEN_NAME, () => crypto.randomBytes(32).toString('base64url'))
+}
+
+function tickInterval(raw: string | undefined, warn: (line: string) => void): number {
+  const trimmed = raw?.trim() ?? ''
+  if (!trimmed) return DEFAULT_TICK_MS
+  if (!/^[1-9]\d*$/.test(trimmed)) {
+    warn(`COSIGNER_TICK_MS ${trimmed} is not a positive integer; using ${DEFAULT_TICK_MS}`)
+    return DEFAULT_TICK_MS
+  }
+  return Number(trimmed)
 }
 
 async function resolveLocalEndpoint(env: NodeJS.ProcessEnv, connect?: TestnetConnect): Promise<string> {
@@ -221,7 +244,9 @@ export async function startLocalCosigner(options: LocalCosignerOptions = {}): Pr
   const root = options.root ?? findRepoRoot(options.cwd ?? process.cwd())
   const dataDir = resolveDataDir(env.DATA_DIR, root)
   const seedPath = path.join(dataDir, SEED_NAME)
+  const tokenPath = path.resolve(dataDir, TOKEN_NAME)
   const discoveryPath = path.join(dataDir, DISCOVERY_NAME)
+  const tickMs = tickInterval(env.COSIGNER_TICK_MS, warn)
 
   const bind = env.COSIGNER_BIND?.trim()
   if (bind && !isLoopback(bind)) throw new Error('refusing to start: cosigner:local binds loopback only')
@@ -248,6 +273,11 @@ export async function startLocalCosigner(options: LocalCosignerOptions = {}): Pr
     throw new Error(`refusing to start: ${seedPath} is not a usable seed`)
   }
   const signer = localSigner(wallet)
+  const fileToken = ensureLocalToken(dataDir)
+  // The env value is never interpolated into a log line.
+  const envToken = env.COSIGNER_API_TOKEN?.trim() ?? ''
+  const token = envToken || fileToken
+  if (envToken) log('COSIGNER_API_TOKEN is in use')
 
   const client = options.source ? undefined : new xrpl.Client(endpoint)
   if (client) {
@@ -295,6 +325,8 @@ export async function startLocalCosigner(options: LocalCosignerOptions = {}): Pr
 
   const serverOptions: ServerOptions = {
     ...serverOptionsFromEnv(HOST, env),
+    token,
+    loopbackRequestGuard: true,
     readiness: () => (client ? client.isConnected() : true),
     log: (entry) => log(JSON.stringify({ t: new Date().toISOString(), ...entry })),
   }
@@ -324,6 +356,7 @@ export async function startLocalCosigner(options: LocalCosignerOptions = {}): Pr
     endpoint,
     pid: process.pid,
     startedAt,
+    tokenPath,
     ...(Object.keys(trust).length ? { trust } : {}),
   }
   try {
@@ -336,11 +369,10 @@ export async function startLocalCosigner(options: LocalCosignerOptions = {}): Pr
   log(`local co-signer ${url} ${signer.address}`)
   log(JSON.stringify({
     t: startedAt, level: 'info', msg: 'listening', url, cosigner: signer.address, host: HOST, port: boundPort,
-    network, endpoint, discovery: discoveryPath, auth: serverOptions.token ? 'required' : 'open', tickMs: tickInterval(env),
+    network, endpoint, discovery: discoveryPath, auth: 'required', tokenSource: envToken ? 'env' : 'file', tickMs,
   }))
 
   const say = (entry: Record<string, unknown>) => log(JSON.stringify({ t: new Date().toISOString(), ...entry }))
-  const tickMs = tickInterval(env)
   scheduler = startTickScheduler(svc, {
     intervalMs: tickMs,
     onResult: async (engagementId, r) => {
@@ -352,6 +384,8 @@ export async function startLocalCosigner(options: LocalCosignerOptions = {}): Pr
         say({ level: 'info', msg: 'tick submitted', engagementId, outcome: r.outcome, ...sent })
       } else say({ level: 'info', msg: 'tick signed (not submitted; COSIGNER_TICK_SUBMIT is unset)', engagementId, outcome: r.outcome, hash })
     },
+    // onError is only STORE_LOCKED (scheduler.ts runRound). A ledger read or a submitUntilValidated
+    // throw is logged there and retried next interval; it does not reach this callback.
     onError: (e) => {
       console.error(String(e.message ?? e))
       if (options.signals) process.exit(1)
@@ -387,7 +421,7 @@ export async function startLocalCosigner(options: LocalCosignerOptions = {}): Pr
   }
 
   return {
-    url, address: signer.address, publicKey: signer.publicKey, dataDir, seedPath, discoveryPath,
+    url, address: signer.address, publicKey: signer.publicKey, dataDir, seedPath, tokenPath, discoveryPath,
     endpoint, network, trust, port: boundPort, close,
   }
 }

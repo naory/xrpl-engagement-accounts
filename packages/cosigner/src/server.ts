@@ -50,6 +50,12 @@ export interface ServerOptions {
   log?: (entry: Record<string, unknown>) => void
   /** Clock, injectable for tests. */
   now?: () => number
+  /**
+   * Local co-signer only. Reject every request, including /healthz, whose Host is not
+   * `127.0.0.1:<port>` or `localhost:<port>`, or that carries an Origin header.
+   * `npm run cosigner` leaves this unset.
+   */
+  loopbackRequestGuard?: boolean
 }
 
 const json = (res: http.ServerResponse, code: number, body: unknown, headers: Record<string, string> = {}) => {
@@ -116,7 +122,15 @@ export function createServer(svc: CosignerService, opts: ServerOptions = {}): ht
     try {
       const parts = url.pathname.split('/').filter(Boolean)
 
-      // Probes: open, never rate-limited, no auth.
+      // Local co-signer only. Before auth, so a browser on another origin cannot ride a loopback token.
+      if (opts.loopbackRequestGuard) {
+        const port = req.socket.localPort
+        const host = req.headers.host
+        const allowed = port != null && (host === `127.0.0.1:${port}` || host === `localhost:${port}`)
+        if (!allowed || req.headers.origin !== undefined) return send(403, { error: 'forbidden' })
+      }
+
+      // Probes: open, never rate-limited, no auth. /healthz stays unauthenticated when a token is set.
       if (method === 'GET' && url.pathname === '/healthz') return send(200, { ok: true, cosigner: svc.address })
       if (method === 'GET' && url.pathname === '/readyz') {
         const ok = await readiness()

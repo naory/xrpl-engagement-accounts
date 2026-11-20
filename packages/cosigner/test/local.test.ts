@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
+import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -45,6 +46,27 @@ function discovery(running: LocalCosigner): LocalDiscovery {
   return JSON.parse(fs.readFileSync(running.discoveryPath, 'utf8')) as LocalDiscovery
 }
 
+function tokenOf(running: LocalCosigner): string {
+  return fs.readFileSync(running.tokenPath, 'utf8').trim()
+}
+
+function httpCall(port: number, opts: { path: string; method?: string; host?: string; origin?: string; token?: string; body?: string }): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const headers: Record<string, string> = {}
+    if (opts.host) headers.host = opts.host
+    if (opts.origin !== undefined) headers.origin = opts.origin
+    if (opts.token) headers.authorization = `Bearer ${opts.token}`
+    if (opts.body) headers['content-type'] = 'application/json'
+    const req = http.request({ hostname: '127.0.0.1', port, path: opts.path, method: opts.method ?? 'GET', headers }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (chunk) => chunks.push(chunk as Buffer))
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }))
+    })
+    req.on('error', reject)
+    req.end(opts.body)
+  })
+}
+
 describe('local co-signer', () => {
   it('starts from an empty data dir, prints the url and address, and keeps an ed25519 key at mode 0600', async () => {
     const dataDir = tempDir()
@@ -72,7 +94,12 @@ describe('local co-signer', () => {
         endpoint: TESTNET_ENDPOINTS[0],
         pid: process.pid,
       })
+      expect(body.tokenPath).toBe(path.resolve(dataDir, 'cosigner.token'))
       expect(body.trust).toBeUndefined()
+      expect((fs.statSync(running.tokenPath).mode & 0o777)).toBe(0o600)
+      const token = tokenOf(running)
+      expect(JSON.stringify(body).includes(token)).toBe(false)
+      expect(lines.join('\n').includes(token)).toBe(false)
       expect(Number.isNaN(Date.parse(body.startedAt))).toBe(false)
       expect(JSON.stringify(body).includes(seed)).toBe(false)
       expect(lines.join('\n').includes(seed)).toBe(false)
@@ -96,11 +123,11 @@ describe('local co-signer', () => {
     const dataDir = tempDir()
     const first = await boot({ PORT: '0', DATA_DIR: dataDir })
     const seedBefore = fs.readFileSync(first.seedPath)
+    const tokenBefore = fs.readFileSync(first.tokenPath)
     const record = b1Engagement()
     record.parties = { ...record.parties, cosigner: first.address }
-    const posted = await fetch(`${first.url}/v1/engagements`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
+    const posted = await httpCall(first.port, {
+      method: 'POST', path: '/v1/engagements', token: tokenOf(first),
       body: JSON.stringify({ engagement: record, mandate: b1Mandate() }),
     })
     expect(posted.status).toBe(200)
@@ -111,14 +138,104 @@ describe('local co-signer', () => {
     try {
       expect(second.address).toBe(first.address)
       expect(fs.readFileSync(second.seedPath).equals(seedBefore)).toBe(true)
+      expect(fs.readFileSync(second.tokenPath).equals(tokenBefore)).toBe(true)
       const health = await (await fetch(`${second.url}/healthz`)).json() as { cosigner: string }
       expect(health.cosigner).toBe(first.address)
-      const got = await (await fetch(`${second.url}/v1/engagements/eng_b1_fixture`)).json() as { engagement: { engagementId: string; parties: { cosigner: string } } }
+      const got = JSON.parse((await httpCall(second.port, { path: '/v1/engagements/eng_b1_fixture', token: tokenOf(second) })).body) as { engagement: { engagementId: string; parties: { cosigner: string } } }
       expect(got.engagement.engagementId).toBe('eng_b1_fixture')
       expect(got.engagement.parties.cosigner).toBe(first.address)
       expect(discovery(second).address).toBe(first.address)
     } finally {
       await second.close()
+    }
+  })
+
+  it('requires a bearer token, rejects a foreign Host or any Origin, and leaves /healthz unauthenticated', async () => {
+    const dataDir = tempDir()
+    const running = await boot({ PORT: '0', DATA_DIR: dataDir })
+    try {
+      const token = tokenOf(running)
+      const missing = await httpCall(running.port, { path: '/v1/engagements/missing' })
+      expect(missing.status).toBe(401)
+      const record = b1Engagement()
+      record.parties = { ...record.parties, cosigner: running.address }
+      const posted = await httpCall(running.port, {
+        method: 'POST', path: '/v1/engagements', token,
+        body: JSON.stringify({ engagement: record, mandate: b1Mandate() }),
+      })
+      expect(posted.status).toBe(200)
+      const wrongHost = await httpCall(running.port, { path: '/v1/engagements/eng_b1_fixture', host: `evil.example:${running.port}`, token })
+      expect(wrongHost.status).toBe(403)
+      const origin = await httpCall(running.port, { path: '/v1/engagements/eng_b1_fixture', token, origin: 'http://evil.example' })
+      expect(origin.status).toBe(403)
+      const health = await httpCall(running.port, { path: '/healthz' })
+      expect(health.status).toBe(200)
+      const healthHost = await httpCall(running.port, { path: '/healthz', host: `evil.example:${running.port}` })
+      expect(healthHost.status).toBe(403)
+    } finally {
+      await running.close()
+    }
+  })
+
+  it('does not write the bearer token to stdout, stderr, or local.json, and keeps it across a restart', async () => {
+    const lines: string[] = []
+    const take = (...args: unknown[]) => { lines.push(args.map(String).join(' ')) }
+    const spyLog = vi.spyOn(console, 'log').mockImplementation(take)
+    const spyWarn = vi.spyOn(console, 'warn').mockImplementation(take)
+    const spyErr = vi.spyOn(console, 'error').mockImplementation(take)
+    const dataDir = tempDir()
+    try {
+      const first = await startLocalCosigner({ env: { PORT: '0', DATA_DIR: dataDir }, connect: acceptTestnet, source: source() })
+      const token = tokenOf(first)
+      const secretEnv = 'SENTINEL-API-TOKEN-VALUE'
+      try {
+        expect(lines.join('\n').includes(token)).toBe(false)
+        expect(fs.readFileSync(first.discoveryPath, 'utf8').includes(token)).toBe(false)
+        expect(discovery(first).tokenPath).toBe(first.tokenPath)
+      } finally {
+        await first.close()
+      }
+      lines.length = 0
+      const second = await startLocalCosigner({
+        env: { PORT: '0', DATA_DIR: dataDir, COSIGNER_API_TOKEN: secretEnv },
+        connect: acceptTestnet,
+        source: source(),
+      })
+      try {
+        const text = lines.join('\n')
+        expect(text).toContain('COSIGNER_API_TOKEN is in use')
+        expect(text.includes(secretEnv)).toBe(false)
+        expect(text.includes(token)).toBe(false)
+        expect(fs.readFileSync(second.discoveryPath, 'utf8').includes(secretEnv)).toBe(false)
+        expect(fs.readFileSync(second.discoveryPath, 'utf8').includes(token)).toBe(false)
+        const withEnv = await httpCall(second.port, { path: '/v1/engagements/missing', token: secretEnv })
+        expect(withEnv.status).toBe(404)
+        const withFile = await httpCall(second.port, { path: '/v1/engagements/missing', token })
+        expect(withFile.status).toBe(401)
+      } finally {
+        await second.close()
+      }
+    } finally {
+      spyLog.mockRestore()
+      spyWarn.mockRestore()
+      spyErr.mockRestore()
+    }
+  })
+
+  it('warns and uses 30000 when COSIGNER_TICK_MS is not a positive integer', async () => {
+    const dataDir = tempDir()
+    const warnings: string[] = []
+    const lines: string[] = []
+    const running = await boot(
+      { PORT: '0', DATA_DIR: dataDir, COSIGNER_TICK_MS: 'abc' },
+      { warn: (line) => warnings.push(line), log: (line) => lines.push(line) },
+    )
+    try {
+      expect(warnings).toEqual(['COSIGNER_TICK_MS abc is not a positive integer; using 30000'])
+      const listening = lines.map((line) => { try { return JSON.parse(line) as { msg?: string; tickMs?: number } } catch { return null } }).find((row) => row?.msg === 'listening')
+      expect(listening?.tickMs).toBe(30_000)
+    } finally {
+      await running.close()
     }
   })
 

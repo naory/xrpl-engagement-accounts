@@ -185,6 +185,35 @@ describe('tick scheduler', () => {
     await svc.close()
   })
 
+  it('a throwing ledger tick does not exit, and the next tick runs', async () => {
+    const ledger = new Ledger()
+    const svc = await disputed(ledger)
+    let armed = false
+    let reads = 0
+    const orig = ledger.snapshot.bind(ledger)
+    ledger.snapshot = async (q) => {
+      if (armed) {
+        reads++
+        if (reads === 1) throw new Error('LEDGER_UNAVAILABLE: socket hang up')
+      }
+      return orig(q)
+    }
+    armed = true
+    const errors: Error[] = []
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+    const s = startTickScheduler(svc, { intervalMs: INTERVAL, onError: (e) => { errors.push(e); process.exit(1) } })
+    await vi.advanceTimersByTimeAsync(INTERVAL)
+    expect(reads).toBe(1)
+    expect(errors).toEqual([])
+    expect(exit).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(INTERVAL)
+    expect(reads).toBeGreaterThanOrEqual(2)
+    expect(errors).toEqual([])
+    expect(exit).not.toHaveBeenCalled()
+    await s.stop()
+    await svc.close()
+  })
+
   it('logs an error on one engagement and carries on; STORE_LOCKED stops the scheduler and reaches onError', async () => {
     const svc = await disputed()
     const warn = vi.spyOn(console, 'error').mockImplementation(() => {})
