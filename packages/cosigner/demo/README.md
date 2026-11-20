@@ -1,6 +1,6 @@
 # Co-signer demos (Testnet)
 
-Both scripts run from the **repo root** on a machine that can reach XRPL Testnet over WebSocket. Every account is created fresh from the faucet on each run, and the script never needs a seed. Results land in `demo/results/`.
+The scripts run from the **repo root** on a machine that can reach XRPL Testnet over WebSocket. Every account is created fresh from the faucet on each run, and the script never needs a seed. Results land in `demo/results/`.
 
 ```bash
 npm install

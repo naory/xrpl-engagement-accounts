@@ -20,10 +20,11 @@ is not a known Testnet host. Stdout shows addresses, decisions, transaction hash
 signed blobs. The script does not prompt.
 
 The asset is a test IOU the script issues (`currencyHex('RLUSD')`), the same shape as
-`npm run demo:hotel`, not Ripple's RLUSD. The booking figures are `DEMO_HOTEL_BOOKING` in
-`packages/cosigner/src/hotel/flow.ts`: room 400, deposit 100, bond 10. The bond is the hotel
-policy's minimum dispute bond, `10.00` (`policies/hotel@2.0.0.json:29`). It is not a marketplace
-collateral bond.
+`npm run demo:hotel`, not Ripple's RLUSD. The booking figures are `DEMO_HOTEL_BOOKING`
+(`packages/cosigner/src/hotel/flow.ts:69`): room 400, bond 10. This clip does not take a
+check-in deposit. The arbiter's split returns 100 of that room, plus the 10 bond, to the guest.
+The bond is the hotel policy's minimum dispute bond, `10.00` (`policies/hotel@2.0.0.json:29`).
+It is not a marketplace collateral bond.
 
 Preparation (faucet, accreditation, and the ledger's `AccountDelete` age) prints before the
 banner. Start the recording at the banner. The banner and the two sub-steps are:
@@ -37,26 +38,28 @@ Clip 3: hotel dispute
 ```
 
 Signer weights are guest 3, hotel 3, arbiter 4, co-signer 2, quorum 7
-(`templates/hotel@2.json:7`-`templates/hotel@2.json:12`). The service fee is 50 bps of what the
-hotel receives, paid by the hotel (`templates/hotel@2.json:49`, `policies/hotel@2.0.0.json:28`).
+(`templates/hotel@2.json:7`-`templates/hotel@2.json:12`). The service fee is 50 bps of the
+hotel's gross, paid by the hotel (`templates/hotel@2.json:49`, `policies/hotel@2.0.0.json:28`).
+On this split the hotel's gross is 300, so the fee is 1.5.
 
 ## 1. Arbiter ruling (H5)
 
-The guest is downgraded and opens an entry dispute. The arbiter rules with the guest. That
-outcome is `settle.ruling`: signers `[arbiter, principal]` or `[arbiter, counterparty]`,
-`enforcement` `none`, so the co-signer does not sign
-(`templates/hotel@2.json:16`). The blueprint is `close.split`: pay the hotel, the fee, and the
-guest, remove the trust line, delete the account (`templates/hotel@2.json:43`).
+The guest is downgraded and opens an entry dispute. The arbiter splits. That outcome is
+`settle.ruling`: signers `[arbiter, principal]` or `[arbiter, counterparty]`, `enforcement`
+`none`, so the co-signer does not sign (`templates/hotel@2.json:16`). The blueprint is
+`close.split`: pay the hotel, the fee, and the guest, remove the trust line, delete the account
+(`templates/hotel@2.json:43`).
 
-The ruling pays the hotel the room minus the deposit, less the 50 bps fee, and pays the guest
-the deposit plus the bond. On `DEMO_HOTEL_BOOKING` that is 298.5 to the hotel, 1.5 to the fee
-account, and 110 to the guest (300 gross × 50 / 10000 = 1.5). The account is deleted. The clip
-prints the balances of the guest, the hotel, the fee account, the arbiter, and the engagement
-account before that transaction and after it.
+The arbiter's split is 300 gross to the hotel, and 100 of the room plus the 10 bond back to the
+guest (`DEMO_HOTEL_BOOKING`, `packages/cosigner/src/hotel/flow.ts:69`). The fee is 50 bps of
+that 300 gross: 300 × 50 / 10000 = 1.5. The hotel is paid 298.5, the fee account 1.5, and the
+guest 110. No check-in deposit was paid; the engagement holds the room 400 plus the bond 10.
+The account is deleted. The clip prints the balances of the guest, the hotel, the fee account,
+the arbiter, and the engagement account before that transaction and after it.
 
 This sub-step does not wait out a chargeback. The template's ruling window is 432000 seconds,
 and a deal may pin one only inside 259200–604800 seconds
-(`policies/hotel@2.0.0.json:30`-`policies/hotel@2.0.0.json:32`). The arbiter rules in the clip,
+(`policies/hotel@2.0.0.json:30`-`policies/hotel@2.0.0.json:32`). The arbiter splits in the clip,
 while those deadlines are still far off.
 
 ## 2. Hotel never confirms: refund default (H2)

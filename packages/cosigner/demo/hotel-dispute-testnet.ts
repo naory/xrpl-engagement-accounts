@@ -107,6 +107,7 @@ class LocalApi {
       method,
       headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
     })
     const text = await res.text()
     let parsed: Json = {}
@@ -226,7 +227,7 @@ const near = (a: string, b: string) => Math.abs(Number(a) - Number(b)) < 1e-6
 
 async function main(): Promise<void> {
   const { discovery, token, endpoint } = loadDiscovery()
-  const health = await fetch(`${discovery.url}/healthz`)
+  const health = await fetch(`${discovery.url}/healthz`, { signal: AbortSignal.timeout(30_000) })
   if (!health.ok) throw new Error('refusing to start: local co-signer /healthz is not ok')
   say('preparing Testnet accounts (the clip starts at the banner)')
   say(`   · co-signer ${discovery.address}`)
@@ -331,7 +332,7 @@ async function main(): Promise<void> {
   const rulingOk = ruled.final === 'tesSUCCESS'
     && afterRuling.engagement === 'deleted'
     && want.every((w) => (ruled.payouts ?? []).some((p) => p.to === w.to && near(p.value, w.value)))
-  record('H5', 'Downgraded room, entry dispute, arbiter + guest ruling',
+  record('H5', 'Entry dispute: the arbiter splits 300 gross to the hotel, and 100 of the room plus the 10 bond to the guest',
     `tesSUCCESS; payouts ${want.map((w) => w.value).join('+')}; engagement deleted`,
     `${ruled.final}; payouts ${rulingPay || 'none'}; engagement ${afterRuling.engagement}`,
     rulingOk, { tx: ruled.tx })
@@ -366,9 +367,14 @@ async function main(): Promise<void> {
   results.refuse = { decision: refused.decision, r1: refused.r1, failing: refused.failing }
   await pause()
 
+  const waitStarted = Date.now()
+  const maxWaitMs = 120_000
   for (;;) {
     const { time } = await ledgerClock(client)
     if (time > confirmBy) break
+    if (Date.now() - waitStarted > maxWaitMs) {
+      throw new Error(`ledger close time did not pass confirmBy ${String(recordTimers.confirmBy)} within ${maxWaitMs / 1000}s`)
+    }
     say(`   · waiting ${Math.ceil((confirmBy - time) / 1000)}s of ledger time for the hotel's confirmation deadline`)
     await sleep(3000)
   }
