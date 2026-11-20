@@ -14,7 +14,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AddressInfo } from 'node:net'
 import xrpl from 'xrpl'
-import { localSigner, parseAmount, signStatement, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
+import { localSigner, parseAmount, signStatement, signVendorInvoice, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
 import { intentHashOf, layerHash, type PolicyDoc } from '@eng/policy'
 import { currencyHex, iouBalance, resolveTestnetEndpoint } from '@eng/ledger'
 import { CosignerService, XrplLedgerSource, createServer } from '@eng/cosigner'
@@ -141,7 +141,13 @@ async function main() {
 
   // ── Statements the agent attaches ──
   const rlusd = policy.assets!.RLUSD
-  const invoice = (v: Wallet, ref: string, amount: string) => stmt(v, 'VENDOR', 'party.invoice/1', { invoiceRef: ref }, { invoiceRef: ref, amount, currency: 'RLUSD', po: 'PO-MCP' })
+  const invoice = (v: Wallet, ref: string, amount: string) => {
+    const t = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
+    return signVendorInvoice({
+      engagementId: ENG_ID, vendorAddress: v.address, amount, invoiceRef: ref,
+      observedAt: t, issuedAt: t, nonce: newNonce(), po: 'PO-MCP',
+    }, v)
+  }
   const intent = (to: string, value: string, ref: string) => intentHashOf(to, parseAmount(value, rlusd), rlusd.decimals, ref)
   const approval = (to: string, value: string, ref: string) => stmt(controller, 'APPROVER', 'approval.payment/1', { intentHash: intent(to, value, ref) }, { approverRole: 'controller', notAfter: new Date(Date.now() + 3600_000).toISOString().replace(/\.\d{3}Z$/, 'Z'), comment: 'mcp demo approval' })
 

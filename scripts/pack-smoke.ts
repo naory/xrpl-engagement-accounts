@@ -429,6 +429,13 @@ async function main(): Promise<void> {
     }
     console.log('eng open --help exit 0')
 
+    const invoiceHelp = await run('npx', ['--no-install', 'eng', 'invoice', '--help'], installDir, cleanEnv)
+    const invoiceHelpOut = `${invoiceHelp.stdout}\n${invoiceHelp.stderr}`
+    if (invoiceHelp.status !== 0 || !invoiceHelp.stdout.includes('TESTNET ONLY') || !invoiceHelp.stdout.includes('--vendor-seed-file')) {
+      fail(`eng invoice --help expected exit 0, TESTNET ONLY, and --vendor-seed-file, got exit ${invoiceHelp.status}:\n${invoiceHelpOut}`)
+    }
+    console.log('eng invoice --help exit 0')
+
     assertTools(await listPackedTools(installDir, 'npx', ['--no-install', 'eng-mcp'], freshSeed()))
     assertTools(await listPackedTools(installDir, shim, [], freshSeed()))
     console.log('pack-smoke passed')

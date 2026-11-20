@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import xrpl from 'xrpl'
 import { createHash } from 'node:crypto'
-import { signStatement, type Statement, type StatementBody, type Template } from '@eng/core'
+import { signStatement, signVendorInvoice, type Statement, type StatementBody, type Template } from '@eng/core'
 import { canonicalTrust, slotsInLayers, type DecideInput, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc } from '@eng/policy'
 
 const root = new URL('../../../', import.meta.url)
@@ -140,8 +140,19 @@ export function b1Payment(to: string, value: string, opts: { invoice?: string; f
   return tx
 }
 
+// Compatibility shim. party.invoice/1 is built by signVendorInvoice in @eng/core.
+// The nonce still comes from this file's counter so existing fixture ids stay put.
 export function b1Invoice(vendor = W.vendorA, amount = '800.00', invoiceRef = 'inv:2026-Q4-0042'): Statement {
-  return statement(vendor, { kind: 'VENDOR', type: 'party.invoice/1', engagementId: 'eng_b1_fixture', subject: { invoiceRef }, claim: { invoiceRef, amount, currency: 'RLUSD', po: 'PO-7731' } })
+  return signVendorInvoice({
+    engagementId: 'eng_b1_fixture',
+    vendorAddress: vendor.address,
+    amount,
+    invoiceRef,
+    observedAt: '2026-11-18T09:00:00Z',
+    issuedAt: '2026-11-18T09:00:01Z',
+    nonce: nonce(),
+    po: 'PO-7731',
+  }, vendor)
 }
 
 export function b1Approval(intentHash: string, signer = W.controller, notAfter = '2026-11-20T00:00:00Z', at = '2026-11-18T09:31:00Z'): Statement {
