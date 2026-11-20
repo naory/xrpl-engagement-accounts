@@ -7,7 +7,7 @@ import type { EngagementRecord, PolicyDoc } from './types.ts'
 
 export const SLOT_PREFIX = '$slot:'
 
-/** Closed set. Lint rejects any other name. One accreditor per deployment (the list is a follow-up). */
+/** Closed set. Lint, startup, and canonicalTrust reject any other name. One accreditor per deployment. */
 export const KNOWN_SLOTS = ['arbiter.accreditor', 'kyb.issuer', 'rlusd.issuer'] as const
 export type KnownSlot = (typeof KNOWN_SLOTS)[number]
 
@@ -19,6 +19,14 @@ export const PLACEHOLDERS = [
 
 const SLOT_RE = /^\$slot:([a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*)$/
 const ALLOWED_SLOT_FIELDS = ['arbiterIssuers', 'kybIssuers'] as const
+/** `$slot:` is only legal as an asset issuer or an entry of those two param lists. */
+const SLOT_FIELD = /^assets\.[^.]+\.issuer$|^params\.(?:arbiterIssuers|kybIssuers)\[\d+\]$/
+
+export interface SlotViolation { where: string; message: string }
+
+function knownSlot(name: string): boolean {
+  return (KNOWN_SLOTS as readonly string[]).includes(name)
+}
 
 export class TrustError extends Error {
   constructor(message: string) {
@@ -38,6 +46,43 @@ export function slotNameOf(value: string): string | undefined {
 
 export function isSlotToken(value: string): boolean {
   return SLOT_RE.test(value)
+}
+
+/**
+ * Every `$slot:` string that is not a known slot in an allowed field. Same rules as lint L10.
+ * A token that fails {@link SLOT_RE} (for example `$slot:RLUSD.issuer`) is an unknown slot, not a pass-through.
+ */
+export function slotViolations(doc: PolicyDoc): SlotViolation[] {
+  const out: SlotViolation[] = []
+  const walk = (value: unknown, path: string): void => {
+    if (typeof value === 'string') {
+      if (!value.includes('$slot:')) return
+      if (!SLOT_FIELD.test(path)) {
+        out.push({ where: path || '(root)', message: '$slot: is only allowed on an asset issuer, params.arbiterIssuers, or params.kybIssuers' })
+        return
+      }
+      const name = slotNameOf(value)
+      if (!name || !knownSlot(name)) out.push({ where: path, message: `unknown slot ${value}` })
+      return
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item, i) => walk(item, `${path}[${i}]`))
+      return
+    }
+    if (value && typeof value === 'object') {
+      for (const [key, child] of Object.entries(value)) walk(child, path ? `${path}.${key}` : key)
+    }
+  }
+  walk(doc, '')
+  return out
+}
+
+/** Throw when any loaded policy has a `$slot:` token lint L10 would reject. */
+export function assertPolicySlots(docs: PolicyDoc[]): void {
+  for (const doc of docs) {
+    const bad = slotViolations(doc)
+    if (bad.length) throw new TrustError(`BAD_SLOT: ${doc.policyId}@${doc.version} ${bad[0].where}: ${bad[0].message}`)
+  }
 }
 
 function remember(out: string[], value: unknown): void {
@@ -76,11 +121,13 @@ export function canonicalTrust(layers: PolicyDoc[], trust: Record<string, string
   const needed = [...slotsInLayers(layers)].sort()
   const given = trust ?? {}
   for (const key of Object.keys(given).sort()) {
+    if (!knownSlot(key)) throw new TrustError(`UNKNOWN_SLOT: ${key}`)
     if (!needed.includes(key)) throw new TrustError(`TRUST_KEY: ${key} is not a slot in the pinned layers`)
   }
   if (!needed.length) return undefined
   const out: Record<string, string> = {}
   for (const name of needed) {
+    if (!knownSlot(name)) throw new TrustError(`UNKNOWN_SLOT: ${name}`)
     const value = given[name]
     if (typeof value !== 'string' || value.length === 0 || isSlotToken(value) || (PLACEHOLDERS as readonly string[]).includes(value)) {
       throw new TrustError(`UNRESOLVED_SLOT: ${name}`)
@@ -103,15 +150,17 @@ export function withCanonicalTrust(eng: EngagementRecord, layers: PolicyDoc[]): 
 }
 
 function replaceSlot(value: string, trust: Record<string, string>): string {
+  if (!value.includes('$slot:')) return value
   const name = slotNameOf(value)
-  if (!name) return value
+  if (!name || !knownSlot(name)) throw new TrustError(`BAD_SLOT: unknown slot ${value}`)
   const resolved = trust[name]
   if (resolved === undefined) throw new TrustError(`UNRESOLVED_SLOT: ${name}`)
   return resolved
 }
 
-/** A copy of `doc` with allowlisted slot tokens replaced. Does not mutate `doc`. */
+/** A copy of `doc` with allowlisted slot tokens replaced. Does not mutate `doc`. Throws on a bad `$slot:` anywhere in the document. */
 export function resolvePolicy(doc: PolicyDoc, trust: Record<string, string> | undefined): PolicyDoc {
+  assertPolicySlots([doc])
   const map = trust ?? {}
   const copy = structuredClone(doc)
   if (copy.assets) {

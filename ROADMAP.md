@@ -54,6 +54,7 @@ Known limits of this vertical:
 - **Single-writer store.** Co-signer state is durable in SQLite (one writer, enforced by a lease). Running several co-signer hosts needs the Postgres store, see [README §7](README.md#7-policy-co-signer).
 - **Accreditation issuer is one address per deployment.** `pol_hotel@2.0.0` names `$slot:arbiter.accreditor` (`ENG_ARBITER_ACCREDITOR`). The chargeback design assumes that issuer is the engagement service.
 - **Accreditor list / trust-list file.** A deployment still names one accreditor. Recognising several outside bodies, and the trust-list file sketched in the neutrality design, remains a follow-up.
+- **`vectors:check` does not rebuild.** It replays the committed `vectors/policy.json` and passed at `95c1abb` before the slot regeneration, so a skipped `vectors:build` does not fail that step. CI's rebuild-and-diff is what catches a stale file. Follow-up: compare `vectors:check` against a fresh build, or against the policy files' layer hashes.
 - **A lapsed arbiter is not replaced.** The backup arbiter is gone and a SignerList change needs quorum, so a deal whose accreditation lapses mid-stay cannot swap arbiters. Chargeback defaults cover silence only.
 - **Chargeback parameters.** Ruling window, split, 14-night cap and bond return are demo assumptions pending a real business.
 

@@ -136,8 +136,9 @@ export interface CosignerOptions {
   accreditation?: { issuer: string; credentialType: string }
   /**
    * Deploy config: slot name → classic address (ENG_RLUSD_ISSUER, ENG_ARBITER_ACCREDITOR, ENG_KYB_ISSUER).
-   * When set, register() requires the record's trust to match it. Unset on loopback dev and tests:
-   * the record's own trust is used, and a missing slot fails with UNRESOLVED_SLOT.
+   * The server always passes this map. With none of those variables set it is `{}`, including on loopback;
+   * it is not left unset. An empty map means no deploy addresses: register() uses the record's own trust.
+   * A non-empty map must match that trust. A missing slot on the record still fails with UNRESOLVED_SLOT.
    */
   trust?: Record<string, string>
 }
@@ -342,7 +343,8 @@ export class CosignerService {
   /** When deploy config is loaded, the record's addresses must be that config. Logs nothing: this is a refusal. */
   private requireConfiguredTrust(record: EngagementRecord): void {
     const cfg = this.o.trust
-    if (!cfg) return
+    // `{}` is what the server passes when no ENG_* address is set (loopback included). That is not a configured deployment.
+    if (!cfg || Object.keys(cfg).length === 0) return
     for (const name of Object.keys(record.trust ?? {})) {
       const configured = cfg[name]
       const got = record.trust![name]
@@ -1060,8 +1062,7 @@ function stayTermsFindings(record: EngagementRecord, mandate: Statement | null, 
   const stay = Math.round((to - from) / (DAY * 1000))
   if (stay < 1) return `the stay dates ${String(dates.checkIn)} → ${String(dates.checkOut)} book no night`
   if (terms.nights !== stay) return `terms.nights ${JSON.stringify(terms.nights ?? null)} is not the booked ${stay}-night stay (${String(dates.checkIn)} → ${String(dates.checkOut)})`
-  const assets: Record<string, AssetDef> = {}
-  for (const l of layers) Object.assign(assets, l.assets ?? {})
+  const assets = resolvedAssets(layers, record.trust)
   const asset = assets[record.amount?.asset ?? record.asset ?? template.asset.code]
   if (!asset || typeof record.amount?.value !== 'string') return 'the deal has no amount in a known asset to derive terms.nightly from'
   let want: bigint

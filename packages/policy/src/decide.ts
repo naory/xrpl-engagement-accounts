@@ -5,7 +5,7 @@ import { AttFacts, astSize, createEnvironment } from './env.ts'
 import { toCel } from './convert.ts'
 import { REGISTRY_VERSION, verifyStatements } from './pipeline.ts'
 import type { Decision, DecideInput, PolicyDoc, Rule, RuleResult } from './types.ts'
-import { resolvePolicy, withCanonicalTrust } from './trust.ts'
+import { assertPolicySlots, resolvePolicy, withCanonicalTrust } from './trust.ts'
 
 const DEFAULT_COST_BUDGET = 100_000
 
@@ -15,6 +15,8 @@ export function layerHash(l: PolicyDoc): string {
 
 export function decide(input: DecideInput): Decision {
   const { stage, template, layers, ledger } = input
+  // A `$slot:` that is malformed, unknown, or outside an allowed field fails here, not as a silent issuer string.
+  assertPolicySlots(layers)
   const results: RuleResult[] = []
   const budget = input.costBudget ?? DEFAULT_COST_BUDGET
   let cost = 0

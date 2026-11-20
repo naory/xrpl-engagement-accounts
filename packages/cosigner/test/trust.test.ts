@@ -56,6 +56,13 @@ describe('assetsOf leaves the hashed policy byte-identical', () => {
 })
 
 describe('register trust', () => {
+  it('treats an empty deploy map as no config, the way loopback startup passes {}', async () => {
+    const svc = new CosignerService({
+      signer: localSigner(W.cosigner), source: new FixtureLedgerSource(b1Ledger()), ...library(), trust: {},
+    })
+    await expect(svc.register(b1Engagement(), b1Mandate())).resolves.toMatchObject({ ok: true })
+  })
+
   it('UNRESOLVED_SLOT when the record has no trust (loopback, no deploy config)', async () => {
     const svc = new CosignerService({
       signer: localSigner(W.cosigner), source: new FixtureLedgerSource(b1Ledger()), ...library(),
@@ -78,6 +85,40 @@ describe('register trust', () => {
     } catch (e) {
       expect(String((e as Error).message)).not.toMatch(/eng_b1_fixture/)
     }
+  })
+})
+
+describe('pre-T13 pins', () => {
+  it('quarantines an engagement pinned to the pre-slot policy hash', async () => {
+    const store = new MemoryStateStore()
+    const source = new FixtureLedgerSource(b1Ledger())
+    const opts = {
+      signer: localSigner(W.cosigner), source, templates: [templates.procurement],
+      policies: [policies.baseline, policies.procurement], store,
+    }
+    const svc = await CosignerService.open(opts)
+    await svc.register(b1Engagement(), b1Mandate())
+    const snap = await store.loadAll()
+    const saved = snap.engagements[0]
+    // On-disk pol_procurement@1.3.0 hash while the RLUSD issuer was still the placeholder string.
+    const preT13 = 'att:F0D5BBA2FD0DB86143C266CDD757F7FF67F5A5BDD8EB9403453A4D9C5E635E13'
+    saved.pins = {
+      ...saved.pins,
+      layerHashes: saved.pins.layerHashes.map((h) => (h === layerHash(policies.procurement) ? preT13 : h)),
+    }
+    await store.transaction((tx) => tx.putEngagement(saved))
+    await svc.close()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const again = await CosignerService.open(opts)
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/ENGAGEMENT_STALE: eng_b1_fixture: pinned policy layer att:F0D5BBA2/))
+    await expect(again.decide({
+      engagementId: 'eng_b1_fixture', stage: 'spend',
+      tx: { ...b1Payment(W.vendorA.address, '800', { invoice: 'inv:2026-Q4-0042' }), Sequence: 21 },
+      statements: [b1Invoice()],
+    })).rejects.toThrow(/ENGAGEMENT_STALE: eng_b1_fixture/)
+    expect(again.engagement('eng_b1_fixture')?.engagementId).toBe('eng_b1_fixture')
+    warn.mockRestore()
+    await again.close()
   })
 })
 
@@ -136,6 +177,20 @@ describe('off-loopback startup', () => {
     expect(bad).not.toBe('')
     expect(() => assertDeployTrust('127.0.0.1', slotted, { 'rlusd.issuer': bad })).toThrow(/not a classic address/)
     expect(() => assertDeployTrust('127.0.0.1', slotted, {})).not.toThrow()
+  })
+
+  it('rejects a malformed token, a slot in the wrong field, and an unknown name, including on loopback', () => {
+    const malformed = structuredClone(policies.shopping)
+    malformed.assets!.RLUSD.issuer = '$slot:RLUSD.issuer'
+    expect(() => assertDeployTrust('127.0.0.1', [malformed], {})).toThrow(/unknown slot \$slot:RLUSD\.issuer/)
+
+    const wrong = structuredClone(policies.shopping)
+    wrong.stages.spend.rules[0].message += ' $slot:rlusd.issuer'
+    expect(() => assertDeployTrust('127.0.0.1', [wrong], {})).toThrow(/only allowed/)
+
+    const unknown = structuredClone(policies.shopping)
+    unknown.assets!.RLUSD.issuer = '$slot:foo.bar'
+    expect(() => assertDeployTrust(host, [unknown], { 'foo.bar': W.issuer.address })).toThrow(/unknown slot \$slot:foo\.bar/)
   })
 
   it('starts the check when every slot is a classic Testnet-shaped address', () => {

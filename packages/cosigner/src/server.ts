@@ -24,7 +24,7 @@ import http from 'node:http'
 import path from 'node:path'
 import xrpl from 'xrpl'
 import type { Template } from '@eng/core'
-import { isClassicAddress, PLACEHOLDERS, slotsInLayers, type PolicyDoc } from '@eng/policy'
+import { isClassicAddress, PLACEHOLDERS, slotViolations, slotsInLayers, type PolicyDoc } from '@eng/policy'
 import { CosignerService, LedgerUnavailableError } from './service.ts'
 import { signerProviderFromEnv, type SignerProvider } from './keys.ts'
 import { XrplLedgerSource } from './snapshot.ts'
@@ -202,6 +202,11 @@ export function loadTrustConfig(env: NodeJS.ProcessEnv = process.env): Record<st
  */
 export function assertDeployTrust(host: string, policies: PolicyDoc[], config: Record<string, string>): void {
   const loopback = isLoopback(host)
+  // Same `$slot:` rules as lint L10, on every bind. A malformed token is not left for decide to skip.
+  for (const policy of policies) {
+    const bad = slotViolations(policy)
+    if (bad.length) throw new Error(`refusing to bind ${host}: ${policy.policyId}@${policy.version} ${bad[0].where}: ${bad[0].message}`)
+  }
   const text = JSON.stringify(policies)
   for (const placeholder of PLACEHOLDERS) {
     if (text.includes(placeholder) && !loopback) throw new Error(`refusing to bind ${host}: policy still contains placeholder ${placeholder}`)

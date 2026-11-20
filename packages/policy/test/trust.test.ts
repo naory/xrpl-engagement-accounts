@@ -1,7 +1,7 @@
 // Deploy-time trust slots: checksummed addresses, canonical trust, hash independence.
 import { describe, expect, it } from 'vitest'
 import { documentHash } from '@eng/core'
-import { decide, isClassicAddress, layerHash, lintPolicy, type DecideInput, type PolicyDoc } from '@eng/policy'
+import { canonicalTrust, decide, isClassicAddress, layerHash, lintPolicy, type DecideInput, type PolicyDoc } from '@eng/policy'
 import {
   W, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, fixtureTrust, policies, templates,
 } from './fixtures.ts'
@@ -114,6 +114,29 @@ describe('trust slots and the hash rule', () => {
     expect(documentHash(resolved)).not.toBe(layerHash(frozen))
     expect(d.policy.layers.join(' ')).toContain(layerHash(frozen))
     expect(d.policy.effectiveHash).not.toBe(documentHash([baseline, resolved]))
+  })
+})
+
+describe('malformed and unknown slots', () => {
+  it('decide rejects a malformed token, a slot in the wrong field, and does not pass the token through', () => {
+    const malformed = structuredClone(policies.procurement)
+    malformed.assets!.RLUSD.issuer = '$slot:RLUSD.issuer'
+    expect(() => decide(b1({ layers: [policies.baseline, malformed] }))).toThrow(/BAD_SLOT:.*unknown slot \$slot:RLUSD\.issuer/)
+
+    const wrong = structuredClone(policies.procurement)
+    wrong.stages.spend.rules[0].message += ' $slot:rlusd.issuer'
+    expect(() => decide(b1({ layers: [policies.baseline, wrong] }))).toThrow(/BAD_SLOT:.*only allowed/)
+  })
+
+  it('canonicalTrust rejects a well-formed name outside KNOWN_SLOTS', () => {
+    expect(() => canonicalTrust([policies.shopping], { 'foo.bar': W.issuer.address, 'rlusd.issuer': W.issuer.address })).toThrow(/UNKNOWN_SLOT: foo\.bar/)
+    const named = structuredClone(policies.shopping)
+    named.assets!.RLUSD.issuer = '$slot:foo.bar'
+    expect(() => canonicalTrust([named], { 'foo.bar': W.issuer.address })).toThrow(/UNKNOWN_SLOT: foo\.bar/)
+    expect(() => decide(b1({
+      layers: [policies.baseline, named],
+      engagement: b1Engagement({ trust: { 'foo.bar': W.issuer.address } }),
+    }))).toThrow(/BAD_SLOT:.*unknown slot \$slot:foo\.bar/)
   })
 })
 
