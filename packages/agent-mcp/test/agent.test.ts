@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import xrpl from 'xrpl'
 import { currencyHex, type Fees, type SubmitResult } from '@eng/ledger'
 import { CosignerService, FixtureLedgerSource, createServer } from '@eng/cosigner'
-import { localSigner } from '@eng/core'
+import { issueVendorInvoice, localSigner } from '@eng/core'
 import { W, LEDGER_INDEX, b1Engagement, b1Invoice, b1Mandate, b1Ledger, policies, templates } from '../../policy/test/fixtures.ts'
 import { EngagementAgent, type Chain } from '../src/agent.ts'
 import { CosignerClient } from '../src/client.ts'
@@ -90,5 +90,67 @@ describe('engagement agent', () => {
       expect(view.engagement.engagementId).toBe(ENG)
       expect((await client.decisions(ENG)).length).toBeGreaterThanOrEqual(1)
     } finally { server.close() }
+  })
+
+  it('payVendor refuses W6 without an invoice, then settles with the demo invoice', async () => {
+    const chain = new FakeChain(21)
+    const agent = agentFor(await service(), chain)
+    const refused = await agent.payVendor({ destination: W.vendorA.address, amount: '800.00', invoiceRef: 'inv:demo-001', statements: [] })
+    expect(refused.proposal.decision.decision).toBe('REFUSE')
+    expect(refused.proposal.decision.failing).toContain('W6')
+    expect(refused.submit).toBeUndefined()
+    expect(chain.submitted).toEqual([])
+    const invoice = issueVendorInvoice({
+      engagementId: ENG,
+      vendorAddress: W.vendorA.address,
+      amount: '800.00',
+      invoiceRef: 'inv:demo-001',
+      observedAt: '2026-11-18T09:00:00Z',
+      issuedAt: '2026-11-18T09:00:01Z',
+      validUntil: '2026-11-19T09:00:01Z',
+      po: 'PO-OPEN',
+      nonce: 'demo-invoice',
+    }, W.vendorA)
+    const settled = await agent.payVendor({
+      destination: W.vendorA.address, amount: '800.00', invoiceRef: 'inv:demo-001', statements: [invoice],
+    })
+    expect(settled.proposal.decision.decision).toBe('SIGN')
+    expect(settled.submit?.final).toBe('tesSUCCESS')
+    expect(chain.submitted).toEqual([settled.proposal.combined])
+  })
+
+  it('refuses a second payment of the same signed invoice while it is reserved', async () => {
+    const svc = await service()
+    let seq = 21
+    const submitted: string[] = []
+    const chain: Chain = {
+      async fees() { return { base: 10, reserveBase: 1_000_000, inc: 200_000 } },
+      async currentLedger() { return LEDGER_INDEX },
+      async accountSequence() { return seq },
+      async submit(blob: string) {
+        submitted.push(blob)
+        seq = 22
+        return { hash: xrpl.hashes.hashSignedTx(blob), prelim: 'tesSUCCESS', final: 'tesSUCCESS', validated: true, ledger: LEDGER_INDEX }
+      },
+    }
+    const agent = agentFor(svc, chain)
+    const invoice = issueVendorInvoice({
+      engagementId: ENG,
+      vendorAddress: W.vendorA.address,
+      amount: '800.00',
+      invoiceRef: 'inv:replay-001',
+      observedAt: '2026-11-18T09:00:00Z',
+      issuedAt: '2026-11-18T09:00:01Z',
+      validUntil: '2026-11-19T09:00:01Z',
+      po: 'PO-OPEN',
+      nonce: 'replay-invoice',
+    }, W.vendorA)
+    const first = await agent.payVendor({ destination: W.vendorA.address, amount: '800.00', invoiceRef: 'inv:replay-001', statements: [invoice] })
+    expect(first.proposal.decision.decision).toBe('SIGN')
+    const second = await agent.payVendor({ destination: W.vendorA.address, amount: '800.00', invoiceRef: 'inv:replay-001', statements: [invoice] })
+    expect(second.proposal.decision.decision).toBe('REFUSE')
+    expect(second.proposal.decision.statementsRejected.map((s) => s.code)).toContain('CONSUMED')
+    expect(second.submit).toBeUndefined()
+    expect(submitted).toHaveLength(1)
   })
 })

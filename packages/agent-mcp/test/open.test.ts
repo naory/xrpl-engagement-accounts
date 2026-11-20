@@ -254,6 +254,14 @@ describe('output', () => {
     expect(parsed.retryCommand).toContain('--template procurement@1')
     expect(parsed.env.COSIGNER_API_TOKEN_FILE).toBe('/tmp/cosigner.token')
     expect(json).not.toContain(TOKEN)
+    const vendorSeed = (JSON.parse(json) as { operator: { VENDOR_SEED: string } }).operator.VENDOR_SEED
+    const agentBlock = human.slice(human.indexOf('Agent env'), human.indexOf('These seeds are not the agent env'))
+    expect(agentBlock).toContain('AGENT_SEED=')
+    expect(agentBlock).toContain('VENDOR_ADDRESS=')
+    expect(agentBlock).not.toContain(vendorSeed)
+    expect(agentBlock).not.toContain('VENDOR_SEED=')
+    expect(human).toContain(`VENDOR_SEED=${vendorSeed}`)
+    expect(human.indexOf('Operator only')).toBeGreaterThan(human.indexOf('Agent env'))
     expect(retryCommand({ template: 'owner-wallet/procurement@1', cosignerDir: '/tmp/my dir', endpoint: null, json: true })).toBe("npm run --silent eng -- open --template procurement@1 --cosigner-dir '/tmp/my dir' --json")
   })
 
@@ -305,11 +313,23 @@ describe('runEng', () => {
     expect(registers).toBe(3)
     expect(sleeps).toEqual([1_000, 2_000])
     expect(auth).toBe(`Bearer ${FILE_TOKEN}`)
-    const parsed = JSON.parse(deps.out) as { banner: string; env: Record<string, string> }
+    const parsed = JSON.parse(deps.out) as {
+      banner: string
+      operator: { VENDOR_SEED: string; note: string }
+      invoice: { engagementId: string; validUntil: string; attester: { account: string }; claim: { amount: string; invoiceRef: string } }
+      env: Record<string, string>
+    }
     expect(parsed.banner).toContain('TESTNET ONLY')
     expect(parsed.env.ENGAGEMENT_ID).toBe('eng_open_test')
     expect(parsed.env.COSIGNER_API_TOKEN_FILE).toBe(fs.realpathSync(path.join(deps.dir, 'cosigner.token')))
     expect(parsed.env.ASSET_CODE).toBe('RLUSD')
+    expect(parsed.env.VENDOR_ADDRESS).toBe(parsed.invoice.attester.account)
+    expect(parsed.invoice.engagementId).toBe('eng_open_test')
+    expect(parsed.invoice.claim.amount).toBe('800.00')
+    expect(parsed.invoice.claim.invoiceRef).toBe('inv:open-001')
+    expect(parsed.invoice.validUntil).toBe('2026-01-02T00:00:00Z')
+    expect(JSON.stringify(parsed.env)).not.toContain(parsed.operator.VENDOR_SEED)
+    expect(parsed.operator.note).toContain('W6')
     expect(deps.out).not.toContain(FILE_TOKEN)
     expect(deps.err).toContain(TESTNET_SEED_BANNER)
   })

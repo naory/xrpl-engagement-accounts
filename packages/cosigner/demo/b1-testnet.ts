@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
-import { localSigner, parseAmount, signStatement, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
+import { localSigner, parseAmount, signStatement, signVendorInvoice, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
 import { intentHashOf, layerHash, type EngagementRecord, type PolicyDoc } from '@eng/policy'
 import { CosignerService, XrplLedgerSource, resolveTestnetEndpoint, type DecideResponse } from '../src/index.ts'
 import {
@@ -162,7 +162,13 @@ async function main() {
 
   // ── Spend helper ──
   const rlusd = policy.assets!.RLUSD
-  const invoice = (v: Wallet, ref: string, amount: string) => stmt(v, 'VENDOR', 'party.invoice/1', { invoiceRef: ref }, { invoiceRef: ref, amount, currency: 'RLUSD', po: 'PO-DEMO' })
+  const invoice = (v: Wallet, ref: string, amount: string) => {
+    const t = isoNow()
+    return signVendorInvoice({
+      engagementId: ENG_ID, vendorAddress: v.address, amount, invoiceRef: ref,
+      observedAt: t, issuedAt: t, nonce: newNonce(), po: 'PO-DEMO',
+    }, v)
+  }
   const intent = (to: string, value: string, ref: string) => intentHashOf(to, parseAmount(value, rlusd), rlusd.decimals, ref)
   let nextSeq = Number(((await accountInfo(client, eng.address))!.account_data as Json).Sequence)
   const refreshSeq = async () => { nextSeq = Number(((await accountInfo(client, eng.address))!.account_data as Json).Sequence) }

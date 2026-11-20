@@ -82,7 +82,7 @@ npx --no-install eng-mcp
 
 Node >= 22.13. On Windows the scratch shim is `eng-mcp.cmd`.
 
-TESTNET ONLY. A seed in a desktop config is a Testnet throwaway. Prefer `AGENT_SEED_FILE` (one line, mode 0600) so the file holds a path. `COSIGNER_API_TOKEN_FILE` is the bearer path. Do not put either value in the JSON.
+TESTNET ONLY. A seed in a desktop config is a Testnet throwaway. Prefer `AGENT_SEED_FILE` (one line, mode 0600) so the file holds a path. `COSIGNER_API_TOKEN_FILE` is the bearer path. Do not put either value in the JSON. Do not put `VENDOR_SEED` in this config: that seed signs invoices, and an agent that holds it can forge them and defeat W6. `VENDOR_ADDRESS` is the payee address from `eng open`, not a seed.
 
 Claude Desktop reads `claude_desktop_config.json`. Cursor reads `.cursor/mcp.json`. Same `mcpServers` object. This is the command pack-smoke runs, via the absolute shim:
 
@@ -96,6 +96,7 @@ Claude Desktop reads `claude_desktop_config.json`. Cursor reads `.cursor/mcp.jso
         "ENGAGEMENT_ACCOUNT": "r…",
         "AGENT_SEED_FILE": "/absolute/path/agent.seed",
         "ASSET_ISSUER": "r…",
+        "VENDOR_ADDRESS": "r…",
         "COSIGNER_URL": "http://127.0.0.1:8787",
         "COSIGNER_API_TOKEN_FILE": "/absolute/path/cosigner.token"
       }
@@ -119,6 +120,7 @@ Not what pack-smoke runs. Once the packages are on the registry, the client comm
         "ENGAGEMENT_ACCOUNT": "r…",
         "AGENT_SEED_FILE": "/absolute/path/agent.seed",
         "ASSET_ISSUER": "r…",
+        "VENDOR_ADDRESS": "r…",
         "COSIGNER_URL": "http://127.0.0.1:8787",
         "COSIGNER_API_TOKEN_FILE": "/absolute/path/cosigner.token"
       }
@@ -159,6 +161,45 @@ live ledger — against the real `CosignerService` on the B1 fixture: an in-poli
 yields a 2-of-n quorum blob, an out-of-mandate payee is refused with no blob, `payVendor` settles
 only on `SIGN`, and the same flow runs over the real HTTP server through `CosignerClient`.
 
+## Own-agent payment (TESTNET ONLY)
+
+This is the path where your MCP client is the agent. The demo vendor is its own Testnet wallet. Its seed signs `party.invoice/1`. An agent that holds that seed can forge invoices and defeat rule W6, so the seed is not part of the agent env and it is not in the MCP config below.
+
+`npm run cosigner:local`, then:
+
+```bash
+npm run eng -- open --template procurement@1
+```
+
+Stdout has three parts:
+
+1. **Agent env.** The `ENGAGEMENT_*`, `AGENT_SEED`, `ASSET_*`, `COSIGNER_*`, `XRPL_URL`, `AGENT_ALLOW_SUBMIT`, and `VENDOR_ADDRESS` lines. `VENDOR_ADDRESS` is the payee. Paste those into the client. Do not paste `VENDOR_SEED`.
+2. **Invoice.** One `party.invoice/1` JSON document for `pay_vendor`. It is bound to this engagement id and `VENDOR_ADDRESS`, for `800.00` (under the `1000.00` approval threshold), with `validUntil` 24 hours out and `invoiceRef` `inv:open-001`. An invoice is not a secret.
+3. **Operator only.** `VENDOR_SEED`, under the TESTNET ONLY banner, after the heading `Operator only`. `--out <file>` writes the same document outside the repo, mode 0600. That file is the other place the vendor seed is written. Keep it off the agent.
+
+`npm run` prints its own lines before the command's stdout. `npm run --silent eng -- open --json` is one JSON document: copy `env` and `invoice`, and leave `operator` out of the client.
+
+Point the MCP client at the packed `eng-mcp` (see below) with that agent env. Then call `pay_vendor`:
+
+```json
+{
+  "destination": "<VENDOR_ADDRESS>",
+  "amount": "800.00",
+  "invoiceRef": "inv:open-001",
+  "statements": ["<the invoice JSON>"]
+}
+```
+
+Without `statements`, `pay_vendor` is refused on W6 and nothing is submitted. The same signed invoice a second time is refused `CONSUMED` (the type is single-use). A later invoice is a new signature:
+
+```bash
+npm run eng -- invoice --vendor-seed-file /absolute/path/vendor.seed --engagement-id eng_… --amount 800.00 --expires 2026-01-02T00:00:00Z --invoice-ref inv:open-002
+```
+
+`--vendor-seed-file` is one line. The command reads it and does not print it. Stdout is the invoice JSON. `--amount` has to be greater than zero and under `1000.00`. `--expires` is `validUntil` and has to be in the future.
+
+The ledger checks the SignerList quorum. The policy co-signer checks the invoice, the cap, and the expiry: ledger-enforced quorum plus policy co-signer.
+
 ## Open a Testnet account
 
 `npm run cosigner:local` writes `<DATA_DIR>/local.json`. Then:
@@ -169,7 +210,7 @@ npm run eng -- open --template procurement@1
 
 TESTNET ONLY. The command refuses Devnet, mainnet, a non-loopback co-signer URL, and a local co-signer whose `local.json` `trust` is set (`ENG_RLUSD_ISSUER`, `ENG_KYB_ISSUER`, or `ENG_ARBITER_ACCREDITOR`). It faucet-funds a cast, mints a **demo IOU (not RLUSD)**, opens `owner-wallet/procurement@1`, and `POST`s `/v1/engagements` with the bearer from `tokenPath`. A 503 or a connection error is retried three times (1s, then 2s). A 4xx is not retried.
 
-`npm run` writes its own lines before the command's stdout, so the TESTNET ONLY banner is not the first line of the terminal. The banner is the first field of the JSON from `npm run --silent eng -- open --json`, and `--out <file>` writes that same document outside the repo, mode 0600. A path inside the repo is refused. The text lists `ENGAGEMENT_ID`, `ENGAGEMENT_ACCOUNT`, `AGENT_SEED`, `ASSET_ISSUER`, `COSIGNER_URL`, `COSIGNER_API_TOKEN_FILE`, and `XRPL_URL`. The bearer is not printed. There is no `--resume`. If the Batch lands and registration still fails, the output's Retry line is a full re-open that creates a new account.
+`npm run` writes its own lines before the command's stdout, so the TESTNET ONLY banner is not the first line of the terminal. The banner is the first field of the JSON from `npm run --silent eng -- open --json`, and `--out <file>` writes that same document outside the repo, mode 0600. A path inside the repo is refused. The agent env lists `ENGAGEMENT_ID`, `ENGAGEMENT_ACCOUNT`, `AGENT_SEED`, `ASSET_ISSUER`, `COSIGNER_URL`, `COSIGNER_API_TOKEN_FILE`, `XRPL_URL`, and `VENDOR_ADDRESS`. The invoice is the `invoice` field. `VENDOR_SEED` is under `operator`, not in `env`. The bearer is not printed. There is no `--resume`. If the Batch lands and registration still fails, the output's Retry line is a full re-open that creates a new account.
 
 `npm run mcp` with the printed env keeps working after `cosigner:local` is restarted: the registration is in `<DATA_DIR>/cosigner.db`, and the next start rewrites `local.json` with the same address and token path.
 

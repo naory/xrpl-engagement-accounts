@@ -2,8 +2,10 @@
 // The co-signer URL comes from local.json and must be loopback. The bearer is never printed.
 import fs from 'node:fs'
 import path from 'node:path'
+import { DEMO_INVOICE_AMOUNT, DEMO_INVOICE_REF, DEMO_INVOICE_TTL_MS, issueVendorInvoice, type Statement } from '@eng/core'
 import { CosignerError, CosignerClient } from './client.ts'
 import { resolveCosignerToken } from './cosigner-token.ts'
+import { runInvoice } from './invoice-cmd.ts'
 import {
   DEMO_IOU_NOTE, OpenPartialError, PROCUREMENT_TEMPLATE, provisionOnEndpoint,
   type OpenDraft, type Provisioned,
@@ -14,6 +16,7 @@ import {
 } from '@eng/ledger'
 
 export const TESTNET_SEED_BANNER = 'TESTNET ONLY. These seeds are XRPL Testnet seeds. Do not use them on any other network.'
+export const VENDOR_SEED_NOTE = 'VENDOR_SEED signs party.invoice/1 for this vendor. An agent that holds it can forge invoices and defeat W6. Do not put it in the agent client env or an MCP config.'
 export const REGISTER_BACKOFF_MS = [1_000, 2_000] as const
 export const FETCH_TIMEOUT_MS = 10_000
 const CONNECTION_CODES = /^(ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ECONNABORTED|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET|UND_ERR_HEADERS_TIMEOUT|UND_ERR_BODY_TIMEOUT)$/
@@ -281,6 +284,10 @@ export interface PrintedOpen {
   /** Present on a partial failure. A retry is a new open, not a resume. */
   retryNote?: string
   retryCommand?: string
+  /** Vendor seed. Absent from `env`. The agent client and the MCP config must not receive it. */
+  operator?: { note: string; VENDOR_SEED: string }
+  /** First demo invoice. Not a secret. Present when the vendor wallet exists. */
+  invoice?: Statement
   env: {
     ENGAGEMENT_ID: string
     ENGAGEMENT_ACCOUNT: string
@@ -292,11 +299,17 @@ export interface PrintedOpen {
     XRPL_URL: string
     /** Omitted when the open Batch did not succeed. */
     AGENT_ALLOW_SUBMIT?: '1'
+    /** Payee for the demo invoice. An address, not a seed. */
+    VENDOR_ADDRESS?: string
     OWNER_SEED: string
     CONTROLLER_SEED: string
     SERVICE_SEED: string
     ISSUER_SEED: string
   }
+}
+
+function isoNoMillis(d: Date): string {
+  return d.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
 export function printedOpen(opts: {
@@ -307,16 +320,34 @@ export function printedOpen(opts: {
   /** False when the open Batch did not succeed. Registration failure still allows submit. */
   allowSubmit?: boolean
   partial?: { error: string; retryCommand: string }
+  /** Clock for the demo invoice expiry. Defaults to the current time. */
+  now?: Date
 }): PrintedOpen {
   const account = opts.draft.engagement?.address ?? opts.draft.record?.account
   if (!account || !opts.draft.agent || !opts.draft.treasury || !opts.draft.controller || !opts.draft.service || !opts.draft.issuer) {
     throw new Error('refusing to print: open did not produce the account seeds')
   }
+  const vendor = opts.draft.vendorA
+  const now = opts.now ?? new Date()
+  const issued = isoNoMillis(now)
+  const invoice = vendor ? issueVendorInvoice({
+    engagementId: opts.draft.engagementId,
+    vendorAddress: vendor.address,
+    amount: DEMO_INVOICE_AMOUNT,
+    invoiceRef: DEMO_INVOICE_REF,
+    observedAt: issued,
+    issuedAt: issued,
+    validUntil: isoNoMillis(new Date(now.getTime() + DEMO_INVOICE_TTL_MS)),
+    po: 'PO-OPEN',
+  }, vendor) : undefined
+  const vendorSeed = vendor ? seedOf(vendor, 'vendor') : undefined
   return {
     banner: TESTNET_SEED_BANNER,
     network: 'xrpl:1',
     demoIou: DEMO_IOU_NOTE,
     ...(opts.partial ? { partial: true, error: opts.partial.error, retryNote: 'full re-open, creates a new account', retryCommand: opts.partial.retryCommand } : {}),
+    ...(vendorSeed ? { operator: { note: VENDOR_SEED_NOTE, VENDOR_SEED: vendorSeed } } : {}),
+    ...(invoice ? { invoice } : {}),
     env: {
       ENGAGEMENT_ID: opts.draft.engagementId,
       ENGAGEMENT_ACCOUNT: account,
@@ -327,6 +358,7 @@ export function printedOpen(opts: {
       COSIGNER_API_TOKEN_FILE: opts.tokenPath,
       XRPL_URL: opts.endpoint,
       ...(opts.allowSubmit === false ? {} : { AGENT_ALLOW_SUBMIT: '1' as const }),
+      ...(vendor ? { VENDOR_ADDRESS: vendor.address } : {}),
       OWNER_SEED: seedOf(opts.draft.treasury, 'owner'),
       CONTROLLER_SEED: seedOf(opts.draft.controller, 'controller'),
       SERVICE_SEED: seedOf(opts.draft.service, 'service'),
@@ -347,6 +379,7 @@ export function formatOpen(doc: PrintedOpen, asJson: boolean): string {
     lines.push(`Partial failure. ${doc.error}`, `Retry (full re-open, creates a new account): ${doc.retryCommand}`, '')
   }
   lines.push(
+    'Agent env. Paste these lines into the MCP client. No vendor seed.',
     `ENGAGEMENT_ID=${env.ENGAGEMENT_ID}`,
     `ENGAGEMENT_ACCOUNT=${env.ENGAGEMENT_ACCOUNT}`,
     `AGENT_SEED=${env.AGENT_SEED}`,
@@ -357,15 +390,31 @@ export function formatOpen(doc: PrintedOpen, asJson: boolean): string {
     `XRPL_URL=${env.XRPL_URL}`,
   )
   if (env.AGENT_ALLOW_SUBMIT) lines.push(`AGENT_ALLOW_SUBMIT=${env.AGENT_ALLOW_SUBMIT}`)
+  if (env.VENDOR_ADDRESS) lines.push(`VENDOR_ADDRESS=${env.VENDOR_ADDRESS}`)
+  lines.push('')
+  if (doc.invoice) {
+    lines.push(
+      `Invoice for pay_vendor (not a secret). Amount ${DEMO_INVOICE_AMOUNT} is under the approval threshold. validUntil is the expiry. Bound to ${env.ENGAGEMENT_ID} and ${env.VENDOR_ADDRESS}.`,
+      JSON.stringify(doc.invoice, null, 2),
+      '',
+    )
+  }
   lines.push(
+    'These seeds are not the agent env and are not read by npm run mcp.',
     `OWNER_SEED=${env.OWNER_SEED}`,
     `CONTROLLER_SEED=${env.CONTROLLER_SEED}`,
     `SERVICE_SEED=${env.SERVICE_SEED}`,
     `ISSUER_SEED=${env.ISSUER_SEED}`,
     '',
-    'OWNER_SEED, CONTROLLER_SEED, SERVICE_SEED, and ISSUER_SEED are not read by npm run mcp.',
-    '',
   )
+  if (doc.operator) {
+    lines.push(
+      'Operator only. Do not paste this into the agent client or an MCP config.',
+      doc.operator.note,
+      `VENDOR_SEED=${doc.operator.VENDOR_SEED}`,
+      '',
+    )
+  }
   return lines.join('\n')
 }
 
@@ -399,6 +448,9 @@ async function health(url: string, address: string, doFetch: typeof fetch): Prom
 }
 
 export async function runEng(argv: string[], io: EngIo): Promise<number> {
+  if (argv[0] === 'invoice') {
+    return runInvoice(argv.slice(1), { stdout: io.stdout, stderr: io.stderr, readFile: io.readFile, now: io.now })
+  }
   const flags = parseEngArgs(argv)
   if (flags.help) {
     io.stdout(HELP.endsWith('\n') ? HELP : `${HELP}\n`)
@@ -443,6 +495,7 @@ export async function runEng(argv: string[], io: EngIo): Promise<number> {
       endpoint,
       allowSubmit: partial ? partial.allowSubmit : true,
       partial: partial ? { error: partial.error, retryCommand: retry } : undefined,
+      now: io.now(),
     })
     const text = formatOpen(doc, flags.json)
     io.stdout(text)

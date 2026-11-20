@@ -20,6 +20,7 @@ This file tracks what's next, highest-leverage first.
 
 Demo and agent tooling:
 
+- **Re-issued invoice.** `party.invoice/1` is single-use by statement id (`REGISTRY` in `packages/policy/src/pipeline.ts`). Paying the same signed invoice twice is refused `CONSUMED` while that decision is in flight and after it validates (T23b). A second signature over the same engagement, vendor, amount, and `invoiceRef` is a different id, and rule W6 matches the ref, so the co-signer signs it. Not fixed in T23b.
 - **`review_deal` MCP tool** — expose the pre-booking check (`dealTerms` + `checkNorms`) to any
   agent through `packages/agent-mcp`.
 - **Honest simulated mode everywhere.** The Hotel stay scenario replays real co-signer decisions;
