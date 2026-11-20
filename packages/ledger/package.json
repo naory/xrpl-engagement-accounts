@@ -24,6 +24,11 @@
       "source": "./src/decide.ts",
       "types": "./dist/decide.d.ts",
       "default": "./dist/decide.js"
+    },
+    "./testnet": {
+      "source": "./src/testnet-endpoint.ts",
+      "types": "./dist/testnet-endpoint.d.ts",
+      "default": "./dist/testnet-endpoint.js"
     }
   },
   "files": ["dist", "LICENSE", "README.md"],

@@ -32,16 +32,19 @@ rule ids on a `REFUSE`, and `statementsRejected` the statements the co-signer wo
 
 ```bash
 # propose-only against a local co-signer
-COSIGNER_URL=http://127.0.0.1:8787 COSIGNER_API_TOKEN=… \
+COSIGNER_URL=http://127.0.0.1:8787 COSIGNER_API_TOKEN_FILE=.cosigner/cosigner.token \
 AGENT_SEED=s… ENGAGEMENT_ID=eng_… ENGAGEMENT_ACCOUNT=r… ASSET_ISSUER=r… \
 npm run mcp
 
 # live (testnet) — broadcasting enabled
 XRPL_URL=wss://s.altnet.rippletest.net:51233 AGENT_ALLOW_SUBMIT=1 \
-COSIGNER_URL=http://127.0.0.1:8787 COSIGNER_API_TOKEN=… \
+COSIGNER_URL=http://127.0.0.1:8787 COSIGNER_API_TOKEN_FILE=.cosigner/cosigner.token \
 AGENT_SEED=s… ENGAGEMENT_ID=eng_… ENGAGEMENT_ACCOUNT=r… ASSET_ISSUER=r… ASSET_CODE=RLUSD \
 npm run mcp
 ```
+
+`COSIGNER_API_TOKEN`, when set, wins over `COSIGNER_API_TOKEN_FILE`. The process prints
+`COSIGNER_API_TOKEN is in use; COSIGNER_API_TOKEN_FILE is ignored` and does not print the token.
 
 ### Environment
 
@@ -52,8 +55,9 @@ npm run mcp
 | `ENGAGEMENT_ACCOUNT` | yes | — | The engagement account (sender of every payment). |
 | `ASSET_ISSUER` | yes | — | IOU issuer of the spending asset. |
 | `ASSET_CODE` | no | `RLUSD` | Human currency code (→ 40-hex for non-standard codes). |
-| `COSIGNER_URL` | no | `http://127.0.0.1:8787` | Co-signer base URL. |
-| `COSIGNER_API_TOKEN` | no | — | Bearer token (the co-signer requires one off loopback). |
+| `COSIGNER_URL` | no | `http://127.0.0.1:8787` | Co-signer base URL. `eng open` only accepts a loopback URL from `local.json`. |
+| `COSIGNER_API_TOKEN` | no | — | Bearer token. Wins over `COSIGNER_API_TOKEN_FILE`. |
+| `COSIGNER_API_TOKEN_FILE` | no | — | Path of the bearer file (`cosigner.token` from `npm run cosigner:local`). The token is not printed. |
 | `XRPL_URL` | no | — | rippled/Clio endpoint. Present ⇒ live build + submit possible. |
 | `AGENT_ALLOW_SUBMIT` | no | off | `1`/`true` **and** `XRPL_URL` ⇒ `submit_payment`/`pay_vendor` enabled. |
 | `AGENT_STAGE` | no | `spend` | Policy stage to evaluate against. |
@@ -88,6 +92,20 @@ live ledger — against the real `CosignerService` on the B1 fixture: an in-poli
 yields a 2-of-n quorum blob, an out-of-mandate payee is refused with no blob, `payVendor` settles
 only on `SIGN`, and the same flow runs over the real HTTP server through `CosignerClient`.
 
+## Open a Testnet account
+
+`npm run cosigner:local` writes `<DATA_DIR>/local.json`. Then:
+
+```bash
+npm run eng -- open --template procurement@1
+```
+
+TESTNET ONLY. The command refuses Devnet, mainnet, a non-loopback co-signer URL, and a local co-signer whose `local.json` `trust` is set (`ENG_RLUSD_ISSUER`, `ENG_KYB_ISSUER`, or `ENG_ARBITER_ACCREDITOR`). It faucet-funds a cast, mints a **demo IOU (not RLUSD)**, opens `owner-wallet/procurement@1`, and `POST`s `/v1/engagements` with the bearer from `tokenPath`. A 503 or a connection error is retried three times (1s, then 2s). A 4xx is not retried.
+
+`npm run` writes its own lines before the command's stdout, so the TESTNET ONLY banner is not the first line of the terminal. The banner is the first field of the JSON from `npm run --silent eng -- open --json`, and `--out <file>` writes that same document outside the repo, mode 0600. A path inside the repo is refused. The text lists `ENGAGEMENT_ID`, `ENGAGEMENT_ACCOUNT`, `AGENT_SEED`, `ASSET_ISSUER`, `COSIGNER_URL`, `COSIGNER_API_TOKEN_FILE`, and `XRPL_URL`. The bearer is not printed. There is no `--resume`. If the Batch lands and registration still fails, the output's Retry line is a full re-open that creates a new account.
+
+`npm run mcp` with the printed env keeps working after `cosigner:local` is restarted: the registration is in `<DATA_DIR>/cosigner.db`, and the next start rewrites `local.json` with the same address and token path.
+
 ## Live demo (Testnet)
 
 `npm run demo:mcp` runs the whole stack on XRPL Testnet: it funds a cast, opens an owner-wallet
@@ -100,8 +118,8 @@ threshold), `propose_payment` to a payee outside the mandate (refused, no blob),
 
 Needs direct XRPL websocket egress. With no `XRPL_URL`, the demo tries
 `wss://testnet.xrpl-labs.com` and then `wss://s.altnet.rippletest.net:51233`
-(`resolveTestnetEndpoint` in `@eng/cosigner`). `XRPL_URL=...` points it at Devnet or a
-local rippled. Run it from a normal network, not a proxy-only sandbox.
+(`resolveTestnetEndpoint` in `@eng/ledger`). `XRPL_URL=...` points it at Devnet or a
+local rippled. `eng open` does not: it accepts only the Testnet allowlist. Run the demo from a normal network, not a proxy-only sandbox.
 
 ## Roadmap
 

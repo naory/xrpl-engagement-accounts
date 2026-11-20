@@ -14,8 +14,11 @@ import { createServer, loadLibrary, loadTrustConfig, assertDeployTrust, serverOp
 import { CosignerService } from './service.ts'
 import { XrplLedgerSource, type LedgerSource } from './snapshot.ts'
 import { SqliteStateStore } from './store/sqlite.ts'
+import { findRepoRoot, resolveDataDir } from '@eng/ledger'
 import { assertKnownTestnetEndpoint, resolveServiceEndpoint, type TestnetConnect } from './testnet-endpoint.ts'
 import { lookupTx, submit } from './xrpl-io.ts'
+
+export { findRepoRoot, resolveDataDir }
 
 const SEED_NAME = 'cosigner.seed'
 const TOKEN_NAME = 'cosigner.token'
@@ -69,35 +72,6 @@ export interface LocalCosignerOptions {
   signals?: boolean
   log?: (line: string) => void
   warn?: (line: string) => void
-}
-
-/** Directory whose package.json lists `workspaces`, walking up from `start`. */
-export function findRepoRoot(start: string): string {
-  let dir = path.resolve(start)
-  for (;;) {
-    const pkgFile = path.join(dir, 'package.json')
-    if (fs.existsSync(pkgFile)) {
-      let pkg: { workspaces?: unknown }
-      try {
-        pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8')) as { workspaces?: unknown }
-      } catch {
-        throw new Error(`refusing to start: ${pkgFile} is not valid JSON`)
-      }
-      if (pkg.workspaces) return dir
-    }
-    const parent = path.dirname(dir)
-    if (parent === dir) throw new Error('refusing to start: no repo root (package.json with workspaces) found')
-    dir = parent
-  }
-}
-
-/**
- * Relative DATA_DIR is resolved against the repo root, not the caller's cwd.
- * An absolute value is used as given.
- */
-export function resolveDataDir(dataDir: string | undefined, root: string): string {
-  const raw = dataDir?.trim() || '.cosigner'
-  return path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(root, raw)
 }
 
 function isLoopback(host: string): boolean {

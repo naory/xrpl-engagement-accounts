@@ -15,12 +15,10 @@ import { fileURLToPath } from 'node:url'
 import type { AddressInfo } from 'node:net'
 import xrpl from 'xrpl'
 import { localSigner, parseAmount, signStatement, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
-import { intentHashOf, layerHash, type EngagementRecord, type PolicyDoc } from '@eng/policy'
-import {
-  CosignerService, XrplLedgerSource, createServer, resolveTestnetEndpoint,
-  ASF_DEFAULT_RIPPLE, ASF_DISABLE_MASTER, LSF_DISABLE_MASTER, TF_SET_NO_RIPPLE,
-  accountInfo, addBatchSigner, buildOpenBatch, currencyHex, hex, iou, iouBalance, memo, sendSimple, serverFees, sleep, submit, innerResults,
-} from '@eng/cosigner'
+import { intentHashOf, layerHash, type PolicyDoc } from '@eng/policy'
+import { currencyHex, iouBalance, resolveTestnetEndpoint } from '@eng/ledger'
+import { CosignerService, XrplLedgerSource, createServer } from '@eng/cosigner'
+import { OpenPartialError, provisionOnEndpoint } from '../src/open-procurement.ts'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
@@ -48,7 +46,6 @@ function save(): string {
   fs.writeFileSync(f, JSON.stringify(results, null, 2))
   return f
 }
-const must = (r: { final: string; hash: string }, label: string) => { if (r.final !== 'tesSUCCESS') throw new Error(`${label} failed: ${r.final} (${r.hash})`); return r }
 const isoNow = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
 const near = (a: unknown, b: number) => Math.abs(Number(a) - b) < 1e-9
 const envStrings = (e: NodeJS.ProcessEnv): Record<string, string> => Object.fromEntries(Object.entries(e).filter(([, v]) => typeof v === 'string')) as Record<string, string>
@@ -59,21 +56,6 @@ function stmt(signer: Wallet, kind: string, type: string, subject: Json, claim: 
   return signStatement(body, signer)
 }
 
-async function fund(client: InstanceType<typeof xrpl.Client>, label: string): Promise<Wallet> {
-  for (let i = 0; i < 5; i++) {
-    try {
-      const { wallet } = await client.fundWallet()
-      results.accounts[label] = wallet.address
-      log(`funded ${label}: ${wallet.address}`)
-      return wallet
-    } catch (e) {
-      log(`faucet retry ${label}: ${(e as Error).message}`)
-      await sleep(5000)
-    }
-  }
-  throw new Error(`faucet failed for ${label}`)
-}
-
 async function main() {
   URL_ = await resolveTestnetEndpoint()
   EXPLORER = URL_.includes('devnet') ? 'https://devnet.xrpl.org/transactions/' : 'https://testnet.xrpl.org/transactions/'
@@ -81,81 +63,49 @@ async function main() {
   const client = new xrpl.Client(URL_)
   await client.connect()
   console.log(`Connected to ${URL_}\n`)
-  const fees = await serverFees(client)
+  const cosigner = xrpl.Wallet.generate() // signs only, never funded
+  results.accounts.cosigner = cosigner.address
 
-  // ── Cast ──
-  const issuer = await fund(client, 'issuer')
-  const treasury = await fund(client, 'treasury (owner)')
-  const service = await fund(client, 'service')
-  const vendorA = await fund(client, 'vendorA')
-  const vendorB = await fund(client, 'vendorB')
-  const stranger = await fund(client, 'stranger')
-  const kyb = await fund(client, 'kybIssuer')
-  const agent = xrpl.Wallet.generate()      // signs only, never funded
-  const cosigner = xrpl.Wallet.generate()   // signs only, never funded
-  const controller = xrpl.Wallet.generate() // approves (statements only)
-  Object.assign(results.accounts, { agent: agent.address, cosigner: cosigner.address, controller: controller.address })
-
-  // ── Token + KYB credentials ──
-  must(await sendSimple(client, issuer, { TransactionType: 'AccountSet', Account: issuer.address, SetFlag: ASF_DEFAULT_RIPPLE }), 'DefaultRipple')
-  for (const w of [treasury, vendorA, vendorB, stranger]) must(await sendSimple(client, w, { TransactionType: 'TrustSet', Account: w.address, LimitAmount: iou(CUR, issuer.address, '10000000') }), 'trust line')
-  must(await sendSimple(client, issuer, { TransactionType: 'Payment', Account: issuer.address, Destination: treasury.address, Amount: iou(CUR, issuer.address, '20000') }), 'issue to treasury')
-  for (const v of [vendorA, vendorB]) {
-    must(await sendSimple(client, kyb, { TransactionType: 'CredentialCreate', Account: kyb.address, Subject: v.address, CredentialType: hex('KYB_VERIFIED') }), 'KYB CredentialCreate')
-    must(await sendSimple(client, v, { TransactionType: 'CredentialAccept', Account: v.address, Issuer: kyb.address, CredentialType: hex('KYB_VERIFIED') }), 'KYB CredentialAccept')
-  }
-  log('vendors A and B hold accepted KYB_VERIFIED credentials; the stranger does not')
-
-  // ── Pre-create (service) ──
-  const eng = xrpl.Wallet.generate()
-  results.accounts.engagement = eng.address
-  must(await sendSimple(client, service, { TransactionType: 'Payment', Account: service.address, Destination: eng.address, Amount: xrpl.xrpToDrops(3) }), 'create engagement account')
-  must(await sendSimple(client, eng, { TransactionType: 'TrustSet', Account: eng.address, LimitAmount: iou(CUR, issuer.address, '1000000000'), Flags: TF_SET_NO_RIPPLE }), 'engagement trust line')
-  must(await sendSimple(client, eng, { TransactionType: 'SetRegularKey', Account: eng.address, RegularKey: service.address }), 'pre-create SetRegularKey')
-  must(await sendSimple(client, eng, { TransactionType: 'AccountSet', Account: eng.address, SetFlag: ASF_DISABLE_MASTER }), 'pre-create disable master')
-  log(`pre-created ${eng.address} (master disabled, service RegularKey)`)
-
-  // ── Open: owner funds 5,000 + SignerList {owner 2, agent 1, cosigner 1} quorum 2 + clear RegularKey ──
-  {
-    const seq = Number(((await accountInfo(client, eng.address))!.account_data as Json).Sequence)
-    const tSeq = Number(((await accountInfo(client, treasury.address))!.account_data as Json).Sequence)
-    const { tx } = buildOpenBatch({
-      eng: eng.address, funder: treasury.address, currency: CUR, issuer: issuer.address, amount: '5000',
-      signerEntries: [[treasury.address, 2], [agent.address, 1], [cosigner.address, 1]], quorum: 2, seq, funderSeq: tSeq, ticketCount: 0,
-      memos: [memo('eng/open', `${ENG_ID}|template=owner-wallet/procurement@1`)], fees,
-    })
-    addBatchSigner(treasury, tx)
-    const r = await submit(client, service.sign(tx as never).tx_blob)
-    const inn = await innerResults(client, tx)
-    const info = (await accountInfo(client, eng.address))!
-    const d = info.account_data as Json
-    const sl = ((info.signer_lists ?? d.signer_lists) as Json[] | undefined)?.[0] as Json | undefined
-    const bal = await iouBalance(client, eng.address, CUR, issuer.address)
-    const ok = r.final === 'tesSUCCESS' && inn.every((i) => i.applied) && (Number(d.Flags) & LSF_DISABLE_MASTER) !== 0 && d.RegularKey == null && sl?.SignerQuorum === 2 && near(bal, 5000)
-    record('D1', 'open Batch: owner funding + SignerListSet (owner 2, agent 1, co-signer 1; quorum 2) + clear RegularKey',
-      'tesSUCCESS, all inner applied, master disabled, no RegularKey, quorum 2, balance 5000',
-      `${r.final}; inner ${inn.map((i) => i.result).join(',')}; regularKey=${d.RegularKey ?? 'none'}; quorum=${sl?.SignerQuorum}; balance=${bal}`, ok, { tx: r.hash })
-    if (!ok) throw new Error('open failed; stopping')
-  }
-
-  // ── Co-signer HTTP service (what the MCP server will call) ──
+  // ── Cast, demo IOU (not RLUSD), and the open Batch ──
   const read = <T>(f: string) => JSON.parse(fs.readFileSync(path.join(root, f), 'utf8')) as T
   const baseline = read<PolicyDoc>('policies/baseline@1.1.0.json')
   const policy = read<PolicyDoc>('policies/procurement@1.3.0.json')
   policy.version = '1.3.0+demo'
-  const trust = { 'kyb.issuer': kyb.address, 'rlusd.issuer': issuer.address }
+  const recordOpen = (open: { ok: boolean; final: string; hash: string; inner: string; regularKey: string; quorum: unknown; balance: string }) => {
+    record('D1', 'open Batch: owner funding + SignerListSet (owner 2, agent 1, co-signer 1; quorum 2) + clear RegularKey',
+      'tesSUCCESS, all inner applied, master disabled, no RegularKey, quorum 2, balance 5000',
+      `${open.final}; inner ${open.inner}; regularKey=${open.regularKey}; quorum=${open.quorum}; balance=${open.balance}`, open.ok, { tx: open.hash })
+  }
+  let opened
+  try {
+    opened = await provisionOnEndpoint(URL_, {
+      cosignerAddress: cosigner.address,
+      engagementId: ENG_ID,
+      policyLayers: [layerHash(policy)],
+      mandateId: 'mnd_mcp',
+      purpose: 'agent spend via MCP (demo)',
+      stranger: true,
+      log,
+      onAccount: (label, address) => { results.accounts[label] = address },
+    })
+  } catch (e) {
+    if (e instanceof OpenPartialError && e.draft.open) {
+      recordOpen(e.draft.open)
+      throw new Error('open failed; stopping')
+    }
+    throw e
+  }
+  const { issuer, treasury, vendorA, vendorB, kyb, agent, controller, engagement: eng } = opened
+  const stranger = opened.stranger!
+  const trust = opened.record.trust!
+  recordOpen(opened.open)
+  if (!opened.open.ok) throw new Error('open failed; stopping')
   const templates = fs.readdirSync(path.join(root, 'templates')).map((f) => read<Template>(`templates/${f}`))
   const dataDir = path.join(resultsDir, `decisions-${String(results.startedAt).replace(/[:.]/g, '-')}`)
   const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(client), templates, policies: [baseline, policy], dataDir, trust })
 
-  const expires = new Date(Date.now() + 7 * 86400_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
-  const mandate = stmt(treasury, 'PRINCIPAL', 'party.mandate/1', { mandateId: 'mnd_mcp' }, { purpose: 'agent spend via MCP (demo)', budget: '5000.00', dailyCap: '3000.00', vendors: [vendorA.address, vendorB.address], expires })
-  const engagement: EngagementRecord = {
-    engagementId: ENG_ID, template: 'owner-wallet/procurement@1', account: eng.address, asset: 'RLUSD',
-    parties: { owner: treasury.address, agent: agent.address, cosigner: cosigner.address },
-    attesters: { approver: { accounts: [controller.address] }, vendor: { accounts: [vendorA.address, vendorB.address] } },
-    deleteTo: service.address, state: 'OPEN', consumed: [], policyLayers: [layerHash(policy)], mandateId: mandate.id, trust,
-  }
+  const mandate = opened.mandate
+  const engagement = opened.record
   await svc.register(engagement, mandate)
   const cosignerServer = createServer(svc, { token: TOKEN, readiness: () => client.isConnected() }).listen(0, '127.0.0.1')
   await new Promise((r) => cosignerServer.once('listening', r))

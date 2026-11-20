@@ -7,6 +7,9 @@
 > Runs end to end on XRPL Testnet: [`packages/cosigner/demo/b1-testnet.ts`](../../packages/cosigner/demo/b1-testnet.ts)
 > (`npm run demo:b1`), 11/11 (D1–D11). For paying x402 merchants from this account, see
 > [x402-purchase.md](x402-purchase.md).
+>
+> `npm run eng -- open --template procurement@1` opens the same template against the local co-signer
+> (`npm run cosigner:local`) and prints the env `npm run mcp` reads. The minted IOU is a demo token, not RLUSD.
 
 ## 0. The deal in one paragraph
 

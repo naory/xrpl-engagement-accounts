@@ -26,7 +26,7 @@ const PACKED: Packed[] = [
   { name: '@eng/policy', dir: 'policy', forbid: CLI_OUT },
   { name: '@eng/ledger', dir: 'ledger' },
   { name: '@eng/provisioning', dir: 'provisioning' },
-  { name: '@eng/agent-mcp', dir: 'agent-mcp', required: ['dist/index.js', 'dist/server.js'] },
+  { name: '@eng/agent-mcp', dir: 'agent-mcp', required: ['dist/index.js', 'dist/server.js', 'dist/eng.js'] },
 ]
 
 function run(
@@ -138,6 +138,12 @@ function main(): void {
     fail(`agent-mcp entry expected exit 1 and missing ENGAGEMENT_ID, got exit ${server.status}:\n${server.stdout}${serverErr}`)
   }
   console.log(`agent-mcp entry exit ${server.status}: ${serverErr}`)
+  const help = run(process.execPath, ['node_modules/@eng/agent-mcp/dist/eng.js', 'open', '--help'], installDir, cleanEnv)
+  const helpOut = `${help.stdout}\n${help.stderr}`
+  if (help.status !== 0 || !help.stdout.includes('TESTNET ONLY') || !help.stdout.includes('--template')) {
+    fail(`eng open --help expected exit 0 and TESTNET ONLY help, got exit ${help.status}:\n${helpOut}`)
+  }
+  console.log('eng open --help exit 0')
   console.log('pack-smoke passed')
 }
 
