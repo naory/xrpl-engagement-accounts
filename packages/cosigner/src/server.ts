@@ -176,7 +176,7 @@ export function createServer(svc: CosignerService, opts: ServerOptions = {}): ht
 function isStoreUnavailable(e: unknown): boolean {
   const err = e as { message?: unknown; code?: unknown }
   if (typeof err?.code === 'string' && err.code.startsWith('SQLITE_')) return true
-  return /STORE_LOCKED|CLOSED/.test(String(err?.message ?? ''))
+  return /^(STORE_LOCKED|CLOSED)\b/.test(String(err?.message ?? ''))
 }
 
 /** Resolve server options from the environment and enforce the bind-safety rule. */
