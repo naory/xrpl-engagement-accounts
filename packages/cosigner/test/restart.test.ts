@@ -9,6 +9,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import xrpl from 'xrpl'
 import { localSigner, type Statement } from '@eng/core'
 import { CosignerService, SqliteStateStore, combine, type CosignerOptions, type SnapshotRequest, type TickResult } from '@eng/cosigner'
+import { openSqlite } from '../src/store/node-sqlite.ts'
 import { type LedgerSnapshot } from '@eng/policy'
 import {
   W, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, checkin, claim, dispute, guestCheckin, historyEntry, hotel2Close, hotel2Confirmation, hotel2Engagement, hotel2Ledger, hotel2Mandate, memo, policies, ruling, templates,
@@ -17,6 +18,18 @@ import {
 type Json = Record<string, unknown>
 const H2 = 'eng_hotel2_fixture'
 const B1 = 'eng_b1_fixture'
+
+/** The dead owner's last lease heartbeat, read without claiming the lease. */
+function leaseHeartbeat(file: string): number {
+  const db = openSqlite(file)
+  try {
+    const row = db.prepare(`select value from meta where key = 'lease.heartbeat'`).get() as { value: string } | undefined
+    if (!row) throw new Error(`no lease heartbeat in ${file}`)
+    return Number(row.value)
+  } finally {
+    db.close()
+  }
+}
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cosigner-restart-'))
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }))
@@ -268,8 +281,11 @@ describe('restart: crash (SIGKILL, no close)', () => {
     const signed = JSON.parse(line) as { decision: string; inflight: unknown[] }
     expect(signed.decision).toBe('SIGN')
     expect(signed.inflight).toHaveLength(1)
-    const killedAt = Date.now()
     await new Promise<void>((resolve) => { child.on('exit', () => resolve()); child.kill('SIGKILL') })
+    // The lease runs from the last heartbeat, not from SIGKILL. The child renews every leaseMs/3,
+    // so the heartbeat can already be that old when the process dies. Measuring from the kill
+    // (with a 200ms slack) is shorter than one renew interval and fails when the last beat is older.
+    const beat = leaseHeartbeat(file)
 
     // Within the lease window the dead owner still holds the file.
     await expect(SqliteStateStore.open({ file, leaseMs })).rejects.toThrow(/^STORE_LOCKED/)
@@ -277,11 +293,12 @@ describe('restart: crash (SIGKILL, no close)', () => {
     let store: SqliteStateStore | undefined
     while (!store) {
       try { store = await SqliteStateStore.open({ file, leaseMs }) } catch (e) {
-        if (!/^STORE_LOCKED/.test(String((e as Error).message)) || Date.now() - killedAt > leaseMs * 5) throw e
+        if (!/^STORE_LOCKED/.test(String((e as Error).message)) || Date.now() - beat > leaseMs * 5) throw e
         await new Promise((r) => setTimeout(r, 100))
       }
     }
-    expect(Date.now() - killedAt).toBeGreaterThanOrEqual(leaseMs - 200)
+    // claimLease takes the row only once `heartbeat < now - leaseMs`.
+    expect(Date.now()).toBeGreaterThanOrEqual(beat + leaseMs)
     const ledger = new Ledger(b1Ledger({ history: [historyEntry('9000', '2026-11-18T02:00:00Z')] }))
     const svc = await CosignerService.open(opts(ledger, store))
     try {

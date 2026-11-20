@@ -19,6 +19,7 @@
     "lint-policies": "tsx --conditions=source packages/policy/src/cli.ts lint",
     "vectors:build": "tsx --conditions=source vectors/build.ts",
     "cosigner": "tsx --conditions=source packages/cosigner/src/server.ts",
+    "cosigner:local": "tsx --conditions=source packages/cosigner/src/local.ts",
     "demo:b1": "tsx --conditions=source packages/cosigner/demo/b1-testnet.ts",
     "demo:hotel": "tsx --conditions=source packages/cosigner/demo/hotel-testnet.ts",
     "vectors:check": "vitest run packages/policy/test/vectors.test.ts",
