@@ -1,11 +1,16 @@
-// Entrypoint for `npm run eng -- open`.
-import path from 'node:path'
+// Entrypoint for `npm run eng -- open`. The packed bin is src/bin/eng.ts, which
+// calls startEng(). Importing this file does not start the CLI.
+import { pathToFileURL } from 'node:url'
 import { defaultEngIo, runEng } from './eng-cli.ts'
 
-const isEntrypoint = process.argv[1] !== undefined && import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href
+export function startEng(): Promise<number> {
+  return runEng(process.argv.slice(2), defaultEngIo())
+}
+
+const isEntrypoint = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
 
 if (isEntrypoint) {
-  runEng(process.argv.slice(2), defaultEngIo()).then(
+  startEng().then(
     (code) => process.exit(code),
     (error: unknown) => {
       console.error((error as Error).message ?? String(error))

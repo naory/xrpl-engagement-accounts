@@ -282,7 +282,7 @@ Stack: TypeScript (Node ≥ 22.13, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-ke
 
 ```bash
 npm install
-npm test                    # <!-- count:tests -->748<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
+npm test                    # <!-- count:tests -->751<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
 npm run test:sweep          # <!-- count:tests-sweep -->15<!-- /count --> hotel R20/R21 sweep tests; nightly, not part of npm test
 npm run typecheck
 npm run validate-templates  # V1–V15 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)
@@ -295,7 +295,7 @@ npm run probe:x402          # probe a hosted facilitator for engagement-account 
 COSIGNER_SEED=s… npm run cosigner   # HTTP co-signer on 127.0.0.1:8787 (test seeds only; set COSIGNER_API_TOKEN + COSIGNER_BIND to expose it; off loopback also set ENG_RLUSD_ISSUER, ENG_ARBITER_ACCREDITOR, ENG_KYB_ISSUER)
 npm run cosigner:local           # loopback Testnet co-signer; generates <repo>/.cosigner/cosigner.seed and prints the URL and address
 npm run eng -- open --template procurement@1   # Testnet procurement account; prints seeds and COSIGNER_API_TOKEN_FILE (see packages/agent-mcp/README.md)
-AGENT_SEED=s… ENGAGEMENT_ID=… ENGAGEMENT_ACCOUNT=r… ASSET_ISSUER=r… npm run mcp   # agent-side MCP server for an AI agent (see packages/agent-mcp/README.md)
+AGENT_SEED=s… ENGAGEMENT_ID=… ENGAGEMENT_ACCOUNT=r… ASSET_ISSUER=r… npm run mcp   # in-repo MCP server (see packages/agent-mcp/README.md). A client runs the packed eng-mcp bin; npm writes to stdout.
 npm run web                 # end-to-end demo UI on http://127.0.0.1:8080 (simulated + live Testnet; see packages/web/README.md)
 npm run demo:mcp            # agent drives the MCP tools end-to-end on Testnet (see packages/agent-mcp/README.md)
 npm run demo:privy          # same agent + co-signer flow with the co-signer key held in Privy (needs a Privy app; skips otherwise)

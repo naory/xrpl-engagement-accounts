@@ -5,10 +5,12 @@
 // refused unless the operator explicitly turns it on (XRPL_URL + AGENT_ALLOW_SUBMIT=1).
 //
 //   COSIGNER_URL=http://127.0.0.1:8787 COSIGNER_API_TOKEN_FILE=… \
-//   AGENT_SEED=s… ENGAGEMENT_ID=eng_… ENGAGEMENT_ACCOUNT=r… ASSET_ISSUER=r… \
+//   AGENT_SEED_FILE=… ENGAGEMENT_ID=eng_… ENGAGEMENT_ACCOUNT=r… ASSET_ISSUER=r… \
 //   [ASSET_CODE=RLUSD] [XRPL_URL=wss://…] [AGENT_ALLOW_SUBMIT=1] npm run mcp
-// COSIGNER_API_TOKEN, when set, wins over COSIGNER_API_TOKEN_FILE. The token is not logged.
-import path from 'node:path'
+// stdout is the MCP stream. Every notice goes to stderr.
+// AGENT_SEED, when set, wins over AGENT_SEED_FILE. COSIGNER_API_TOKEN, when set,
+// wins over COSIGNER_API_TOKEN_FILE. Neither value is logged.
+// Importing this file does not start the server. src/bin/eng-mcp.ts calls startAgentServer().
 import xrpl from 'xrpl'
 import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -18,6 +20,7 @@ import { currencyHex } from '@eng/ledger'
 import { privySignerFromEnv } from '@eng/ledger/privy'
 import { EngagementAgent, XrplChain, type Chain, type Proposal } from './agent.ts'
 import { CosignerClient } from './client.ts'
+import { resolveAgentSeed } from './agent-seed.ts'
 import { resolveCosignerToken } from './cosigner-token.ts'
 
 export interface AgentServerConfig {
@@ -47,7 +50,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env, opts?: { war
     engagementId: need('ENGAGEMENT_ID'),
     account: need('ENGAGEMENT_ACCOUNT'),
     keySource: env.AGENT_KEY_SOURCE ?? 'local',
-    seed: env.AGENT_KEY_SOURCE === 'privy' ? '' : need('AGENT_SEED'),
+    seed: env.AGENT_KEY_SOURCE === 'privy' ? '' : resolveAgentSeed(env, opts),
     asset: { code, currency: currencyHex(code), issuer: need('ASSET_ISSUER') },
     xrplUrl,
     allowSubmit: allow && xrplUrl != null,
@@ -135,22 +138,35 @@ export function createAgentServer(agent: EngagementAgent, opts: { client: Cosign
   return server
 }
 
-// Entrypoint: wire the environment to a stdio MCP server. On a stdio transport stdout is the
-// protocol channel, so every log goes to stderr.
-if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href) {
-  const cfg = (() => { try { return configFromEnv() } catch (e) { console.error(String((e as Error).message ?? e)); process.exit(1) } })()
-  const client = new CosignerClient({ baseUrl: cfg.cosignerUrl, token: cfg.token })
-  const signer = cfg.keySource === 'privy'
-    ? (privySignerFromEnv() ?? ((): never => { throw new Error('AGENT_KEY_SOURCE=privy but PRIVY_* env is not set') })())
-    : localSigner(xrpl.Wallet.fromSeed(cfg.seed))
-  let chain: Chain | undefined
-  if (cfg.xrplUrl) {
-    const xc = new xrpl.Client(cfg.xrplUrl)
-    await xc.connect()
-    chain = new XrplChain(xc)
+/** Parse a local seed. The thrown message is fixed and does not include the seed or the parser error. */
+export function localSignerFromSeed(seed: string, fromFile: boolean) {
+  try {
+    return localSigner(xrpl.Wallet.fromSeed(seed))
+  } catch {
+    throw new Error(fromFile ? 'AGENT_SEED_FILE does not contain a valid seed' : 'AGENT_SEED is not a valid seed')
   }
-  const agent = new EngagementAgent({ engagementId: cfg.engagementId, account: cfg.account, signer, asset: cfg.asset, decider: client, chain, stage: cfg.stage })
-  const server = createAgentServer(agent, { client, allowSubmit: cfg.allowSubmit })
-  await server.connect(new StdioServerTransport())
-  console.error(JSON.stringify({ t: new Date().toISOString(), level: 'info', msg: 'agent-mcp ready', engagement: cfg.engagementId, account: cfg.account, agent: signer.address, cosigner: cfg.cosignerUrl, live: Boolean(chain), submit: cfg.allowSubmit }))
+}
+
+/** Wire env to a stdio MCP server. stdout is the protocol channel; notices go to stderr. */
+export async function startAgentServer(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  try {
+    const cfg = configFromEnv(env)
+    const client = new CosignerClient({ baseUrl: cfg.cosignerUrl, token: cfg.token })
+    const signer = cfg.keySource === 'privy'
+      ? (privySignerFromEnv() ?? ((): never => { throw new Error('AGENT_KEY_SOURCE=privy but PRIVY_* env is not set') })())
+      : localSignerFromSeed(cfg.seed, !env.AGENT_SEED?.trim())
+    let chain: Chain | undefined
+    if (cfg.xrplUrl) {
+      const xc = new xrpl.Client(cfg.xrplUrl)
+      await xc.connect()
+      chain = new XrplChain(xc)
+    }
+    const agent = new EngagementAgent({ engagementId: cfg.engagementId, account: cfg.account, signer, asset: cfg.asset, decider: client, chain, stage: cfg.stage })
+    const server = createAgentServer(agent, { client, allowSubmit: cfg.allowSubmit })
+    await server.connect(new StdioServerTransport())
+    console.error(JSON.stringify({ t: new Date().toISOString(), level: 'info', msg: 'agent-mcp ready', engagement: cfg.engagementId, account: cfg.account, agent: signer.address, cosigner: cfg.cosignerUrl, live: Boolean(chain), submit: cfg.allowSubmit }))
+  } catch (e) {
+    console.error(String((e as Error).message ?? e))
+    process.exit(1)
+  }
 }
