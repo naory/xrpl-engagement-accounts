@@ -142,7 +142,8 @@ export class DemoOrchestrator {
   private poolSponsor!: Wallet   // operating account: funds pooled reserves, receives every reclaim
   private poolService!: Wallet   // pool service key: controls leased accounts (their RegularKey), signs open + reclaim
 
-  constructor(url = process.env.XRPL_URL ?? 'wss://s.altnet.rippletest.net:51233') {
+  /** `url` is chosen once at process start and reused for every request. */
+  constructor(url: string) {
     this.url = url
     this.explorer = url.includes('devnet') ? 'https://devnet.xrpl.org/transactions/' : 'https://testnet.xrpl.org/transactions/'
   }

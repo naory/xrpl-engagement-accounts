@@ -1,7 +1,10 @@
-// Shared Testnet websocket selection for the demo scripts.
+// Shared Testnet websocket selection.
 // XRPL_URL, when set, is used as given. Otherwise the candidates are tried in
 // order and the first that accepts a connection wins. A candidate that errors
 // or does not connect within TESTNET_CONNECT_TIMEOUT_MS is skipped.
+// resolveServiceEndpoint is the once-per-process path for a long-running
+// service: an optional override env var wins and is not probed; otherwise
+// this helper runs. It logs the chosen URL on one line.
 // Testnet only: this list has no mainnet endpoints.
 import xrpl from 'xrpl'
 
@@ -58,6 +61,40 @@ export async function resolveTestnetEndpoint(options: ResolveTestnetEndpointOpti
   throw new Error(
     `No reachable XRPL Testnet endpoint. Tried ${failures.join('; ')}. Set XRPL_URL to a reachable endpoint.`,
   )
+}
+
+export interface ResolveServiceEndpointOptions extends ResolveTestnetEndpointOptions {
+  /**
+   * Env var that, when set to a non-blank value, is the endpoint and is not probed.
+   * Blank or whitespace is treated as unset. The pool CLI passes ENG_XRPL_WSS.
+   */
+  overrideVar?: string
+  /** Receives the one startup line `XRPL endpoint: <url>`. Defaults to console.log. */
+  log?: (line: string) => void
+}
+
+/**
+ * Resolve the Testnet websocket a service keeps for its lifetime. Call once at startup.
+ * `overrideVar`, when set, wins over `XRPL_URL` and over probing. Otherwise
+ * `resolveTestnetEndpoint` runs. Logs the chosen URL on one line.
+ */
+export async function resolveServiceEndpoint(options: ResolveServiceEndpointOptions = {}): Promise<string> {
+  const env = options.env ?? process.env
+  const log = options.log ?? ((line: string) => console.log(line))
+  const override = options.overrideVar ? env[options.overrideVar]?.trim() : ''
+  if (override) {
+    log(`XRPL endpoint: ${override}`)
+    return override
+  }
+  const url = await resolveTestnetEndpoint({
+    env,
+    endpoints: options.endpoints,
+    timeoutMs: options.timeoutMs,
+    connect: options.connect,
+    warn: options.warn,
+  })
+  log(`XRPL endpoint: ${url}`)
+  return url
 }
 
 /** Bound one probe. A connect that never settles is a timeout, not a hang. */

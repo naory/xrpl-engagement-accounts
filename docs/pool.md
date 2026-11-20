@@ -55,7 +55,7 @@ needed (an inline `VAR=x npm run …` still overrides). The variables:
 
 | var | meaning | default |
 |---|---|---|
-| `ENG_XRPL_WSS` | wss endpoint | `wss://s.altnet.rippletest.net:51233` |
+| `ENG_XRPL_WSS` | websocket override for `topup`, `ensure`, and `reclaim` | unset — see [Endpoint](#endpoint) |
 | `ENG_SPONSOR_SEED` | operating account seed — funds reserves, receives every reclaim (**required**) | — |
 | `ENG_SERVICE_SEED` | service account seed — installed as each account's `RegularKey`, signs reclaim (**required**) | — |
 | `ENG_POOL_SPONSORED` | `1`/`true` → XLS-68 sponsored; else self-funded | _(self-funded)_ |
@@ -65,6 +65,20 @@ needed (an inline `VAR=x npm run …` still overrides). The variables:
 | `ENG_CREATE_DROPS` | XRP drops funded at create (self-funded: base + object reserves + fees; reclaimed at close) | `3000000` |
 | `ENG_POOL_TARGET` | desired warm pool size | `5` |
 | `ENG_POOL_DIR` | pool store directory | `.pool` |
+
+### Endpoint
+
+`topup`, `ensure`, and `reclaim` call `resolveServiceEndpoint` (`@eng/cosigner`) once
+before they connect, and log one line: `XRPL endpoint: <url>`.
+
+- `ENG_XRPL_WSS` set to a non-blank value — that URL is used as given. Nothing is probed,
+  including when `XRPL_URL` is also set.
+- `ENG_XRPL_WSS` unset or blank — `resolveTestnetEndpoint`. `XRPL_URL`, when set, is used
+  as given and not probed. Otherwise the candidates are `wss://testnet.xrpl-labs.com`, then
+  `wss://s.altnet.rippletest.net:51233` if that connect fails or does not finish within 5
+  seconds.
+
+`status` and `gc` stay local and do not resolve an endpoint. The candidate list is Testnet.
 
 ```
 # self-funded on Testnet (default): fund the two seeds from the faucet first
