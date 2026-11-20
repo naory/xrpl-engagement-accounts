@@ -5,8 +5,8 @@ import { defaultServerConditions, type Plugin } from 'vite'
 // and from `resolve`, and a built-in plugin replaces `resolve.conditions`,
 // so the same list is applied again in a post plugin.
 // "module" is omitted, matching Vitest's server default.
-// Spawned `node --import tsx` children do not use Vitest's resolver; they
-// inherit NODE_OPTIONS.
+// A parent `tsx --conditions=source` does not put that flag in the environment.
+// Children that load .ts must pass `--conditions=source` on their own argv.
 export const sourceConditions = [
   'source',
   ...defaultServerConditions.filter((condition) => condition !== 'module'),

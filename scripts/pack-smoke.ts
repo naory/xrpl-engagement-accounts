@@ -15,11 +15,15 @@ interface Packed {
   dir: string
   /** Paths that must be present inside the tarball, under its package root. */
   required?: string[]
+  /** Paths that must not be packed. The CLIs stay source-only. */
+  forbid?: string[]
 }
 
+const CLI_OUT = ['dist/cli.js', 'dist/cli.d.ts', 'dist/cli.js.map', 'dist/cli.d.ts.map']
+
 const PACKED: Packed[] = [
-  { name: '@eng/core', dir: 'core' },
-  { name: '@eng/policy', dir: 'policy' },
+  { name: '@eng/core', dir: 'core', forbid: CLI_OUT },
+  { name: '@eng/policy', dir: 'policy', forbid: CLI_OUT },
   { name: '@eng/ledger', dir: 'ledger' },
   { name: '@eng/provisioning', dir: 'provisioning' },
   { name: '@eng/agent-mcp', dir: 'agent-mcp', required: ['dist/index.js', 'dist/server.js'] },
@@ -47,15 +51,17 @@ function assertOutsideRepo(dir: string): void {
   }
 }
 
-function assertArchive(tgz: string, required: string[]): void {
+function assertArchive(tgz: string, required: string[], forbid: string[]): void {
   const listed = run('tar', ['-tzf', tgz], root)
   if (listed.status !== 0) fail(`tar -tzf ${tgz} failed:\n${listed.stderr}`)
   const entries = listed.stdout.split('\n').map((line) => line.trim()).filter(Boolean)
   for (const entry of entries) {
     const parts = entry.split('/').filter(Boolean).slice(1)
+    const rel = parts.join('/')
     if (parts.includes('src') || parts.includes('test')) fail(`${path.basename(tgz)} contains ${entry}`)
     const file = parts[parts.length - 1] ?? ''
     if (file.endsWith('.ts') && !file.endsWith('.d.ts')) fail(`${path.basename(tgz)} contains TypeScript source ${entry}`)
+    if (forbid.some((banned) => rel === banned || rel.endsWith(`/${banned}`))) fail(`${path.basename(tgz)} contains ${entry}`)
   }
   for (const rel of required) {
     if (!entries.some((entry) => entry.endsWith(`/${rel}`))) fail(`${path.basename(tgz)} has no ${rel}`)
@@ -79,7 +85,7 @@ function pack(pkg: Packed, dest: string): string {
   }
   if (!filename) fail(`npm pack ${pkg.name} JSON has no filename`)
   const tgz = path.join(out, filename)
-  assertArchive(tgz, pkg.required ?? ['dist/index.js'])
+  assertArchive(tgz, pkg.required ?? ['dist/index.js'], pkg.forbid ?? [])
   return tgz
 }
 

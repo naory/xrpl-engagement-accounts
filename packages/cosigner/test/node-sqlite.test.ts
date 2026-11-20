@@ -34,7 +34,7 @@ describe('node:sqlite adapter', () => {
 
   it('loads without printing the SQLite ExperimentalWarning', () => {
     const mod = path.join(__dirname, '../src/store/node-sqlite.ts')
-    const r = spawnSync(process.execPath, ['--import', 'tsx', '-e', `import(${JSON.stringify(mod)}).then((m) => { m.openSqlite(':memory:').close(); process.emitWarning('other warning') })`], { encoding: 'utf8' })
+    const r = spawnSync(process.execPath, ['--conditions=source', '--import', 'tsx', '-e', `import(${JSON.stringify(mod)}).then((m) => { m.openSqlite(':memory:').close(); process.emitWarning('other warning') })`], { encoding: 'utf8' })
     expect(r.status).toBe(0)
     expect(r.stderr).not.toMatch(/SQLite is an experimental feature/)
     expect(r.stderr).toMatch(/other warning/) // other warnings still pass through

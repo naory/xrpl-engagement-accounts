@@ -5,5 +5,6 @@
     "rootDir": "src"
   },
   "include": ["src/**/*.ts"],
+  "exclude": ["src/cli.ts"],
   "references": [{ "path": "../core/tsconfig.build.json" }]
 }

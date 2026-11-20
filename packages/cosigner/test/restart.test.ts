@@ -270,7 +270,7 @@ describe('restart: crash (SIGKILL, no close)', () => {
     const file = newFile()
     const leaseMs = 800
     // node --import tsx (not the tsx CLI, which forks a second node that SIGKILL would not reach)
-    const child = spawn(process.execPath, ['--import', 'tsx', path.join(__dirname, 'crash-child.ts'), file, String(leaseMs)], { stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(process.execPath, ['--conditions=source', '--import', 'tsx', path.join(__dirname, 'crash-child.ts'), file, String(leaseMs)], { stdio: ['ignore', 'pipe', 'pipe'] })
     let err = ''
     child.stderr.on('data', (d) => { err += d })
     const line = await new Promise<string>((resolve, reject) => {

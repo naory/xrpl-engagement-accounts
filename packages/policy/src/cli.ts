@@ -1,4 +1,4 @@
-// Usage: tsx packages/policy/src/cli.ts lint   (lints policies/*.json against templates/*.json)
+// Usage: tsx --conditions=source packages/policy/src/cli.ts lint   (lints policies/*.json against templates/*.json)
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Template } from '@eng/core'

@@ -1,7 +1,7 @@
 // Child process for the crash test in restart.test.ts (not a test file itself). It opens a co-signer on the given
 // SQLite file, SIGNs one b1 payment (an in-flight spend), prints the result as one JSON line and then idles until the
 // parent SIGKILLs it: no close(), no lease release, no clean shutdown.
-// Usage: tsx crash-child.ts <file> <leaseMs>
+// Usage: node --conditions=source --import tsx crash-child.ts <file> <leaseMs>
 import { localSigner } from '@eng/core'
 import { CosignerService, SqliteStateStore, type SnapshotRequest } from '@eng/cosigner'
 import { W, b1Engagement, b1Invoice, b1Ledger, b1Mandate, b1Payment, historyEntry, policies, templates } from '../../policy/test/fixtures.ts'
