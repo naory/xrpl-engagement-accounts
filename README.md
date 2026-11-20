@@ -158,14 +158,14 @@ Design rules:
 - It **can't move funds alone**. If it is compromised, the worst case is approving an in-quorum transaction that another party also signed.
 - It is meant to integrate with the **MPCP policy authority** — the earlier project this builds on — so the same Policy → Grant → Budget chain drives both the ledger-level co-signer and off-ledger authorization.
 
-**Durable state.** The co-signer keeps its state in a `StateStore`: registrations, attestations and receipts, pre-signed defaults, in-flight payments and the decision log. `new CosignerService` uses `MemoryStateStore` (tests and demos). The server uses `SqliteStateStore` (Kysely and better-sqlite3), in `<DATA_DIR>/cosigner.db`. Set `COSIGNER_STORE=memory` to opt out, in which case a restart loses everything.
+**Durable state.** The co-signer keeps its state in a `StateStore`: registrations, attestations and receipts, pre-signed defaults, in-flight payments and the decision log. `new CosignerService` uses `MemoryStateStore` (tests and demos). The server uses `SqliteStateStore` (Kysely over Node’s built-in `node:sqlite`, no native dependency), in `<DATA_DIR>/cosigner.db`. Set `COSIGNER_STORE=memory` to opt out, in which case a restart loses everything.
 
 - **Persist before anything leaves.** Each change is committed to the store before the in-memory copy changes or the call returns. If the write fails, the call throws and no signed blob is returned.
 - **Restore on boot.** `CosignerService.open()` rebuilds every engagement from the store. A signed payment that was in flight still counts against the caps, and a receipted claim still blocks the defaults.
 - **Pinned inputs.** Each registration pins its policy layer hashes and its template hash. If the policy library no longer matches, that engagement is quarantined with `ENGAGEMENT_STALE` and the others keep working. The co-signer's own address is pinned too, and a different one is refused with `SIGNER_MISMATCH`.
 - **One writer.** A lease in the store rejects a second process with `STORE_LOCKED`. If the server loses the lease, it exits with code 1. After a crash, a lease loss or a timed-out shutdown, a restart within the lease period (15 s by default) fails with `STORE_LOCKED` until the old heartbeat goes stale, so a supervisor should retry.
 - **Old log.** An existing `decisions.jsonl` is imported once. Afterwards it is a best-effort export, not the source of truth.
-- **Tick scheduler.** Set `COSIGNER_TICK_MS` and the server ticks every open engagement on that interval. Repeated identical refusals are logged once, each SIGN is handed off once, and an engagement is closed after its account has been gone for two rounds. With `COSIGNER_TICK_SUBMIT=1` the server also submits each completed default to `XRPL_URL`, and resubmits it each round until it is in a validated ledger (pre-signed defaults carry no `LastLedgerSequence`, so a rejected or unconfirmed submit must stay retryable). Otherwise it logs only the transaction hash; the signed blob comes from `POST /v1/engagements/:id/tick`.
+- **Tick scheduler.** Set `COSIGNER_TICK_MS` and the server ticks every open engagement on that interval. Repeated identical refusals are logged once, and an engagement is closed after its account has been gone for two rounds. With `COSIGNER_TICK_SUBMIT=1` the server also submits each completed default to `XRPL_URL`, and resubmits it each round until it is in a validated ledger (pre-signed defaults carry no `LastLedgerSequence`, so a rejected or unconfirmed submit must stay retryable). Otherwise it logs only the transaction hash; the signed blob comes from `POST /v1/engagements/:id/tick`.
 
 Kill-and-restart tests are in [`packages/cosigner/test/restart.test.ts`](packages/cosigner/test/restart.test.ts).
 
@@ -275,11 +275,11 @@ xrpl-engagement-accounts/
 └── spike/               # Testnet spike (xrpl.js) — local-only, gitignored
 ```
 
-Stack: TypeScript (Node ≥ 22.12, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-keypairs`, CEL via `@marcbachmann/cel-js` 8.0.0 (pinned for `cel-eng/1`). Later: Postgres for engagement state, and Rust/`xrpl_wasm_stdlib` for Smart Escrow finish functions.
+Stack: TypeScript (Node ≥ 22.13, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-keypairs`, CEL via `@marcbachmann/cel-js` 8.0.0 (pinned for `cel-eng/1`). Later: Postgres for engagement state, and Rust/`xrpl_wasm_stdlib` for Smart Escrow finish functions.
 
 ```bash
 npm install
-npm test                    # <!-- count:tests -->688<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.12). Not counted here: test:x402, test:mpp, and the sweep.
+npm test                    # <!-- count:tests -->691<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
 npm run test:sweep          # <!-- count:tests-sweep -->15<!-- /count --> hotel R20/R21 sweep tests; nightly, not part of npm test
 npm run typecheck
 npm run validate-templates  # V1–V15 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)

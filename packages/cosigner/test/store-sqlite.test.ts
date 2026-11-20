@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import Database from 'better-sqlite3'
+import { openSqlite } from '../src/store/node-sqlite.ts'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import { SqliteStateStore } from '../src/store/sqlite.ts'
 import { runStoreContract } from './store-contract.ts'
@@ -38,7 +38,7 @@ describe('SqliteStateStore lease', () => {
   it('opens over a stale heartbeat', async () => {
     const file = newFile()
     const a = await SqliteStateStore.open({ file, leaseMs: 15000 })
-    const raw = new Database(file)
+    const raw = openSqlite(file)
     raw.prepare("update meta set value = ? where key = 'lease.heartbeat'").run(String(Date.now() - 60000))
     raw.close()
     const b = await SqliteStateStore.open({ file, leaseMs: 15000 })
@@ -68,7 +68,7 @@ describe('SqliteStateStore lease', () => {
     const file = newFile()
     const onLeaseLost = vi.fn()
     const a = await SqliteStateStore.open({ file, onLeaseLost })
-    const raw = new Database(file)
+    const raw = openSqlite(file)
     raw.prepare("update meta set value = ? where key = 'lease.heartbeat'").run(String(Date.now() - 60000))
     raw.close()
     const b = await SqliteStateStore.open({ file })
@@ -83,7 +83,7 @@ describe('SqliteStateStore lease', () => {
     const file = newFile()
     const onLeaseLost = vi.fn()
     const a = await SqliteStateStore.open({ file, onLeaseLost })
-    const raw = new Database(file)
+    const raw = openSqlite(file)
     raw.prepare("update meta set value = ? where key = 'lease.heartbeat'").run(String(Date.now() - 60000))
     raw.close()
     const b = await SqliteStateStore.open({ file })
@@ -120,7 +120,7 @@ describe('SqliteStateStore lease', () => {
   it('a store that lost its lease rejects later transactions with STORE_LOCKED', async () => {
     const file = newFile()
     const a = await SqliteStateStore.open({ file })
-    const raw = new Database(file)
+    const raw = openSqlite(file)
     raw.prepare("update meta set value = ? where key = 'lease.heartbeat'").run(String(Date.now() - 60000))
     raw.close()
     const b = await SqliteStateStore.open({ file })
@@ -135,7 +135,7 @@ describe('SqliteStateStore lease', () => {
     const file = newFile()
     const a = await SqliteStateStore.open({ file, leaseMs: 60 })
     const read = (): number => {
-      const raw = new Database(file, { readonly: true })
+      const raw = openSqlite(file)
       try { return Number((raw.prepare("select value from meta where key = 'lease.heartbeat'").get() as { value: string }).value) } finally { raw.close() }
     }
     const first = read()

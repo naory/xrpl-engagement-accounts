@@ -29,6 +29,9 @@ cap); a storage layer that bakes in SQLite-only behaviour; a scheduler that doub
    - `MemoryStateStore` — default when no store is configured; keeps unit tests fast and today's behaviour.
    - `SqliteStateStore` — **Kysely** query builder + **better-sqlite3** driver (Kysely's `SqliteDialect`). Chosen
      over `node:sqlite`, which is still experimental and prints warnings on Node 22–24.
+     **Amended 2026-11-20 (PR #11 review):** better-sqlite3 13.x segfaults on Node 22.12–22.13 and 12.x pulls ~30
+     transitive packages, so the store now uses the built-in `node:sqlite` through a small Kysely adapter
+     (`store/node-sqlite.ts`, warning suppressed); the Node floor is 22.13, where the module loads without a flag.
    - **Postgres later:** a `PostgresStateStore` = Kysely `PostgresDialect` + `pg` with the **same queries and
      migrations**. To keep that true: portable column types only (`text`, `integer`, `bigint`), JSON stored as
      `text`, no SQLite-only SQL (`INSERT OR REPLACE`, `AUTOINCREMENT`, `PRAGMA` in queries) — upserts via Kysely's

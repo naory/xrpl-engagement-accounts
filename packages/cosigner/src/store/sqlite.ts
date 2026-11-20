@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
-import Database from 'better-sqlite3'
 import { Kysely, SqliteDialect, type Transaction } from 'kysely'
 import { Migrator } from 'kysely/migration'
 import type { Statement } from '@eng/core'
 import type { InflightRecord, TickResult } from '../service.ts'
 import { migrationProvider } from './migrations.ts'
+import { kyselyDatabase, openSqlite } from './node-sqlite.ts'
 import type { StateStore, StoreSnapshot, StoreTx, StoredAttestation, StoredEngagement } from './types.ts'
 
 // Row shapes. Column types stay within text / integer / bigint so the same queries run on Postgres.
@@ -33,13 +33,13 @@ export interface SqliteStoreOptions {
 }
 
 /**
- * In-process opens of one file run one at a time. better-sqlite3 waits for a busy lock synchronously, which blocks the
+ * In-process opens of one file run one at a time. node:sqlite waits for a busy lock synchronously, which blocks the
  * event loop, so two same-process opens migrating at once would stall until busy_timeout. Other processes are
  * unaffected (they have their own event loop) and are still arbitrated by the lease.
  */
 const opening = new Map<string, Promise<unknown>>()
 
-/** Durable StateStore on SQLite (Kysely + better-sqlite3), guarded by a single-owner heartbeat lease. */
+/** Durable StateStore on SQLite (Kysely over the built-in node:sqlite), guarded by a single-owner heartbeat lease. */
 export class SqliteStateStore implements StateStore {
   private queue: Promise<unknown> = Promise.resolve()
   private timer: ReturnType<typeof setInterval> | undefined
@@ -62,10 +62,11 @@ export class SqliteStateStore implements StateStore {
   private static async openNow(o: SqliteStoreOptions): Promise<SqliteStateStore> {
     const token = randomUUID() // per-instance lease token: two opens never share ownership
     const leaseMs = o.leaseMs ?? 15000
-    const sqlite = new Database(o.file, { timeout: 5000 }) // busy_timeout
-    sqlite.pragma('journal_mode = WAL')
-    sqlite.pragma('synchronous = FULL')
-    const db = new Kysely<Tables>({ dialect: new SqliteDialect({ database: sqlite }) })
+    const sqlite = openSqlite(o.file)
+    sqlite.exec('PRAGMA busy_timeout = 5000')
+    sqlite.exec('PRAGMA journal_mode = WAL')
+    sqlite.exec('PRAGMA synchronous = FULL')
+    const db = new Kysely<Tables>({ dialect: new SqliteDialect({ database: kyselyDatabase(sqlite) }) })
     try {
       await migrate(db)
       await claimLease(db, token, leaseMs, o.file)
