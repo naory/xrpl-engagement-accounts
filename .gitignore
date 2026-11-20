@@ -7,6 +7,14 @@ node_modules/
 .env.*
 !.env.example
 .cosigner/
+# Local co-signer key (npm run cosigner:local). The default dir is .cosigner/; this
+# also covers a DATA_DIR inside the repo. Never commit it.
+cosigner.seed
+**/cosigner.seed
+**/.cosigner.seed.*.tmp
+cosigner.token
+**/cosigner.token
+**/.cosigner.token.*.tmp
 /spike/
 packages/*/demo/results/
 packages/web/.web-decisions/

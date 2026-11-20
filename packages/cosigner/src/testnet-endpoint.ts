@@ -97,6 +97,40 @@ export async function resolveServiceEndpoint(options: ResolveServiceEndpointOpti
   return url
 }
 
+/**
+ * Trim, drop a trailing slash, and lowercase the scheme and host.
+ * A path, query, hash, or userinfo is rejected: the allowlist is host-exact.
+ * The error text names no endpoint, so a refused URL is not copied into logs.
+ */
+export function normalizeServiceEndpoint(raw: string): string {
+  let url: URL
+  try {
+    url = new URL(raw.trim())
+  } catch {
+    throw new Error('refusing to start: endpoint is not a known Testnet host')
+  }
+  const pathOnly = url.pathname.replace(/\/+$/, '')
+  if (url.username || url.password || pathOnly || url.search || url.hash) {
+    throw new Error('refusing to start: endpoint is not a known Testnet host')
+  }
+  const port = url.port ? `:${url.port}` : ''
+  return `${url.protocol.toLowerCase()}//${url.hostname.toLowerCase()}${port}`
+}
+
+/** The normalized form of {@link TESTNET_ENDPOINTS}. No other host is accepted. */
+const KNOWN_TESTNET = new Set(TESTNET_ENDPOINTS.map((url) => normalizeServiceEndpoint(url)))
+
+/**
+ * Accept only a known Testnet websocket. Call this on `XRPL_URL` before any socket,
+ * and again on whatever `resolveServiceEndpoint` returns. `resolveTestnetEndpoint`
+ * still returns a set `XRPL_URL` unchanged — that stays the behavior for web, pool, and demos.
+ */
+export function assertKnownTestnetEndpoint(raw: string): string {
+  const normalized = normalizeServiceEndpoint(raw)
+  if (!KNOWN_TESTNET.has(normalized)) throw new Error('refusing to start: endpoint is not a known Testnet host')
+  return normalized
+}
+
 /** Bound one probe. A connect that never settles is a timeout, not a hang. */
 function attempt(url: string, timeoutMs: number, connect: TestnetConnect): Promise<void> {
   return new Promise((resolve, reject) => {
