@@ -59,7 +59,7 @@ describe('eng invoice', () => {
       expect(invoice.attester.account).toBe(vendor.address)
       expect(invoice.claim.amount).toBe('800.00')
       expect(invoice.claim.invoiceRef).toBe('inv:cli-001')
-      expect(invoice.validUntil).toBe('2026-01-02T00:00:00Z')
+      expect(invoice.validUntil).toBe('2026-01-02T00:00:00.000Z')
     } finally {
       fs.rmSync(file, { force: true })
     }
@@ -82,6 +82,36 @@ describe('eng invoice', () => {
       ], bad)).rejects.toThrow('vendor seed file does not contain a valid seed')
       expect(bad.out).toBe('')
       expect(`${bad.err}${bad.out}`).not.toContain('not-a-seed-value')
+    } finally {
+      fs.rmSync(file, { force: true })
+    }
+  })
+
+  it('rejects a bare year and an expiry past the 7-day cap', async () => {
+    const vendor = xrpl.Wallet.generate()
+    const file = path.join(os.tmpdir(), `vendor-seed-exp-${process.pid}.txt`)
+    fs.writeFileSync(file, `${vendor.seed}\n`, { mode: 0o600 })
+    const read = (p: string) => fs.readFileSync(p, 'utf8')
+    try {
+      const bare = io(read)
+      await expect(runEng([
+        'invoice', '--vendor-seed-file', file, '--engagement-id', 'eng_cli',
+        '--amount', '800.00', '--expires', '2027',
+      ], bare)).rejects.toThrow(/full ISO-8601 time with a zone/)
+      expect(bare.out).toBe('')
+      const far = io(read)
+      await expect(runEng([
+        'invoice', '--vendor-seed-file', file, '--engagement-id', 'eng_cli',
+        '--amount', '800.00', '--expires', '9999-12-31T00:00:00Z',
+      ], far)).rejects.toThrow(/after 2026-01-08T00:00:00.000Z/)
+      expect(far.out).toBe('')
+      const tight = io(read)
+      await expect(runEng([
+        'invoice', '--vendor-seed-file', file, '--engagement-id', 'eng_cli',
+        '--amount', '800.00', '--expires', '2026-01-06T00:00:00Z',
+        '--mandate-expires', '2026-01-03T00:00:00Z',
+      ], tight)).rejects.toThrow(/after 2026-01-03T00:00:00.000Z/)
+      expect(tight.out).toBe('')
     } finally {
       fs.rmSync(file, { force: true })
     }

@@ -19,7 +19,10 @@ Usage:
 --vendor-seed-file   One-line vendor seed. The address is derived from it.
 --engagement-id      Engagement the invoice is bound to.
 --amount             Decimal RLUSD amount, greater than zero and under 1000.00.
---expires            validUntil. Must be in the future.
+--expires            validUntil. Full ISO-8601 time with a zone, strictly after now.
+                     Normalized to UTC (toISOString). Rejected, not clamped, when it is
+                     after the earlier of --mandate-expires and 7 days from now.
+--mandate-expires    Mandate expiry, same time format. Tightens the 7-day cap. Optional.
 --invoice-ref        Memo ref pay_vendor sends as eng/invoice. Default: inv:open-001
 --po                 Claim po. Default: PO-OPEN
 `
@@ -33,13 +36,14 @@ export interface InvoiceFlags {
   engagementId: string | null
   amount: string | null
   expires: string | null
+  mandateExpires: string | null
   invoiceRef: string | null
   po: string | null
 }
 
 export function parseInvoiceArgs(argv: string[]): InvoiceFlags {
   const flags: InvoiceFlags = {
-    help: false, vendorSeedFile: null, engagementId: null, amount: null, expires: null, invoiceRef: null, po: null,
+    help: false, vendorSeedFile: null, engagementId: null, amount: null, expires: null, mandateExpires: null, invoiceRef: null, po: null,
   }
   const rest = [...argv]
   const take = (name: string): string => {
@@ -54,6 +58,7 @@ export function parseInvoiceArgs(argv: string[]): InvoiceFlags {
     else if (arg === '--engagement-id') flags.engagementId = take('--engagement-id')
     else if (arg === '--amount') flags.amount = take('--amount')
     else if (arg === '--expires') flags.expires = take('--expires')
+    else if (arg === '--mandate-expires') flags.mandateExpires = take('--mandate-expires')
     else if (arg === '--invoice-ref') flags.invoiceRef = take('--invoice-ref')
     else if (arg === '--po') flags.po = take('--po')
     else throw new Error(`unknown argument ${arg}`)
@@ -91,12 +96,13 @@ export function buildInvoiceFromSeed(opts: {
   engagementId: string
   amount: string
   expires: string
+  mandateExpires?: string
   invoiceRef: string
   po: string
   now: Date
 }): Statement {
   assertInvoiceAmountUnderCap(opts.amount)
-  const validUntil = assertInvoiceExpiry(opts.expires, opts.now)
+  const validUntil = assertInvoiceExpiry(opts.expires, opts.now, opts.mandateExpires)
   const vendor = walletFromSeed(opts.seed)
   const issued = isoNoMillis(opts.now)
   return issueVendorInvoice({
@@ -134,6 +140,7 @@ export function runInvoice(argv: string[], io: InvoiceIo): number {
     engagementId: flags.engagementId,
     amount: flags.amount,
     expires: flags.expires,
+    mandateExpires: flags.mandateExpires ?? undefined,
     invoiceRef: flags.invoiceRef ?? DEFAULT_REF,
     po: flags.po ?? DEFAULT_PO,
     now: io.now(),

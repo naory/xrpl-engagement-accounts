@@ -40,9 +40,17 @@ describe('vendor invoice', () => {
     expect(() => assertInvoiceAmountUnderCap('0')).toThrow(/greater than zero/)
     expect(() => assertInvoiceAmountUnderCap('nope')).toThrow(/not a 6-decimal/)
     const now = new Date('2026-01-01T00:00:00Z')
-    expect(assertInvoiceExpiry('2026-01-02T00:00:00Z', now)).toBe('2026-01-02T00:00:00Z')
+    expect(assertInvoiceExpiry('2026-01-02T00:00:00Z', now)).toBe('2026-01-02T00:00:00.000Z')
+    expect(assertInvoiceExpiry('2026-01-02T05:00:00+05:00', now)).toBe('2026-01-02T00:00:00.000Z')
     expect(() => assertInvoiceExpiry('2026-01-01T00:00:00Z', now)).toThrow(/not in the future/)
-    expect(() => assertInvoiceExpiry('tomorrow', now)).toThrow(/not an ISO-8601/)
+    expect(() => assertInvoiceExpiry('tomorrow', now)).toThrow(/full ISO-8601 time with a zone/)
+    // Date.parse('2027') used to succeed and the literal "2027" was stored as validUntil.
+    expect(() => assertInvoiceExpiry('2027', now)).toThrow(/full ISO-8601 time with a zone/)
+    expect(() => assertInvoiceExpiry('2026-01-02', now)).toThrow(/full ISO-8601 time with a zone/)
+    expect(() => assertInvoiceExpiry('2026-02-31T00:00:00Z', now)).toThrow(/full ISO-8601 time with a zone/)
+    expect(() => assertInvoiceExpiry('9999-12-31T00:00:00Z', now)).toThrow(/after 2026-01-08T00:00:00.000Z/)
+    expect(() => assertInvoiceExpiry('2026-01-05T00:00:00Z', now, '2026-01-03T00:00:00Z')).toThrow(/after 2026-01-03T00:00:00.000Z/)
+    expect(assertInvoiceExpiry('2026-01-02T00:00:00Z', now, '2026-01-03T00:00:00Z')).toBe('2026-01-02T00:00:00.000Z')
   })
 
   it('matches the shipped procurement approval threshold', () => {
