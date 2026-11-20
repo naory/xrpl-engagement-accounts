@@ -31,13 +31,13 @@ Sources: `weight` (`templates/hotel@2.json:6`), `quorum` (`templates/hotel@2.jso
 
 On `hotel@2`, counterparty weight is 3 (`weight` (`templates/hotel@2.json:7`)) and arbiter weight is 4 (`weight` (`templates/hotel@2.json:8`)). 3 + 4 = 7, and the quorum is 7 (`quorum` (`templates/hotel@2.json:11`)). Arbiter and counterparty (for example the hotel) together meet the ledger quorum. The guest's signature is not required. The co-signer's signature is not required.
 
-`settle.ruling` is signed by arbiter plus principal, or by arbiter plus counterparty. Its `enforcement` is `"none"` (`enforcement` (`templates/hotel@2.json:16`)). `signsStage` does not sign an outcome whose enforcement is `none` (`signsStage` (`packages/cosigner/src/service.ts:949`)). `settle.ruling` is not co-signed.
+`settle.ruling` is signed by arbiter plus principal, or by arbiter plus counterparty. Its `enforcement` is `"none"` (`enforcement` (`templates/hotel@2.json:16`)). `signsStage` does not sign an outcome whose enforcement is `none` (`signsStage` (`packages/cosigner/src/service.ts:949`)). `settle.ruling` is not co-signed. Arbiter plus one party is the intended ruling path, so the real risk is an arbiter who isn't neutral, not the weights themselves.
 
 The template check records a V10 disclosure for every escrow winning set that excludes the principal: `{counterparty, arbiter}` can move funds without the principal (`V10` (`packages/core/src/template.ts:223`)).
 
 `hotel@1` is the same shape with smaller numbers: counterparty 2 plus arbiter 3 equals quorum 5 (`weight` (`templates/hotel@1.json:7`), `weight` (`templates/hotel@1.json:8`), `quorum` (`templates/hotel@1.json:11`)), and `settle.ruling` is also `enforcement` `"none"` (`enforcement` (`templates/hotel@1.json:15`)).
 
-A longer neutrality design (several outside accreditors, a trust-list file) is not in this tree. See [Accreditor address is not the service account](../ROADMAP.md#accreditor-address-is-not-the-service-account).
+A longer neutrality design (several outside accreditors, a trust-list file) is not in this tree. See [Re-check arbiter neutrality at decide time](../ROADMAP.md#re-check-arbiter-neutrality-at-decide-time) and [Revocation leaves the SignerList unchanged](../ROADMAP.md#revocation-leaves-the-signerlist-unchanged), which would limit a captured arbiter, and [Accreditor address is not the service account](../ROADMAP.md#accreditor-address-is-not-the-service-account).
 
 ## What the policy co-signer enforces
 
