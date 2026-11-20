@@ -44,7 +44,7 @@ moves money toward the inactive party, against the other side's raised flag, is 
 **Non-goals** (this build)
 - A real arbiter service, evidence API or AI/human queue. Arbiters are scripted parties (a key that signs a fixed ruling).
 - The indexer / reputation records.
-- Persistent engagement store or a production "keeper" daemon. In-memory + an explicit tick is enough.
+- Persistent engagement store or a production "keeper" daemon. In-memory + an explicit tick was enough here. Both were added later, see [the durable co-signer design](2026-11-19-durable-cosigner-design.md).
 - Mainnet, Privy custody for parties, XLS-68 sponsored mode, the x402 `engagement` scheme.
 - Recovering hotel claims larger than the deposit. Claims are capped at the deposit; anything beyond is off-ledger.
 
