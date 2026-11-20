@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import xrpl from 'xrpl'
 import { localSigner } from '@eng/core'
-import { CosignerService, MemoryStateStore, combine, startTickScheduler, type SnapshotRequest, type TickResult } from '@eng/cosigner'
+import { CosignerService, MemoryStateStore, combine, startTickScheduler, submitUntilValidated, type SubmitIo, type SnapshotRequest, type TickResult } from '@eng/cosigner'
 import { type LedgerSnapshot } from '@eng/policy'
 import { W, hotel2Close, hotel2Confirmation, hotel2Engagement, hotel2Ledger, hotel2Mandate, memo, checkin, claim, dispute, guestCheckin, policies, templates } from '../../policy/test/fixtures.ts'
 
@@ -202,6 +202,49 @@ describe('tick scheduler', () => {
     const calls = tick.mock.calls.length
     await vi.advanceTimersByTimeAsync(INTERVAL * 5)
     expect(tick.mock.calls.length).toBe(calls)
+    await s.stop()
+    await svc.close()
+  })
+})
+
+describe('submitUntilValidated (scheduler hand-off)', () => {
+  const io = (o: Partial<SubmitIo> = {}): SubmitIo => ({
+    lookup: vi.fn(async () => null),
+    submit: vi.fn(async () => ({ hash: 'H', prelim: 'tesSUCCESS', final: 'tesSUCCESS', validated: true })),
+    ...o,
+  })
+
+  it('resolves once validated, with tes or tec', async () => {
+    expect(await submitUntilValidated(io(), 'B', 'H')).toEqual({ hash: 'H', final: 'tesSUCCESS', alreadyValidated: false })
+    const tec = io({ submit: vi.fn(async () => ({ hash: 'H', prelim: 'tecUNFUNDED_PAYMENT', final: 'tecUNFUNDED_PAYMENT', validated: true })) })
+    expect((await submitUntilValidated(tec, 'B', 'H')).final).toBe('tecUNFUNDED_PAYMENT')
+  })
+
+  it('throws on tef/tel/tem and on NOT_VALIDATED, so the blob stays retryable', async () => {
+    for (const final of ['tefPAST_SEQ', 'telINSUF_FEE_P', 'temMALFORMED', 'NOT_VALIDATED']) {
+      const x = io({ submit: vi.fn(async () => ({ hash: 'H', prelim: final === 'NOT_VALIDATED' ? 'tesSUCCESS' : final, final, validated: false })) })
+      await expect(submitUntilValidated(x, 'B', 'H')).rejects.toThrow(/^SUBMIT_NOT_VALIDATED /)
+    }
+  })
+
+  it('does not resubmit a blob that is already in a validated ledger', async () => {
+    const x = io({ lookup: vi.fn(async () => ({ validated: true, meta: { TransactionResult: 'tesSUCCESS' } })) })
+    expect(await submitUntilValidated(x, 'B', 'H')).toEqual({ hash: 'H', final: 'tesSUCCESS', alreadyValidated: true })
+    expect(x.submit).not.toHaveBeenCalled()
+  })
+
+  it('through the scheduler: a tel submit is retried next round, then handed off once when validated', async () => {
+    const ledger = new Ledger()
+    const svc = await disputed(ledger)
+    ledger.h2.closeTime = '2026-11-21T10:00:01Z'
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const submit = vi.fn()
+      .mockResolvedValueOnce({ hash: 'H', prelim: 'telINSUF_FEE_P', final: 'telINSUF_FEE_P', validated: false })
+      .mockResolvedValue({ hash: 'H', prelim: 'tesSUCCESS', final: 'tesSUCCESS', validated: true })
+    const x = io({ submit })
+    const s = startTickScheduler(svc, { intervalMs: INTERVAL, onResult: async (_id, r) => { await submitUntilValidated(x, r.blob!, 'H') } })
+    await vi.advanceTimersByTimeAsync(INTERVAL * 5)
+    expect(submit).toHaveBeenCalledTimes(2)
     await s.stop()
     await svc.close()
   })

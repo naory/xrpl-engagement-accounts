@@ -12,7 +12,30 @@ export interface TickSchedulerOptions {
   log?: (level: 'warn' | 'error', msg: string, extra?: Record<string, unknown>) => void
 }
 
-const defaultLog: NonNullable<TickSchedulerOptions['log']> = (level, msg, extra) =>
+/** The ledger calls `submitUntilValidated` needs; the server passes `lookupTx` and `submit` from xrpl-io. */
+export interface SubmitIo {
+  lookup(hash: string): Promise<{ validated?: boolean; meta?: unknown } | null>
+  submit(blob: string): Promise<{ hash: string; prelim: string; final: string; validated: boolean }>
+}
+export interface SubmittedTick { hash: string; final: string; alreadyValidated: boolean }
+
+/**
+ * Hand-off for the scheduler's `onResult`: resolves only once the blob is in a validated ledger (tes or tec, either
+ * of which consumes the sequence or ticket), and throws otherwise (tef/tel/tem, NOT_VALIDATED), so the scheduler does
+ * not mark it handed off and resubmits it next round. Pre-signed defaults carry no LastLedgerSequence, so an
+ * unconfirmed submit must stay retryable. A blob already validated (for example by an earlier round's submit that
+ * outlived its wait) is not resubmitted.
+ */
+export async function submitUntilValidated(io: SubmitIo, blob: string, hash: string): Promise<SubmittedTick> {
+  const prior = await io.lookup(hash)
+  if (prior?.validated) return { hash, final: resultOf(prior.meta), alreadyValidated: true }
+  const sent = await io.submit(blob)
+  if (!sent.validated) throw new Error(`SUBMIT_NOT_VALIDATED ${sent.final} (prelim ${sent.prelim}); retrying next round`)
+  return { hash: sent.hash, final: sent.final, alreadyValidated: false }
+}
+const resultOf = (meta: unknown): string => String((meta as { TransactionResult?: unknown } | undefined)?.TransactionResult ?? 'unknown')
+
+const defaultLog:NonNullable<TickSchedulerOptions['log']> = (level, msg, extra) =>
   console.error(JSON.stringify({ t: new Date().toISOString(), level, msg, ...extra }))
 
 export function startTickScheduler(svc: CosignerService, o: TickSchedulerOptions): { stop(): Promise<void> } {

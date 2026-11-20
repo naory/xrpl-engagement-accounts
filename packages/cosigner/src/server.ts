@@ -31,8 +31,8 @@ import { XrplLedgerSource } from './snapshot.ts'
 import { MemoryStateStore } from './store/memory.ts'
 import { SqliteStateStore } from './store/sqlite.ts'
 import type { StateStore } from './store/types.ts'
-import { startTickScheduler } from './scheduler.ts'
-import { submit } from './xrpl-io.ts'
+import { startTickScheduler, submitUntilValidated } from './scheduler.ts'
+import { lookupTx, submit } from './xrpl-io.ts'
 
 export function loadLibrary(root: string, extraPolicies: PolicyDoc[] = []): { templates: Template[]; policies: PolicyDoc[] } {
   const read = <T>(dir: string) => fs.readdirSync(path.join(root, dir)).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(fs.readFileSync(path.join(root, dir, f), 'utf8')) as T)
@@ -231,10 +231,15 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
     ? startTickScheduler(svc, {
         intervalMs: tickMs,
         onResult: async (engagementId, r) => {
-          if (process.env.COSIGNER_TICK_SUBMIT === '1' && r.blob) {
-            const sent = await submit(client, r.blob)
-            say({ level: 'info', msg: 'tick submitted', engagementId, outcome: r.outcome, hash: sent.hash, prelim: sent.prelim, final: sent.final, validated: sent.validated })
-          } else say({ level: 'info', msg: 'tick signed', engagementId, outcome: r.outcome, blob: r.blob })
+          if (!r.blob) return
+          const hash = xrpl.hashes.hashSignedTx(r.blob)
+          if (process.env.COSIGNER_TICK_SUBMIT === '1') {
+            // Throws unless validated, so the scheduler resubmits next round; a short wait keeps one round from
+            // stalling on a single blob (~4 ledgers instead of 15).
+            const sent = await submitUntilValidated(
+              { lookup: (h) => lookupTx(client, h), submit: (b) => submit(client, b, { waitLedgers: 4 }) }, r.blob, hash)
+            say({ level: 'info', msg: 'tick submitted', engagementId, outcome: r.outcome, ...sent })
+          } else say({ level: 'info', msg: 'tick signed (not submitted; COSIGNER_TICK_SUBMIT is unset)', engagementId, outcome: r.outcome, hash })
         },
         // A lost store lease means another co-signer owns the state: stop rather than keep signing.
         onError: (e) => { console.error(String(e.message ?? e)); process.exit(1) },
