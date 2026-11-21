@@ -87,7 +87,7 @@ An engagement account pays an x402 merchant through the settlement adapter's `pr
 
 Run with `npm run demo:x402` (needs `x402-xrpl-settlement-adapter`). The in-process integration test is `npm run test:x402`.
 
-`npm run demo:x402:t54` is the opt-in path that asks t54's Testnet facilitator to settle a 2-of-2 RLUSD payment within a 100/day cap. Prepaid X1–X4 stay the default. Labels: `Clip 1: capped payment via t54` and `Clip 2: rogue agent refused`.
+`npm run demo:x402:t54` is the opt-in path that asks t54's Testnet facilitator to settle a 2-of-2 RLUSD payment within a 100/day cap. Prepaid X1–X4 stay the default. Labels: `Clip 1: capped payment via t54` and `Clip 2: rogue agent refused`. The silent-cut shot list is [docs/demo/n2a-storyboard.md](../../../docs/demo/n2a-storyboard.md).
 
 ## `x402-probe.ts`
 
