@@ -97,11 +97,17 @@ export class MarketplaceEscrowFlow {
     cast: MarketplaceCast
     fees: Fees
     price?: string
+    /** Seconds from open for the deal timers. Defaults are the template's 72h shipBy and 10d inspectBy. */
+    timers?: { shipBy: number; inspectBy: number }
+    /** Classic address of the RLUSD issuer. Set when this run has no key for that issuer. */
+    issuerAddress?: string
     log?: (line: string) => void
   }) {
     this.price = o.price ?? '2.00'
-    this.asset = { code: 'RLUSD', kind: 'IOU', currency: o.cast.currency, issuer: o.cast.issuer.address, decimals: 6 }
+    this.asset = { code: 'RLUSD', kind: 'IOU', currency: o.cast.currency, issuer: o.issuerAddress ?? o.cast.issuer.address, decimals: 6 }
   }
+
+  private get issuerAddress(): string { return this.o.issuerAddress ?? this.o.cast.issuer.address }
 
   get engagementId(): string { return this.id }
   get account(): string { return this.eng }
@@ -120,7 +126,7 @@ export class MarketplaceEscrowFlow {
       TransactionType: 'Payment', Account: cast.service.address, Destination: eng.address, Amount: String(drops),
     }), 'pre-create fund'))
     this.must(await sendSimple(client, eng, {
-      TransactionType: 'TrustSet', Account: eng.address, LimitAmount: iou(cast.currency, cast.issuer.address, '1000000000'), Flags: TF_SET_NO_RIPPLE,
+      TransactionType: 'TrustSet', Account: eng.address, LimitAmount: iou(cast.currency, this.issuerAddress, '1000000000'), Flags: TF_SET_NO_RIPPLE,
     }), 'pre-create trust line')
     this.must(await sendSimple(client, eng, { TransactionType: 'SetRegularKey', Account: eng.address, RegularKey: cast.service.address }), 'pre-create SetRegularKey')
     this.must(await sendSimple(client, eng, { TransactionType: 'AccountSet', Account: eng.address, SetFlag: ASF_DISABLE_MASTER }), 'pre-create disable master')
@@ -146,7 +152,7 @@ export class MarketplaceEscrowFlow {
       const seq = Number(((await accountInfo(client, eng.address))!.account_data as Json).Sequence)
       const funderSeq = Number(((await accountInfo(client, cast.buyer.address))!.account_data as Json).Sequence)
       const built = buildOpenBatch({
-        eng: eng.address, funder: cast.buyer.address, currency: cast.currency, issuer: cast.issuer.address, amount: this.price,
+        eng: eng.address, funder: cast.buyer.address, currency: cast.currency, issuer: this.issuerAddress, amount: this.price,
         signerEntries: [[cast.buyer.address, 3], [cast.seller.address, 3], [cast.arbiter.address, 4], [svc.address, 2]],
         quorum: 7, seq, funderSeq, ticketCount: this.plan.count, memos: [memo('eng/open', `${this.id}|template=${TEMPLATE}`)], fees,
       })
@@ -180,7 +186,7 @@ export class MarketplaceEscrowFlow {
       const s = Number(((await accountInfo(client, buyer.address))!.account_data as Json).Sequence)
       const raw = [
         inner({ TransactionType: 'CredentialCreate', Account: buyer.address, Subject: this.eng, CredentialType: hex('ENG/DISPUTE') }, { Sequence: s + 1 }),
-        inner({ TransactionType: 'Payment', Account: buyer.address, Destination: this.eng, Amount: iou(cast.currency, cast.issuer.address, bond), Memos: [memo('eng/bond', this.id)] }, { Sequence: s + 2 }),
+        inner({ TransactionType: 'Payment', Account: buyer.address, Destination: this.eng, Amount: iou(cast.currency, this.issuerAddress, bond), Memos: [memo('eng/bond', this.id)] }, { Sequence: s + 2 }),
       ]
       const tx: Json = { TransactionType: 'Batch', Account: buyer.address, Flags: TF_ALL_OR_NOTHING, Sequence: s, LastLedgerSequence: (await currentLedger(client)) + 20, RawTransactions: raw }
       tx.Fee = batchFee({ base: fees.base, inc: fees.inc, innerTxs: raw, signatures: 1, headroom: 2 })
@@ -196,9 +202,38 @@ export class MarketplaceEscrowFlow {
   /** Buyer confirms: seller + fee, any extra back to the buyer. Buyer, seller, and the co-signer. */
   async releaseConfirm(): Promise<MarketplaceStepResult> {
     const { cast } = this.o
-    const payouts: Payout[] = [...marketplaceReleasePayouts(this.price, FEE_BPS, cast.seller.address, cast.service.address), { to: cast.buyer.address, partial: true }]
+    const payouts: Payout[] = [...marketplaceReleasePayouts(this.price, FEE_BPS, cast.seller.address, cast.service.address)]
+    const held = parseAmount(await this.balance(), this.asset).minor
+    const price = parseAmount(this.price, this.asset).minor
+    // A sweep that delivers nothing fails the batch. Add it only when the account holds more than the price.
+    if (held > price) payouts.push({ to: cast.buyer.address, partial: true })
     const tx = await this.liveClose(payouts, 'release.confirm', 3)
     return this.cosigned('release.confirm', tx, [cast.buyer, cast.seller])
+  }
+
+  /**
+   * Arbiter plus the winning party close the account. No co-signer: enforcement is none.
+   * Refund pays the balance to the buyer. Release pays the seller the price less the fee, plus the bond, and the fee.
+   */
+  async disputeSettle(kind: 'refund' | 'release', bond: string, arbiterSigner?: Wallet): Promise<MarketplaceStepResult> {
+    const { cast } = this.o
+    const asset = this.asset
+    const payouts: Payout[] = kind === 'refund'
+      ? [{ to: cast.buyer.address, value: await this.balance() }]
+      : (() => {
+          const price = parseAmount(this.price, asset).minor
+          const extra = parseAmount(bond, asset).minor
+          const fee = (price * BigInt(FEE_BPS)) / 10_000n
+          return [
+            { to: cast.seller.address, value: formatAmount(new Amount('RLUSD', price - fee + extra), 6) },
+            { to: cast.service.address, value: formatAmount(new Amount('RLUSD', fee), 6) },
+          ]
+        })()
+    const tx = await this.liveClose(payouts, `dispute.${kind}`, 2)
+    const party = kind === 'refund' ? cast.buyer : cast.seller
+    const arbiter = arbiterSigner ?? cast.arbiter
+    const r = await submit(this.o.client, combine([multisignBlob(arbiter, tx), multisignBlob(party, tx)]))
+    return { step: `dispute.${kind}`, ...(await this.closeResult(r, tx)) }
   }
 
   /** Mutual cancel: the whole balance back to the buyer. Buyer, seller, and the co-signer. */
@@ -231,17 +266,19 @@ export class MarketplaceEscrowFlow {
 
   private recordFor(t0: number): EngagementRecord {
     const { cast, svc } = this.o
-    const timers = (templateJson as { timers: Record<string, { durationSecs: number }> }).timers
-    const at = (name: string) => iso(t0 + timers[name].durationSecs * 1000)
+    const fileTimers = (templateJson as { timers: Record<string, { durationSecs: number }> }).timers
+    const shipBy = this.o.timers?.shipBy ?? fileTimers.shipBy.durationSecs
+    const inspectBy = this.o.timers?.inspectBy ?? fileTimers.inspectBy.durationSecs
+    const at = (secs: number) => iso(t0 + secs * 1000)
     return {
       engagementId: this.id, template: TEMPLATE, account: this.eng, asset: 'RLUSD',
       parties: { principal: cast.buyer.address, counterparty: cast.seller.address, arbiter: cast.arbiter.address, cosigner: svc.address },
       fee: { bps: FEE_BPS, to: cast.service.address }, deleteTo: cast.service.address,
       amount: { asset: 'RLUSD', value: this.price },
-      timers: { open: iso(t0), shipBy: at('shipBy'), inspectBy: at('inspectBy') },
+      timers: { open: iso(t0), shipBy: at(shipBy), inspectBy: at(inspectBy) },
       attesters: { shipping: { accounts: [cast.carrier.address], kind: 'SHIPPING', types: ['shipping.shipped/1'] } },
       state: 'OPEN', consumed: [], mandateId: this.mandate!.id,
-      trust: { 'arbiter.accreditor': cast.accreditor.address, 'rlusd.issuer': cast.issuer.address },
+      trust: { 'arbiter.accreditor': cast.accreditor.address, 'rlusd.issuer': this.issuerAddress },
     }
   }
 
@@ -250,7 +287,7 @@ export class MarketplaceEscrowFlow {
     const range = this.plan.slices[outcome]
     if (!range) throw new Error(`no Ticket slot for ${outcome}`)
     const tx = buildCloseBatch({
-      eng: this.eng, currency: cast.currency, issuer: cast.issuer.address, payouts, deleteTo: cast.service.address,
+      eng: this.eng, currency: cast.currency, issuer: this.issuerAddress, payouts, deleteTo: cast.service.address,
       tickets: this.tickets.slice(range[0], range[1]), memos: [memo('eng/basis', outcome)], fees, signatures: 3,
     })
     await svc.storePresigned(this.id, outcome, combine([multisignBlob(cast.buyer, tx), multisignBlob(cast.seller, tx)]))
@@ -260,7 +297,7 @@ export class MarketplaceEscrowFlow {
     const { client, cast, fees } = this.o
     const seq = Number(((await accountInfo(client, this.eng))!.account_data as Json).Sequence)
     return buildCloseBatch({
-      eng: this.eng, currency: cast.currency, issuer: cast.issuer.address, payouts, deleteTo: cast.service.address,
+      eng: this.eng, currency: cast.currency, issuer: this.issuerAddress, payouts, deleteTo: cast.service.address,
       seq, lastLedgerSequence: (await currentLedger(client)) + 20, memos: [memo('eng/basis', basis)], fees, signatures,
     })
   }
@@ -275,7 +312,7 @@ export class MarketplaceEscrowFlow {
   }
 
   private async balance(): Promise<string> {
-    const r = await this.o.client.request({ command: 'account_lines', account: this.eng, peer: this.o.cast.issuer.address, ledger_index: 'validated' })
+    const r = await this.o.client.request({ command: 'account_lines', account: this.eng, peer: this.issuerAddress, ledger_index: 'validated' })
     return r.result.lines.find((l) => l.currency === this.o.cast.currency)?.balance ?? '0'
   }
 

@@ -208,6 +208,59 @@ describe('marketplace-escrow register terms', () => {
     await expect((await bare()).register(exact, mandate())).resolves.toMatchObject({ ok: true })
   })
 
+  it('rejects a seller-signed mandate, a wrong type, a wrong engagement, and a constraints-only or wrong-currency maximum', async () => {
+    const seller = signStatement({
+      v: 'eng.att/1', type: 'party.mandate/1', engagementId: ENG,
+      subject: { mandateId: 'mnd_seller' }, claim: { maximum: '2.00', payee: W.atlas.address },
+      observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate-seller',
+      attester: { account: W.atlas.address, kind: 'COUNTERPARTY' },
+    }, W.atlas)
+    await expect((await bare()).register(record(), seller)).rejects.toThrow(/INVALID_TERMS: the mandate must be signed by the principal's owner/)
+
+    const wrongType = signStatement({
+      v: 'eng.att/1', type: 'party.review/1', engagementId: ENG,
+      subject: { mandateId: 'mnd_type' }, claim: { maximum: '2.00', payee: W.atlas.address },
+      observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate-type',
+      attester: { account: W.dana.address, kind: 'PRINCIPAL' },
+    }, W.dana)
+    await expect((await bare()).register(record(), wrongType)).rejects.toThrow(/INVALID_TERMS: the mandate type must be party.mandate\/1/)
+
+    const wrongEng = signStatement({
+      v: 'eng.att/1', type: 'party.mandate/1', engagementId: 'eng_other',
+      subject: { mandateId: 'mnd_eng' }, claim: { maximum: '2.00', payee: W.atlas.address },
+      observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate-eng',
+      attester: { account: W.dana.address, kind: 'PRINCIPAL' },
+    }, W.dana)
+    await expect((await bare()).register(record(), wrongEng)).rejects.toThrow(/INVALID_TERMS: the mandate is for a different engagement/)
+
+    const legacy = signStatement({
+      v: 'eng.att/1', type: 'party.mandate/1', engagementId: ENG,
+      subject: { mandateId: 'mnd_legacy' },
+      claim: { constraints: { payee: W.atlas.address, maxTotal: { currency: 'RLUSD', value: '2.00' } } },
+      observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate-legacy',
+      attester: { account: W.dana.address, kind: 'PRINCIPAL' },
+    }, W.dana)
+    await expect((await bare()).register(record(), legacy)).rejects.toThrow(/INVALID_TERMS: the seller is not the mandate payee/)
+
+    const wrongCurrency = signStatement({
+      v: 'eng.att/1', type: 'party.mandate/1', engagementId: ENG,
+      subject: { mandateId: 'mnd_usd' },
+      claim: { payee: W.atlas.address, maximum: { currency: 'USD', value: '2.00' } },
+      observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate-usd',
+      attester: { account: W.dana.address, kind: 'PRINCIPAL' },
+    }, W.dana)
+    await expect((await bare()).register(record(), wrongCurrency)).rejects.toThrow(/INVALID_TERMS: the mandate maximum currency must be RLUSD/)
+
+    const objectMax = signStatement({
+      v: 'eng.att/1', type: 'party.mandate/1', engagementId: ENG,
+      subject: { mandateId: 'mnd_obj' },
+      claim: { payee: W.atlas.address, maximum: { currency: 'RLUSD', value: '2.00' } },
+      observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate-obj',
+      attester: { account: W.dana.address, kind: 'PRINCIPAL' },
+    }, W.dana)
+    await expect((await bare()).register(record(), objectMax)).resolves.toMatchObject({ ok: true })
+  })
+
   it('rejects an ENG/ATTESTER/SHIPPING credential that expires before inspectBy', async () => {
     const ledger = snap({ closeTime: OPEN })
     const cred = ledger.credentials.find((c) => c.type === 'ENG/ATTESTER/SHIPPING')!
@@ -428,6 +481,37 @@ describe('ruling overdue alert', () => {
     await svc.close()
   })
 
+  it('repeats after 24h when rulingOverdueRepeat is missing', async () => {
+    const missing = structuredClone(policy)
+    delete missing.params!.rulingOverdueRepeat
+    const source = new FixtureLedgerSource(snap({ closeTime: '2026-11-05T12:00:00Z', balance: '2.50', dispute: true }))
+    const svc = await CosignerService.open({
+      signer: localSigner(W.cosigner), source, store: new MemoryStateStore(),
+      templates: [template], policies: [baseline12, missing],
+    })
+    await svc.register(record(), mandate())
+    await svc.ingest(ENG, signed(W.dana, 'party.dispute/1', issued, 'me-overdue-fallback', { reason: 'not received' }))
+    source.snap = snap({ closeTime: '2026-11-10T11:59:01Z', balance: '2.50', dispute: true })
+    expect((await svc.overdue(ENG))?.alert).toBe('RULING_OVERDUE')
+    expect(await svc.overdue(ENG)).toBeNull()
+    source.snap = snap({ closeTime: '2026-11-11T11:59:00Z', balance: '2.50', dispute: true })
+    expect(await svc.overdue(ENG)).toBeNull()
+    source.snap = snap({ closeTime: '2026-11-11T11:59:01Z', balance: '2.50', dispute: true })
+    expect((await svc.overdue(ENG))?.alert).toBe('RULING_OVERDUE')
+    await svc.close()
+  })
+
+  it('retries a failed alert delivery after one minute, not after 24h', async () => {
+    const { svc, source } = await opened('2026-11-10T11:59:01Z')
+    expect((await svc.overdue(ENG))?.alert).toBe('RULING_OVERDUE')
+    await svc.noteAlertDelivery(ENG, false)
+    source.snap = snap({ closeTime: '2026-11-10T11:59:31Z', balance: '2.50', dispute: true })
+    expect(await svc.overdue(ENG)).toBeNull()
+    source.snap = snap({ closeTime: '2026-11-10T12:00:01Z', balance: '2.50', dispute: true })
+    expect((await svc.overdue(ENG))?.alert).toBe('RULING_OVERDUE')
+    await svc.close()
+  })
+
   it('logs ruling overdue and posts the webhook when one is set', async () => {
     const lines: Record<string, unknown>[] = []
     let posted = ''
@@ -439,6 +523,24 @@ describe('ruling overdue alert', () => {
     await reportRulingOverdue(alert, (e) => lines.push(e), 'https://alerts.example/hook', fetchImpl)
     expect(lines[0]).toMatchObject({ level: 'error', msg: 'ruling overdue', engagementId: ENG, rulingReceipted: false })
     expect(JSON.parse(posted).alert).toBe('RULING_OVERDUE')
+  })
+
+  it('logs the overdue line before retrying a failed webhook on a bounded backoff', async () => {
+    const order: string[] = []
+    const sleeps: number[] = []
+    let calls = 0
+    const fetchImpl: typeof fetch = async () => {
+      order.push('fetch')
+      calls += 1
+      if (calls < 3) return new Response(null, { status: 502 })
+      return new Response(null, { status: 204 })
+    }
+    const alert: RulingOverdue = { alert: 'RULING_OVERDUE', engagementId: ENG, caseOpenedAt: issued, dueAt: due, rulingReceipted: false }
+    await reportRulingOverdue(alert, (e) => order.push(String(e.msg)), 'https://alerts.example/hook', fetchImpl, async (ms) => { sleeps.push(ms) })
+    expect(order[0]).toBe('ruling overdue')
+    expect(calls).toBe(3)
+    expect(sleeps).toEqual([200, 400])
+    expect(order.indexOf('fetch')).toBeGreaterThan(order.indexOf('ruling overdue'))
   })
 })
 

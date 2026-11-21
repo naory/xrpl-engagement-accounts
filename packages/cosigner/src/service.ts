@@ -73,6 +73,10 @@ interface EngagementState {
   closed: boolean
   /** Last time a ruling-overdue alert was raised (ledger close time). The next one waits out rulingOverdueRepeat. */
   alertedAt?: string
+  /** When a webhook delivery failed, the next attempt is due at this ledger time, sooner than the 24h repeat. */
+  alertRetryAt?: string
+  /** Failed webhook deliveries since the last success. Grows the retry backoff. */
+  alertFailures?: number
 }
 
 /** Ops page from overdue(). No signature and no blob: the account still exists and the ruling SLA has passed. */
@@ -211,7 +215,10 @@ export class CosignerService {
         presigned: new Map(of(snap.presigned, id).map((p) => [p.outcome, p.blob])),
         completed: new Map(of(snap.completed, id).map((c) => [c.txHash, c.result])),
         lastRefusal: new Map(of(snap.lastRefusal, id).map((r) => [r.outcome, r.fingerprint])),
-        closed: e.closed, alertedAt: snap.meta[alertedAtKey(id)],
+        closed: e.closed,
+        alertedAt: snap.meta[alertedAtKey(id)] || undefined,
+        alertRetryAt: snap.meta[alertRetryAtKey(id)] || undefined,
+        alertFailures: snap.meta[alertFailuresKey(id)] ? Number(snap.meta[alertFailuresKey(id)]) : undefined,
       })
     }
     this.inflight = snap.inflight
@@ -1118,15 +1125,18 @@ export class CosignerService {
     if (ledger.accounts[st.record.account]?.exists !== true) return null
     const closeMs = Date.parse(ledger.closeTime)
     if (Number.isNaN(closeMs) || closeMs <= dueAtMs) return null
-    const repeatRaw = effectiveParam(st.layers, 'rulingOverdueRepeat')
-    let repeatMs = Number.POSITIVE_INFINITY
-    if (typeof repeatRaw === 'string') {
-      try { repeatMs = celDurationMs(repeatRaw) } catch { return null }
-    }
+    const repeatMs = overdueRepeatMs(effectiveParam(st.layers, 'rulingOverdueRepeat'))
+    const retryAt = st.alertRetryAt ? Date.parse(st.alertRetryAt) : Number.NaN
     const prev = st.alertedAt ? Date.parse(st.alertedAt) : Number.NaN
-    if (!Number.isNaN(prev) && closeMs < prev + repeatMs) return null
-    await this.store.transaction((tx) => tx.setMeta(alertedAtKey(engagementId), ledger.closeTime))
+    if (!Number.isNaN(retryAt)) {
+      if (closeMs < retryAt) return null
+    } else if (!Number.isNaN(prev) && closeMs < prev + repeatMs) return null
+    await this.store.transaction(async (tx) => {
+      await tx.setMeta(alertedAtKey(engagementId), ledger.closeTime)
+      await tx.setMeta(alertRetryAtKey(engagementId), '')
+    })
     st.alertedAt = ledger.closeTime
+    st.alertRetryAt = undefined
     const rulingReceipted = [...st.attestations.values()].some((a) => a.statement.type === 'party.ruling/1' && a.statement.attester.account === st.record.parties.arbiter)
     return {
       alert: 'RULING_OVERDUE',
@@ -1135,6 +1145,35 @@ export class CosignerService {
       dueAt: new Date(dueAtMs).toISOString(),
       rulingReceipted,
     }
+  }
+
+  /**
+   * The scheduler reports whether the webhook (if any) accepted the alert. A failure pulls the next
+   * attempt forward by a bounded backoff, instead of waiting out rulingOverdueRepeat.
+   */
+  async noteAlertDelivery(engagementId: string, delivered: boolean): Promise<void> {
+    return this.serialized(engagementId, async () => {
+      const st = this.engagements.get(engagementId)
+      if (!st) return
+      if (delivered) {
+        st.alertFailures = 0
+        st.alertRetryAt = undefined
+        await this.store.transaction(async (tx) => {
+          await tx.setMeta(alertFailuresKey(engagementId), '0')
+          await tx.setMeta(alertRetryAtKey(engagementId), '')
+        })
+        return
+      }
+      const failures = (st.alertFailures ?? 0) + 1
+      const base = Date.parse(st.alertedAt ?? '')
+      const retryAt = new Date((Number.isNaN(base) ? Date.now() : base) + alertRetryBackoffMs(failures)).toISOString()
+      st.alertFailures = failures
+      st.alertRetryAt = retryAt
+      await this.store.transaction(async (tx) => {
+        await tx.setMeta(alertFailuresKey(engagementId), String(failures))
+        await tx.setMeta(alertRetryAtKey(engagementId), retryAt)
+      })
+    })
   }
 }
 
@@ -1258,13 +1297,28 @@ function emptyLedger(account: string): LedgerSnapshot {
 }
 
 const alertedAtKey = (engagementId: string): string => `alertedAt:${engagementId}`
+const alertRetryAtKey = (engagementId: string): string => `alertRetryAt:${engagementId}`
+const alertFailuresKey = (engagementId: string): string => `alertFailures:${engagementId}`
+const OVERDUE_REPEAT_FALLBACK_MS = 86_400_000
+/** Ledger-time waits after a failed webhook: 1m, 5m, 15m, then 1h. All shorter than the 24h repeat. */
+export function alertRetryBackoffMs(failures: number): number {
+  const steps = [60_000, 300_000, 900_000, 3_600_000]
+  return steps[Math.min(Math.max(failures, 1), steps.length) - 1]
+}
+function overdueRepeatMs(raw: unknown): number {
+  if (typeof raw === 'string') {
+    try { return celDurationMs(raw) } catch { /* missing or unusable: 24h */ }
+  }
+  return OVERDUE_REPEAT_FALLBACK_MS
+}
 
 /**
  * Deal-timer and mandate checks for a template that has shipBy and inspectBy (marketplace-escrow@1 §3).
  * Hotel templates have neither timer, so they return immediately. The 24h and 7d floors come from the
  * policy params, not from hardcoded template constants. Returns the first problem, or undefined.
- * Spec §3 item 6 does not name the mandate fields. This reads `claim.payee` (or `constraints.payee`)
- * and `claim.maximum` (or `constraints.maxTotal`), a decimal string or `{ value }`.
+ * The mandate is `party.mandate/1` for this engagement, signed by the principal's owner (decision 5:
+ * the agent signs the deal as the principal, under that owner's mandate). `claim.payee` and
+ * `claim.maximum` are the only amount fields. `claim.maximum` is a decimal string or `{ currency, value }`.
  */
 function marketplaceEscrowTermsFindings(record: EngagementRecord, mandate: Statement | null, template: Template, layers: PolicyDoc[]): string | undefined {
   if (!template.timers?.shipBy || !template.timers?.inspectBy) return undefined
@@ -1284,15 +1338,20 @@ function marketplaceEscrowTermsFindings(record: EngagementRecord, mandate: State
   }
   if (record.terms?.rulingWindow !== undefined) return 'terms.rulingWindow is not a term of this deal'
   if (!mandate) return "the buyer's mandate is required"
+  if (mandate.type !== 'party.mandate/1') return 'the mandate type must be party.mandate/1'
+  if (mandate.engagementId !== record.engagementId) return 'the mandate is for a different engagement'
+  const signed = verifyStatement(mandate)
+  if (!signed.ok) return 'the mandate signature is invalid'
+  if (signed.signerAddress !== record.parties.principal) return "the mandate must be signed by the principal's owner"
   const payee = mandatePayee(mandate.claim)
   if (payee !== record.parties.counterparty) return 'the seller is not the mandate payee'
-  const maximum = mandateMaximum(mandate.claim)
-  if (maximum === undefined) return 'the mandate has no maximum'
   const assets = resolvedAssets(layers, record.trust)
   const asset = assets[record.amount?.asset ?? record.asset ?? template.asset.code]
   if (!asset || typeof record.amount?.value !== 'string') return 'the deal has no amount in a known asset'
+  const maximum = mandateMaximum(mandate.claim, asset.code)
+  if ('error' in maximum) return maximum.error
   try {
-    if (parseAmount(record.amount.value, asset).cmp(parseAmount(maximum, asset)) > 0) return 'the amount is over the mandate maximum'
+    if (parseAmount(record.amount.value, asset).cmp(parseAmount(maximum.value, asset)) > 0) return 'the amount is over the mandate maximum'
   } catch {
     return 'the mandate maximum is not an amount of the deal asset'
   }
@@ -1322,16 +1381,20 @@ function policyDuration(layers: PolicyDoc[], name: string): number | string {
 
 function mandatePayee(claim: unknown): string | undefined {
   if (!claim || typeof claim !== 'object') return undefined
-  const c = claim as { payee?: unknown; constraints?: { payee?: unknown } }
-  const raw = c.payee ?? c.constraints?.payee
+  const raw = (claim as { payee?: unknown }).payee
   return typeof raw === 'string' ? raw : undefined
 }
 
-function mandateMaximum(claim: unknown): string | undefined {
-  if (!claim || typeof claim !== 'object') return undefined
-  const c = claim as { maximum?: unknown; constraints?: { maxTotal?: unknown } }
-  const raw = c.maximum ?? c.constraints?.maxTotal
-  if (typeof raw === 'string') return raw
-  if (raw && typeof raw === 'object' && typeof (raw as { value?: unknown }).value === 'string') return (raw as { value: string }).value
-  return undefined
+function mandateMaximum(claim: unknown, assetCode: string): { value: string } | { error: string } {
+  if (!claim || typeof claim !== 'object') return { error: 'the mandate has no maximum' }
+  const raw = (claim as { maximum?: unknown }).maximum
+  if (typeof raw === 'string') return { value: raw }
+  if (raw && typeof raw === 'object') {
+    const value = (raw as { value?: unknown }).value
+    const currency = (raw as { currency?: unknown }).currency
+    if (typeof value !== 'string') return { error: 'the mandate has no maximum' }
+    if (currency !== assetCode) return { error: `the mandate maximum currency must be ${assetCode}` }
+    return { value }
+  }
+  return { error: 'the mandate has no maximum' }
 }

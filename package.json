@@ -24,6 +24,8 @@
     "demo:b1": "tsx --conditions=source packages/cosigner/demo/b1-testnet.ts",
     "demo:hotel": "tsx --conditions=source packages/cosigner/demo/hotel-testnet.ts",
     "demo:hotel-dispute": "tsx --conditions=source packages/cosigner/demo/hotel-dispute-testnet.ts",
+    "demo:marketplace-escrow": "tsx --conditions=source packages/cosigner/demo/marketplace-escrow-testnet.ts",
+    "demo:marketplace-escrow-dispute": "tsx --conditions=source packages/cosigner/demo/marketplace-escrow-testnet.ts --clip3",
     "vectors:check": "vitest run packages/policy/test/vectors.test.ts",
     "probe:x402": "tsx --conditions=source packages/cosigner/demo/x402-probe.ts",
     "probe:sponsor": "tsx --conditions=source packages/cosigner/demo/sponsor-probe.ts",

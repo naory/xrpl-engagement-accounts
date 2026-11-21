@@ -58,20 +58,30 @@ export interface ServerOptions {
   loopbackRequestGuard?: boolean
 }
 
-/** Structured error log, plus an optional COSIGNER_ALERT_WEBHOOK POST. No signature and no blob. */
+/** Waits between webhook attempts. Short, and capped: a dead endpoint must not block the tick round for long. */
+export const ALERT_WEBHOOK_BACKOFF_MS = [200, 400, 800, 1600]
+
+/** Structured error log first, then an optional COSIGNER_ALERT_WEBHOOK POST. A failed POST is retried on a bounded backoff, sooner than the 24h alert repeat. No signature and no blob. */
 export async function reportRulingOverdue(
   alert: RulingOverdue,
   log: (entry: Record<string, unknown>) => void,
   webhook?: string,
   fetchImpl: typeof fetch = globalThis.fetch,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<void> {
   log({
     level: 'error', msg: 'ruling overdue', alert: alert.alert, engagementId: alert.engagementId,
     caseOpenedAt: alert.caseOpenedAt, dueAt: alert.dueAt, rulingReceipted: alert.rulingReceipted,
   })
   if (!webhook) return
-  const res = await fetchImpl(webhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(alert) })
-  if (!res.ok) throw new Error(`alert webhook ${res.status}`)
+  let status = 0
+  for (let attempt = 0; attempt <= ALERT_WEBHOOK_BACKOFF_MS.length; attempt++) {
+    if (attempt > 0) await sleep(ALERT_WEBHOOK_BACKOFF_MS[attempt - 1])
+    const res = await fetchImpl(webhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(alert) })
+    if (res.ok) return
+    status = res.status
+  }
+  throw new Error(`alert webhook ${status}`)
 }
 
 const json = (res: http.ServerResponse, code: number, body: unknown, headers: Record<string, string> = {}) => {
