@@ -63,6 +63,9 @@ jobs:
       - name: Validate templates (V1–V15)
         run: npm run validate-templates
 
+      - name: Cost sheet matches validate-templates and hotelTickets
+        run: npm run costs -- --check
+
       # Implemented rules are L1–L3, L5 and L7–L10. L4 and L6 are not implemented.
       - name: Lint policies (L1–L3, L5, L7–L9)
         run: npm run lint-policies

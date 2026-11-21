@@ -265,6 +265,7 @@ xrpl-engagement-accounts/
 ├── vectors/             # conformance vectors (counts in vectors/README.md)
 ├── docs/
 │   ├── SCOPE.md         # supported use cases by tier, component status
+│   ├── costs.md         # per-deal tickets, reserve, and fees (npm run costs)
 │   ├── pool.md
 │   ├── use-cases/       # catalog.md, hotel-booking.md
 │   ├── demo/            # b1-procurement.md, x402-purchase.md, mpp-purchase.md
@@ -284,6 +285,7 @@ npm test                    # <!-- count:tests -->771<!-- /count --> tests in th
 npm run test:sweep          # <!-- count:tests-sweep -->15<!-- /count --> hotel R20/R21 sweep tests; nightly, not part of npm test
 npm run typecheck
 npm run validate-templates  # V1–V15 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)
+npm run costs               # regenerate docs/costs.md from validate-templates and hotelTickets
 npm run lint-policies       # L1–L3, L5, L7–L10 for policies/*.json against their templates (L4 and L6 are not implemented)
 npm run vectors:build       # regenerate vectors/*.json (deterministic; review the diff)
 npm run demo:b1             # live B1 procurement demo on Testnet (see packages/cosigner/demo/README.md)

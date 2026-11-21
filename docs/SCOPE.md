@@ -10,7 +10,7 @@ Research applies to: hotel (hotel@2, catalog R1).
 
 The Hotel stay scenario in `packages/web` carries the same label. **Process rule: no new hotel features are merged.**
 
-Known research issue: at the 14-night cap, `hotel@2` needs 109 Tickets and 23.2 XRP of reserve. `npm run validate-templates` reports `tickets needed: 109, reserve: 23.2 XRP` for `settlement-vault/hotel@2`. The breakdown is on [the roadmap](../ROADMAP.md#research).
+Known research issue: at the 14-night cap, `hotel@2` needs 109 Tickets and 23.2 XRP of reserve. `npm run validate-templates` reports `tickets needed: 109, reserve: 23.2 XRP` for `settlement-vault/hotel@2`. The breakdown is on [the roadmap](../ROADMAP.md#research). The generated per-deal sheet is [costs.md](costs.md).
 
 ## Tiers
 
