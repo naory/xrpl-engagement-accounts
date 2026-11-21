@@ -252,7 +252,7 @@ Why **not** a Single Asset Vault for custody: it pools funds pro-rata with no pe
 ```
 xrpl-engagement-accounts/
 ├── packages/
-│   ├── core/            # amounts (BigInt minor units), JCS, statement envelope, template validator (V1–V15)
+│   ├── core/            # amounts (BigInt minor units), JCS, statement envelope, template validator (V1–V16)
 │   ├── policy/          # cel-eng/1 engine, attestation pipeline, decide(), decision records, lint, disclosure
 │   ├── cosigner/        # co-signer service: pinned ledger snapshots, in-flight counters, decision log, HTTP API, hotel flow
 │   │   └── demo/        # B1, hotel@2, x402, MPP and Privy Testnet scripts; x402 and sponsor probes
@@ -281,12 +281,12 @@ Stack: TypeScript (Node ≥ 22.13, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-ke
 
 ```bash
 npm install
-npm test                    # <!-- count:tests -->787<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
+npm test                    # <!-- count:tests -->797<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
 npm run test:sweep          # <!-- count:tests-sweep -->15<!-- /count --> hotel R20/R21 sweep tests; nightly, not part of npm test
 npm run typecheck
-npm run validate-templates  # V1–V15 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)
+npm run validate-templates  # V1–V16 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)
 npm run costs               # regenerate docs/costs.md from validate-templates and hotelTickets
-npm run lint-policies       # L1–L3, L5, L7–L10 for policies/*.json against their templates (L4 and L6 are not implemented)
+npm run lint-policies       # L1–L3, L5, L7–L11 for policies/*.json against their templates (L4 and L6 are not implemented)
 npm run vectors:build       # regenerate vectors/*.json (deterministic; review the diff)
 npm run demo:b1             # live B1 procurement demo on Testnet (see packages/cosigner/demo/README.md)
 npm run demo:x402           # live x402 engagement-account purchase on Testnet (needs x402-xrpl-settlement-adapter)
@@ -308,7 +308,7 @@ npm run demo:privy          # same agent + co-signer flow with the co-signer key
 ### Built and verified
 
 - **Ledger mechanics (Testnet, 21/21).** Pre-create + atomic open (signer list, Tickets, `RegularKey` removed, funding); settle-and-close with `AccountDelete` last in one `ALLORNOTHING` Batch, including an arbiter + principal split with a residual sweep; a fully ticket-based pre-signed default completed by the co-signer's final signature, with the other defaults dying at close; failure modes (the dispute bond rolls the default back atomically, a failed default burns its outer Ticket, fees measured).
-- **Template validator** V1–V15: minimal winning sets, disclosures, reserve and ticket counts, attestation-window shape and order (V13, V14), and the arbiter `accreditation: "service"` declaration (V15) ([`packages/core`](packages/core)).
+- **Template validator** V1–V16: minimal winning sets, disclosures, reserve and ticket counts, attestation-window shape and order (V13, V14), the arbiter `accreditation: "service"` declaration (V15), and dispute role and bond-param checks (V16) ([`packages/core`](packages/core)).
 - **`cel-eng/1` policy engine:** Amount type, attestation pipeline, layered policies, definitions, cost budget, decision records, lint ([`packages/policy`](packages/policy), [spec](docs/spec/policy.md)).
 - **Baseline B1–B11** + procurement (W0–W7, including the x402 **W7** challenge binding), hotel, and consumer-shopping (R2) policies ([`policies/`](policies)).
 - **Co-signer service** ([`packages/cosigner`](packages/cosigner)): each decision reads the ledger at one pinned validated index; in-flight payments count toward rolling caps and single-use approvals are reserved while in flight; requests per engagement are serialised; every decision is a signed `cosigner.decision/1` record; advisory stages get a decision but no signature; HTTP API with bearer-token auth and per-IP rate limiting (required off loopback), readiness/liveness probes, and a `SignerProvider` seam for Privy or HSM/KMS custody.

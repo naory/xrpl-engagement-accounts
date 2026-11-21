@@ -389,7 +389,13 @@ export class CosignerService {
     if (prior) return prior.receipt
     if (s.engagementId !== engagementId) throw new Error(`WRONG_ENGAGEMENT: statement is for ${s.engagementId}`)
     const attester = s.attester.account
-    if (!Object.values(st.record.parties).includes(attester)) throw new Error(`NOT_A_PARTY: ${attester}`)
+    const party = Object.values(st.record.parties).includes(attester)
+    // Named by account, not by accreditation kind: a kind-only attester is still NOT_A_PARTY.
+    const named = Object.values(st.record.attesters ?? {}).filter((t) => t.accounts?.includes(attester))
+    if (!party && named.length === 0) throw new Error(`NOT_A_PARTY: ${attester}`)
+    for (const terms of named) {
+      if (terms.types && !terms.types.includes(s.type)) throw new Error(`TYPE_NOT_ALLOWED: ${s.type} is not in this attester's types`)
+    }
 
     const assets = this.assetsOf(st.layers, st.record)
     const ledger = await this.o.source.snapshot({ account: st.record.account, assets, accounts: [attester], credentialSubjects: [attester], historySecs: 0 })
@@ -416,7 +422,9 @@ export class CosignerService {
       if (Date.parse(s.issuedAt) < opened.at) throw new Error(`EARLY_RULING: issued ${s.issuedAt}, before the case opened (${new Date(opened.at).toISOString()})`)
       // A ruling counts only if receipted by the deal's ruling deadline, so a late one can't block a due default.
       const due = this.rulingDeadline(st)
-      if (due != null && received > due) throw new Error(`LATE: party.ruling/1 after the ruling deadline (${new Date(due).toISOString()})`)
+      // dispute.lateRuling "accept" (marketplace-escrow@1) still receipts a late ruling. Hotel has no dispute
+      // block, so a ruling after the deadline stays LATE and cannot block a chargeback.
+      if (st.template.dispute?.lateRuling !== 'accept' && due != null && received > due) throw new Error(`LATE: party.ruling/1 after the ruling deadline (${new Date(due).toISOString()})`)
     }
     const issued = Date.parse(s.issuedAt)
     if (Number.isNaN(issued) || received - issued > MAX_ISSUE_LAG_SECS * 1000) throw new Error(`STALE_ISSUED: issued ${s.issuedAt}, received ${ledger.closeTime}`)
@@ -440,6 +448,58 @@ export class CosignerService {
   }
 
   /**
+   * marketplace-escrow@1 shipment order: nothing before open, and only the first receipted shipment counts.
+   * Hotel has no `dispute` block, so it never reaches here.
+   */
+  private checkShipmentSequence(st: EngagementState, ledger: LedgerSnapshot): void {
+    const open = Date.parse(st.record.timers?.open ?? '')
+    if (Number.isNaN(open)) throw new Error('NO_DEADLINE: engagement has no timer open')
+    if (Date.parse(ledger.closeTime) < open) throw new Error(`TOO_EARLY: a shipment cannot be receipted before open (${st.record.timers!.open})`)
+    const posted = [...st.attestations.values()].map((a) => a.statement)
+    if (posted.some((p) => p.type === 'shipping.shipped/1')) throw new Error('ALREADY_SHIPPED: only the first receipted shipment counts')
+  }
+
+  /**
+   * A template-declared dispute (marketplace-escrow@1): one dispute, only from `dispute.by`, bonded as
+   * amount + minDisputeBond with that party's ENG/DISPUTE credential. Hotel phase rules do not run.
+   */
+  private checkDeclaredDispute(st: EngagementState, s: Statement, assets: Record<string, AssetDef>, ledger: LedgerSnapshot): void {
+    const dispute = st.template.dispute
+    if (!dispute) return
+    const { parties, account, amount } = st.record
+    const posted = [...st.attestations.values()].map((a) => a.statement)
+    if (posted.some((p) => p.type === 'party.dispute/1')) throw new Error('ALREADY_DISPUTED: this deal already has a receipted dispute; one dispute per deal')
+    const role = Object.entries(parties).find(([, a]) => a === s.attester.account)?.[0]
+    if (!role || !dispute.by.includes(role)) throw new Error(`NOT_DISPUTANT: ${s.attester.account}`)
+    const asset = Object.values(assets).find((a) => a.code === (amount?.asset ?? st.record.asset))
+    if (!asset || !amount) throw new Error('NOT_BONDED: the deal has no amount to bond against')
+    const facts = new LedgerFacts(ledger, new Assets(assets))
+    if (!facts.credentialExists(parties[role]!, account, disputeCredentialType(st.layers))) {
+      throw new Error(`NOT_BONDED: post the ${disputeCredentialType(st.layers)} Credential and the bond (amount plus minDisputeBond) before the dispute statement`)
+    }
+    const bond = effectiveParam(st.layers, 'minDisputeBond')
+    const base = dispute.bond?.base === 'amount' ? parseAmount(amount.value, asset) : undefined
+    if (!base) throw new Error(`NOT_BONDED: dispute bond base ${JSON.stringify(dispute.bond?.base ?? null)} is not "amount"`)
+    let need = base
+    if (typeof bond === 'string') need = need.add(parseAmount(bond, asset))
+    if (facts.balance(account, asset.code).cmp(need) < 0) {
+      throw new Error(`NOT_BONDED: post the ${disputeCredentialType(st.layers)} Credential and the bond (amount plus minDisputeBond) before the dispute statement`)
+    }
+  }
+
+  /** Receipt time and whether the attester is a party, for statements already stored. */
+  private receiptAnchors(st: EngagementState): Map<string, { receivedAt: string; attesterIsParty: boolean }> {
+    const parties = new Set(Object.values(st.record.parties))
+    const map = new Map<string, { receivedAt: string; attesterIsParty: boolean }>()
+    for (const { statement, receipt } of st.attestations.values()) {
+      const receivedAt = (receipt.statement.claim as { receivedAt?: unknown }).receivedAt
+      if (typeof receivedAt !== 'string') continue
+      map.set(statement.id, { receivedAt, attesterIsParty: parties.has(statement.attester.account) })
+    }
+    return map
+  }
+
+  /**
    * Ordering rules no single statement can show (R28–R33, R38, R39): only the hotel confirms, and only once; an
    * entry dispute is filed from check-in on, and a receipted one (bonded at ingest: principal's ENG/DISPUTE Credential on
    * the account and the bond on the ledger) freezes the stay for good — no check-in can be recorded by either side, even
@@ -457,7 +517,10 @@ export class CosignerService {
       if (s.attester.account !== parties.counterparty) throw new Error(`NOT_COUNTERPARTY: only the counterparty confirms the booking (${s.attester.account})`)
       if (firstConfirmation) throw new Error('ALREADY_CONFIRMED: the booking already has a receipted confirmation')
     }
-    if (s.type === 'party.dispute/1') {
+    if (st.template.dispute && s.type === 'shipping.shipped/1') this.checkShipmentSequence(st, ledger)
+    if (s.type === 'party.dispute/1' && st.template.dispute) {
+      this.checkDeclaredDispute(st, s, assets, ledger)
+    } else if (s.type === 'party.dispute/1') {
       const isPrincipalDispute = (p: Statement) => p.type === 'party.dispute/1' && p.attester.account === parties.principal
       if (isPrincipalDispute(s) && posted.some(isPrincipalDispute)) throw new Error('ALREADY_DISPUTED: the guest already has a receipted dispute on this deal; one dispute per deal')
       const phase = (s.claim as { phase?: unknown }).phase
@@ -581,6 +644,8 @@ export class CosignerService {
     const posted = [...st.attestations.values()].map((a) => a.statement)
     const d = posted.find((p) => p.type === 'party.dispute/1' && p.attester.account === parties.principal)
     if (d) {
+      // A template-declared dispute (marketplace-escrow@1) opens at the dispute's issuedAt. No hotel anchor.
+      if (st.template.dispute) return { kind: 'dispute', at: Date.parse(d.issuedAt) }
       const anchor = Date.parse(((d.claim as { phase?: unknown }).phase === 'settlement' ? timers?.deliveryBy : timers?.checkIn) ?? '')
       const issued = Date.parse(d.issuedAt)
       return { kind: 'dispute', at: Number.isNaN(anchor) ? issued : Math.max(issued, anchor) }
@@ -884,7 +949,8 @@ export class CosignerService {
 
     const decided = decide({
       stage: req.stage, proposedTx: tx, engagement, template: st.template, layers: st.layers,
-      mandate: st.mandate, statements, ledger, inflight: mine.map(({ decisionId, txHash, lastLedgerSequence, payouts }) => ({ decisionId, txHash, lastLedgerSequence, payouts })),
+      mandate: st.mandate, statements, ledger, receipted: this.receiptAnchors(st),
+      inflight: mine.map(({ decisionId, txHash, lastLedgerSequence, payouts }) => ({ decisionId, txHash, lastLedgerSequence, payouts })),
     })
     const d: Decision = notReceipted.length ? { ...decided, statementsRejected: [...notReceipted, ...decided.statementsRejected] } : decided
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import xrpl from 'xrpl'
 import {
-  Amount, AssetMismatchError, bps,   canonicalize, formatAmount, parseAmount, toMinor,
+  Amount, AssetMismatchError, bps, canonicalize, formatAmount, parseAmount, toMinor,
   signStatement, verifyStatement, statementId, newNonce, validateTemplate, minimalWinningSets, weightOf,
   MIN_INSPECT_GAP_SECS, MIN_SHIP_WINDOW_SECS,
   type StatementBody, type Template,
@@ -230,6 +230,16 @@ describe('template validator', () => {
     ok.timers!.inspectBy.durationSecs = MIN_SHIP_WINDOW_SECS + MIN_INSPECT_GAP_SECS
     expect(validateTemplate(ok).errors).toEqual([])
     expect(validateTemplate(marketplace()).errors).toEqual([])
+  })
+  it('V16: dispute.by names template roles, and plusParam names a policy param', () => {
+    const unknown = marketplace()
+    unknown.dispute!.by = ['guest']
+    expect(validateTemplate(unknown).errors.map((e) => e.id)).toContain('V16')
+    const params = { minDisputeBond: '0.50', serviceFeeBps: 50 }
+    const missing = marketplace()
+    missing.dispute!.bond.plusParam = 'noSuchParam'
+    expect(validateTemplate(missing, { policyParams: params }).errors.map((e) => e.id)).toEqual(['V16'])
+    expect(validateTemplate(marketplace(), { policyParams: params }).errors).toEqual([])
   })
   it('V6: the dispute overdue timer is escalate, so arbiter silence is not a pre-signed outcome', () => {
     const silent = marketplace()

@@ -48,7 +48,7 @@ Known research issue: at the 14-night cap, `hotel@2` needs 109 Tickets and 23.2 
 | Component | State | Where |
 |---|---|---|
 | Ledger mechanics (pre-create, atomic open, ticketed defaults, settle-and-close) | ✅ proven on Testnet (21/21) | spike (kept local; not reproducible from this repo yet; see T27) |
-| Template validator (V1–V15, disclosures, reserve) | ✅ | `packages/core` |
+| Template validator (V1–V16, disclosures, reserve) | ✅ | `packages/core` |
 | Statement envelope (JCS, `ENGA\0`, XRPL keys) | ✅ | `packages/core` |
 | Policy engine `cel-eng/1`, attestation pipeline, lint | ✅ | `packages/policy` |
 | Baseline B1–B11, procurement (incl. W7 x402-challenge binding), hotel, and consumer-shopping (R2) policies | ✅ | `policies/` |

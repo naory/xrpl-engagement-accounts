@@ -13,9 +13,9 @@ npm install
 npm test                 # core, policy, co-signer, conformance vectors
 npm run test:sweep       # hotel R20/R21 sweep (nightly; not part of npm test)
 npm run typecheck
-npm run validate-templates   # V1–V15 over templates/*.json
+npm run validate-templates   # V1–V16 over templates/*.json
 npm run costs                # regenerate docs/costs.md; npm run costs -- --check fails if it drifted
-npm run lint-policies        # L1–L3, L5, L7–L9 over policies/*.json (L4 and L6 are not implemented)
+npm run lint-policies        # L1–L3, L5, L7–L11 over policies/*.json (L4 and L6 are not implemented)
 npm run check-counts         # documented test and vector counts match the repo
 ```
 
