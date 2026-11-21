@@ -1,9 +1,12 @@
-// Check docs/trust-model.md, the README first-screen links, and banned words
-// in the root README (same rule as docs/trust-model.md and packages/agent-mcp/README.md).
+// Check docs/trust-model.md, docs/for-platforms.md, the README first-screen links,
+// and banned words in the root README (same rule as docs/trust-model.md and
+// packages/agent-mcp/README.md).
 //
-// Citations in the page are for readers: `Symbol` (`path:line`).
-// This script checks that each cited path exists and that the file contains the named symbol.
-// It does not check the line number.
+// Citations in the pages are for readers: `Symbol` (`path:line`).
+// For docs/trust-model.md this script checks that each cited path exists and that
+// the file contains the named symbol. It does not check that page's line number.
+// For docs/for-platforms.md it also checks the line: the cited line must exist and
+// contain the symbol, and every prose paragraph must carry at least one citation.
 //
 // Banned words are a product copy rule: no overclaiming.
 // Match on word boundaries, case-insensitive, so "security" and "insecure" pass and "Secure" fails.
@@ -117,10 +120,56 @@ function checkReadme(problems: string[]): void {
   problems.push(...readmeCopyProblems(readme))
 }
 
+function checkForPlatforms(problems: string[]): void {
+  const rel = 'docs/for-platforms.md'
+  if (!fs.existsSync(path.join(root, rel))) {
+    problems.push(`${rel}: missing`)
+    return
+  }
+  const doc = read(rel)
+  const banned = bannedWordsIn(doc)
+  if (banned.length) problems.push(`${rel}: banned words ${banned.join(', ')}`)
+
+  for (const chunk of doc.split(/\n{2,}/)) {
+    const text = chunk.trim()
+    if (!text) continue
+    const lines = text.split('\n')
+    if (lines.every((l) => /^#{1,6} /.test(l) || /^<!--/.test(l) || l.trim() === '')) continue
+    CITE.lastIndex = 0
+    const cites = [...text.matchAll(CITE)]
+    if (!cites.length) {
+      problems.push(`${rel}: prose has no file:line citation: ${lines[0]}`)
+      continue
+    }
+    for (const match of cites) {
+      const symbol = match[1]
+      const file = match[2]
+      const lineNo = Number(match[3])
+      if (!PATH_OK.test(file)) {
+        problems.push(`${rel}: citation path not allowed: ${file}`)
+        continue
+      }
+      const abs = path.join(root, file)
+      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+        problems.push(`${rel}: cited file missing: ${file} (${symbol})`)
+        continue
+      }
+      const sourceLines = fs.readFileSync(abs, 'utf8').split('\n')
+      const line = sourceLines[lineNo - 1]
+      if (!line || lineNo < 1) {
+        problems.push(`${rel}: ${file}:${lineNo} is not a line of ${symbol}`)
+        continue
+      }
+      if (!symbolInFile(symbol, line)) problems.push(`${rel}: ${file}:${lineNo} does not contain ${symbol}`)
+    }
+  }
+}
+
 export function collectProblems(): string[] {
   const problems: string[] = []
   checkReadme(problems)
   checkPage(problems)
+  checkForPlatforms(problems)
   return problems
 }
 
