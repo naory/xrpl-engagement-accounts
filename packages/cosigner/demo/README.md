@@ -79,6 +79,10 @@ Results go to `demo/results/hotel-run-*.json`: every transaction hash, each path
 
 `npm run demo:hotel-dispute` records two of those outcomes against a running `npm run cosigner:local` (Testnet only; the scheduler submits H2 when `COSIGNER_TICK_SUBMIT=1`). Sub-step 1 is the H5 arbiter ruling. Sub-step 2 is H2: the hotel never confirms, so `default.refund` fires. It is not a dispute default. Walkthrough: [`docs/demo/hotel-dispute.md`](../../../docs/demo/hotel-dispute.md).
 
+## `marketplace-escrow-testnet.ts`
+
+`npm run demo:marketplace-escrow` runs ME1–ME11 and ME15–ME20 on XRPL Testnet. The co-signer is in that process. `npm run demo:marketplace-escrow-dispute` runs the Clip 3 path only (ME6 then ME4). Walkthrough: [`docs/demo/marketplace-escrow-dispute.md`](../../../docs/demo/marketplace-escrow-dispute.md). The run buys about 2 RLUSD, and a 0.50 bond, from Ripple's Testnet issuer under a 50 XRP cap. If that buy cannot be done, the script creates an issuer and says so. Timers in the run are a copy (45s ship, 110s inspect, 20s ruling, 15s alert). The shipped template and policy are unchanged.
+
 ## `x402/b1-x402-testnet.ts`: what it checks
 
 An engagement account pays an x402 merchant through the settlement adapter's `prepaid` scheme. It opens the same owner-wallet account as `b1-testnet.ts`, then runs the x402 round trip. Design and adapter install: [`x402/README.md`](x402/README.md).
