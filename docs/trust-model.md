@@ -16,7 +16,7 @@ The ledger stores Credential objects. It does not read spend caps, mandates, or 
 
 ## Shipped weights
 
-`minimalWinningSets` enumerates the minimal role sets whose weights reach the quorum (`minimalWinningSets` (`packages/core/src/template.ts:105`)). The validator rejects a service-operated weight that reaches quorum on its own (`serviceWeight` (`packages/core/src/template.ts:145`)).
+`minimalWinningSets` enumerates the minimal role sets whose weights reach the quorum (`minimalWinningSets` (`packages/core/src/template.ts:127`)). The validator rejects a service-operated weight that reaches quorum on its own (`serviceWeight` (`packages/core/src/template.ts:167`)).
 
 | Template | Weights | Quorum | Minimal winning sets |
 |---|---|---|---|
@@ -33,7 +33,7 @@ On `hotel@2`, counterparty weight is 3 (`weight` (`templates/hotel@2.json:7`)) a
 
 `settle.ruling` is signed by arbiter plus principal, or by arbiter plus counterparty. Its `enforcement` is `"none"` (`enforcement` (`templates/hotel@2.json:16`)). `signsStage` does not sign an outcome whose enforcement is `none` (`signsStage` (`packages/cosigner/src/service.ts:949`)). `settle.ruling` is not co-signed. Arbiter plus one party is the intended ruling path, so the real risk is an arbiter who isn't neutral, not the weights themselves.
 
-The template check records a V10 disclosure for every escrow winning set that excludes the principal: `{counterparty, arbiter}` can move funds without the principal (`V10` (`packages/core/src/template.ts:223`)).
+The template check records a V10 disclosure for every escrow winning set that excludes the principal: `{counterparty, arbiter}` can move funds without the principal (`V10` (`packages/core/src/template.ts:248`)).
 
 `hotel@1` is the same shape with smaller numbers: counterparty 2 plus arbiter 3 equals quorum 5 (`weight` (`templates/hotel@1.json:7`), `weight` (`templates/hotel@1.json:8`), `quorum` (`templates/hotel@1.json:11`)), and `settle.ruling` is also `enforcement` `"none"` (`enforcement` (`templates/hotel@1.json:15`)).
 

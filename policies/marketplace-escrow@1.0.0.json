@@ -1,0 +1,184 @@
+{
+  "policyId": "pol_marketplace-escrow",
+  "version": "1.0.0",
+  "layer": "template",
+  "appliesTo": [
+    "settlement-vault/marketplace-escrow@1"
+  ],
+  "language": "cel-eng/1",
+  "registry": "att-registry@2026.11",
+  "assets": {
+    "RLUSD": {
+      "code": "RLUSD",
+      "kind": "IOU",
+      "currency": "524C555344000000000000000000000000000000",
+      "issuer": "$slot:rlusd.issuer",
+      "decimals": 6
+    }
+  },
+  "constraints": {
+    "allowedRails": [
+      "xrpl"
+    ],
+    "allowedAssets": [
+      "RLUSD"
+    ]
+  },
+  "params": {
+    "serviceFeeBps": 50,
+    "minDisputeBond": "0.50",
+    "minShipWindow": "86400s",
+    "minInspectGap": "604800s",
+    "rulingOverdueRepeat": "86400s",
+    "arbiterCredentialType": "ENG/ARBITER",
+    "disputeCredentialType": "ENG/DISPUTE",
+    "arbiterIssuers": [
+      "$slot:arbiter.accreditor"
+    ]
+  },
+  "definitions": {
+    "price": "amt(eng.amount.value, 'RLUSD')",
+    "balance": "ledger.balance(eng.account, 'RLUSD')",
+    "shipments": "att.list('shipping.shipped/1', 'shipping')",
+    "shipped": "size(def.shipments) > 0",
+    "disputes": "att.list('party.dispute/1', 'principal')",
+    "disputeOpen": "size(def.disputes) > 0 && def.balance >= def.price + amt(params.minDisputeBond, 'RLUSD')",
+    "toSeller": "tx.payouts.to(eng.parties.counterparty, 'RLUSD')",
+    "toFee": "tx.payouts.to(eng.fee.to, 'RLUSD')",
+    "toBuyer": "tx.payouts.to(eng.parties.principal, 'RLUSD')"
+  },
+  "stages": {
+    "default.refund": {
+      "enforcement": "final-signature",
+      "rules": [
+        {
+          "id": "MR1",
+          "title": "Refund is due",
+          "reason": "NOT_DUE",
+          "check": "now > timestamp(eng.timers.shipBy)",
+          "message": "The automatic refund runs only after the shipment deadline. Before that, the seller still has time to ship."
+        },
+        {
+          "id": "MR2",
+          "title": "Nothing was shipped",
+          "reason": "SHIPPED",
+          "check": "!def.shipped",
+          "message": "If the named carrier already recorded a shipment, the never-shipped refund does not apply. A dispute does not block this refund: it is the outcome for a sale that was never performed."
+        },
+        {
+          "id": "MR3",
+          "title": "Valid refund",
+          "reason": "TX_SHAPE",
+          "check": "tx.matchesBlueprint('close.refundAll')",
+          "message": "The refund pays the buyer and closes the account, in one transaction."
+        },
+        {
+          "id": "MR4",
+          "title": "Everything goes back to the buyer",
+          "reason": "PAYOUT_MISMATCH",
+          "check": "def.toBuyer == def.balance",
+          "message": "The buyer gets back every last cent in the account, with no fee."
+        }
+      ]
+    },
+    "default.release": {
+      "enforcement": "final-signature",
+      "rules": [
+        {
+          "id": "ML1",
+          "title": "Release is due",
+          "reason": "NOT_DUE",
+          "check": "now > timestamp(eng.timers.inspectBy) && def.shipped",
+          "message": "The automatic release runs only after the inspection deadline, and only once a shipment was recorded. It does not lapse because an arbiter stayed silent."
+        },
+        {
+          "id": "ML2",
+          "title": "A shipment was recorded",
+          "reason": "NOT_SHIPPED",
+          "check": "def.shipped",
+          "message": "Without a recorded shipment the seller is not paid. That deal refunds instead."
+        },
+        {
+          "id": "ML3",
+          "title": "No open dispute",
+          "reason": "DISPUTE_OPEN",
+          "check": "!def.disputeOpen",
+          "message": "An open buyer dispute blocks the automatic release until the account closes. Time passing, including the arbiter's deadline, does not clear it."
+        },
+        {
+          "id": "ML4",
+          "title": "The price is in the account",
+          "reason": "BALANCE_CHANGED",
+          "check": "def.balance >= def.price",
+          "message": "The release needs at least the price in the account. Anything more does not stop it: it goes back to the buyer."
+        },
+        {
+          "id": "ML5",
+          "title": "Valid release",
+          "reason": "TX_SHAPE",
+          "check": "tx.matchesBlueprint('close.releaseAll') || tx.matchesBlueprint('close.releaseWithSweep')",
+          "message": "The release pays the seller (less the fee), returns anything extra to the buyer, and closes the account."
+        },
+        {
+          "id": "ML6",
+          "title": "Seller gets the price, the buyer gets any extra",
+          "reason": "PAYOUT_MISMATCH",
+          "check": "def.toSeller + def.toFee == def.price && def.toFee == bps(def.toSeller + def.toFee, params.serviceFeeBps) && def.toBuyer + def.price == def.balance && tx.payouts.hasResidual() == (def.balance > def.price)",
+          "message": "The seller is paid exactly the price, less the fee. Anything else in the account goes back to the buyer. Of the two releases signed in advance, only the one that fits the balance can be used."
+        }
+      ]
+    },
+    "release.confirm": {
+      "enforcement": "ledger",
+      "rules": [
+        {
+          "id": "MC1",
+          "title": "Valid confirmation",
+          "reason": "TX_SHAPE",
+          "check": "tx.matchesBlueprint('close.split')",
+          "message": "The buyer confirming receipt splits the money and closes the account, in one transaction."
+        },
+        {
+          "id": "MC2",
+          "title": "Seller and fee make the price",
+          "reason": "PAYOUT_MISMATCH",
+          "check": "def.toSeller + def.toFee == def.price",
+          "message": "The seller and the service fee together equal the price. Anything extra can go back to the buyer."
+        },
+        {
+          "id": "MC3",
+          "title": "Correct service fee",
+          "reason": "FEE_MISMATCH",
+          "check": "def.toFee == bps(def.toSeller + def.toFee, params.serviceFeeBps)",
+          "message": "The service takes 0.5% of the price the seller receives. Money returned to the buyer carries no fee."
+        },
+        {
+          "id": "MC4",
+          "title": "Pays only buyer, seller and fee",
+          "reason": "BAD_PAYEE",
+          "check": "tx.payouts.destinations().all(d, d in [eng.parties.principal, eng.parties.counterparty, eng.fee.to])",
+          "message": "A confirmation can only pay the buyer, the seller, and the service fee."
+        }
+      ]
+    },
+    "refund.agreed": {
+      "enforcement": "ledger",
+      "rules": [
+        {
+          "id": "MA1",
+          "title": "Valid agreed refund",
+          "reason": "TX_SHAPE",
+          "check": "tx.matchesBlueprint('close.refundAll')",
+          "message": "An agreed cancel sends everything to the buyer and closes the account, in one transaction."
+        },
+        {
+          "id": "MA2",
+          "title": "Full balance to the buyer",
+          "reason": "PAYOUT_MISMATCH",
+          "check": "def.toBuyer == def.balance",
+          "message": "Everything in the account goes back to the buyer, with no fee."
+        }
+      ]
+    }
+  }
+}

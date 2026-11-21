@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import xrpl from 'xrpl'
 import {
-  Amount, AssetMismatchError, bps, canonicalize, formatAmount, parseAmount, toMinor,
-  signStatement, verifyStatement, statementId, newNonce, validateTemplate, minimalWinningSets,
+  Amount, AssetMismatchError, bps,   canonicalize, formatAmount, parseAmount, toMinor,
+  signStatement, verifyStatement, statementId, newNonce, validateTemplate, minimalWinningSets, weightOf,
+  MIN_INSPECT_GAP_SECS, MIN_SHIP_WINDOW_SECS,
   type StatementBody, type Template,
 } from '../src/index.ts'
 
@@ -185,5 +186,55 @@ describe('template validator', () => {
     const t = hotel()
     const sets = minimalWinningSets(t).map((s) => s.join('+'))
     expect(sets).not.toContain('principal+counterparty+arbiter')
+  })
+
+  const marketplace = () => structuredClone(load('marketplace-escrow@1.json'))
+  it('accepts marketplace-escrow@1: hotel@2 winning sets, 15 Tickets, 4.4 XRP, only the V10 disclosure', () => {
+    const t = marketplace()
+    const r = validateTemplate(t)
+    expect(r.errors).toEqual([])
+    expect(r.ok).toBe(true)
+    expect(r.minimalWinningSets).toEqual([['counterparty', 'arbiter'], ['principal', 'arbiter'], ['principal', 'counterparty', 'cosigner']])
+    expect(r.ticketsNeeded).toBe(15)
+    expect(r.reserveDrops).toBe(4_400_000n)
+    expect(r.disclosures).toEqual([{ id: 'V10', message: '{counterparty, arbiter} can move funds without the principal' }])
+    expect(r.warnings).toEqual([])
+    expect(t.timers!.rulingDueBy.onExpire).toBe('escalate')
+    expect(t.dispute?.lateRuling).toBe('accept')
+    expect(t.dispute?.overdueTimer).toBe('rulingDueBy')
+    // buyer+seller, arbiter+co-signer, and seller+co-signer are below quorum (ME13)
+    for (const set of [['principal', 'counterparty'], ['arbiter', 'cosigner'], ['counterparty', 'cosigner']]) {
+      expect(weightOf(t, set)).toBeLessThan(t.quorum)
+      expect(r.minimalWinningSets).not.toContainEqual(set)
+    }
+  })
+  it('V14: shipBy must end before inspectBy, with a 24h ship window and a 7d inspect gap', () => {
+    const badOrder = marketplace()
+    badOrder.timers!.inspectBy.durationSecs = badOrder.timers!.shipBy.durationSecs
+    expect(validateTemplate(badOrder).errors.map((e) => e.id)).toContain('V14')
+
+    const shortGap = marketplace()
+    shortGap.timers!.shipBy.durationSecs = MIN_SHIP_WINDOW_SECS
+    shortGap.timers!.inspectBy.durationSecs = MIN_SHIP_WINDOW_SECS + MIN_INSPECT_GAP_SECS - 1
+    const gapErrors = validateTemplate(shortGap).errors
+    expect(gapErrors.map((e) => e.id)).toEqual(['V14'])
+    expect(gapErrors[0].message).toContain(`${MIN_INSPECT_GAP_SECS}s`)
+
+    const shortShip = marketplace()
+    shortShip.timers!.shipBy.durationSecs = MIN_SHIP_WINDOW_SECS - 1
+    shortShip.timers!.inspectBy.durationSecs = shortShip.timers!.shipBy.durationSecs + MIN_INSPECT_GAP_SECS
+    expect(validateTemplate(shortShip).errors.map((e) => e.id)).toEqual(['V14'])
+
+    const ok = marketplace()
+    ok.timers!.shipBy.durationSecs = MIN_SHIP_WINDOW_SECS
+    ok.timers!.inspectBy.durationSecs = MIN_SHIP_WINDOW_SECS + MIN_INSPECT_GAP_SECS
+    expect(validateTemplate(ok).errors).toEqual([])
+    expect(validateTemplate(marketplace()).errors).toEqual([])
+  })
+  it('V6: the dispute overdue timer is escalate, so arbiter silence is not a pre-signed outcome', () => {
+    const silent = marketplace()
+    silent.timers!.rulingDueBy.onExpire = 'default.release'
+    expect(validateTemplate(silent).errors.map((e) => e.id)).toContain('V6')
+    expect(validateTemplate(marketplace()).errors).toEqual([])
   })
 })
