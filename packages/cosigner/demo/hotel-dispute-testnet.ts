@@ -1,7 +1,9 @@
 // Clip 3: hotel dispute. Testnet walkthrough of two hotel@2 outcomes against the local co-signer.
 //
 //   COSIGNER_TICK_SUBMIT=1 COSIGNER_TICK_MS=10000 npm run cosigner:local
-//   npm run demo:hotel-dispute
+//   DEMO_ENABLE_HOTEL=1 npm run demo:hotel-dispute
+//   npm run demo:hotel-dispute -- --enable-hotel
+// Off unless DEMO_ENABLE_HOTEL=1 or --enable-hotel. See ROADMAP.md.
 //
 // Sub-step 1 is H5: an arbiter ruling on an entry dispute (settle.ruling). Sub-step 2 is H2: the
 // hotel never confirms, so default.refund fires. confirmBy on that record is 60 seconds after the
@@ -26,6 +28,7 @@ import {
   type Fees,
 } from '../src/xrpl-io.ts'
 import { assertKnownTestnetEndpoint } from '../src/testnet-endpoint.ts'
+import { assertHotelDemoEnabled } from '../../web/src/demo-scenarios.ts'
 
 type Wallet = InstanceType<typeof xrpl.Wallet>
 type Client = InstanceType<typeof xrpl.Client>
@@ -226,6 +229,7 @@ async function delivered(client: Client, tx: Json): Promise<Array<{ to: string; 
 const near = (a: string, b: string) => Math.abs(Number(a) - Number(b)) < 1e-6
 
 async function main(): Promise<void> {
+  assertHotelDemoEnabled()
   const { discovery, token, endpoint } = loadDiscovery()
   const health = await fetch(`${discovery.url}/healthz`, { signal: AbortSignal.timeout(30_000) })
   if (!health.ok) throw new Error('refusing to start: local co-signer /healthz is not ok')

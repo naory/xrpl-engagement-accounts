@@ -5,11 +5,16 @@ The scripts run from the **repo root** on a machine that can reach XRPL Testnet 
 ```bash
 npm install
 npm run demo:b1        # B1 procurement agent, ~20 min including the AccountDelete wait
-npm run demo:hotel     # hotel@2 stay escrow, every path (H1–H17), ~25 min including the AccountDelete wait
-npm run demo:hotel-dispute   # Clip 3: H5 ruling, then H2 refund when the hotel never confirms. Needs cosigner:local.
 SKIP_CLOSE=1 npm run demo:b1   # ~3 min, leaves the engagement account open
 npm run demo:x402      # x402 engagement-account purchase (needs x402-xrpl-settlement-adapter)
 npm run probe:x402     # probe a hosted facilitator for engagement-account support
+```
+
+Hotel (hotel@2) is disabled in the demo while it is frozen as legacy; see ROADMAP.md. Set DEMO_ENABLE_HOTEL=1 to re-enable.
+
+```bash
+DEMO_ENABLE_HOTEL=1 npm run demo:hotel          # hotel@2 stay escrow, every path (H1–H17), ~25 min including the AccountDelete wait
+DEMO_ENABLE_HOTEL=1 npm run demo:hotel-dispute  # Clip 3: H5 ruling, then H2 refund when the hotel never confirms. Needs cosigner:local.
 ```
 
 With no `XRPL_URL`, the demo and probe scripts use `resolveTestnetEndpoint` (`@eng/cosigner`): `wss://testnet.xrpl-labs.com`, then `wss://s.altnet.rippletest.net:51233` if that connect fails or times out. Set `XRPL_URL` to pin an endpoint, including Devnet (`XRPL_URL=wss://s.devnet.rippletest.net:51233`).
