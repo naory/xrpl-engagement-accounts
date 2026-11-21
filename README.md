@@ -1,16 +1,14 @@
 # XRPL Engagement Accounts
 
-**Single-use, multi-party joint accounts on the XRP Ledger, with quorum enforced by the ledger, for agent payments, escrow-with-recourse, and stake-backed trust.**
+**Recourse for agent payments on XRPL.** A spending-capped, escrowed account per deal, with a [neutral arbiter](docs/trust-model.md#arbiter-neutrality-limits) and default outcomes. It's built for payment platforms and x402 facilitators that want to offer chargeback-style protection on stablecoin payments. Hotel booking is the reference template. Testnet reference implementation; not for mainnet funds.
 
 **▶ [Try the live demo](https://naory.github.io/xrpl-engagement-accounts/)** — an interactive, simulated walkthrough: an agent spends, gets blocked, settles a dispute, and pays across rails. (The same page also runs against live XRPL Testnet via `npm run web`.)
 
-> Status: **core mechanics proven on Testnet; policy co-signer and x402 shipped** (October 2026). This README is the design document.
-> - **Ledger mechanics** — atomic open, pre-signed ticket-based defaults, settle-and-close with `AccountDelete`, and the ruling path without the service — are proven on XRPL Testnet (21/21).
-> - **Policy co-signer** — the template validator, the `cel-eng/1` policy engine, the co-signer service and the conformance vectors — is built in [`packages/`](packages). The B1 procurement agent runs end to end on Testnet (11/11). Walkthrough: [`docs/demo/b1-procurement.md`](docs/demo/b1-procurement.md).
-> - **x402** — engagement accounts pay x402 merchants today through our own settlement adapter ([`x402-xrpl-settlement-adapter`](https://www.npmjs.com/package/x402-xrpl-settlement-adapter), published), using the `prepaid` scheme with the co-signer's W7 binding; proven on Testnet (4/4). Walkthrough: [`docs/demo/x402-purchase.md`](docs/demo/x402-purchase.md).
-> - **Not built yet:** the arbiter, the engagement-store facilitator, and the indexer.
-> - What is supported, and when: [`docs/SCOPE.md`](docs/SCOPE.md).
-> - What the ledger enforces and what the policy co-signer enforces: [Trust model](docs/trust-model.md).
+Status (November 2026): ledger mechanics, the policy co-signer (durable state), and x402 payments run on XRPL Testnet. MPP payments are verified in process.
+
+What's built and what isn't: [docs/SCOPE.md](docs/SCOPE.md).
+
+What the ledger enforces vs the co-signer: [Trust model](docs/trust-model.md).
 
 ---
 
@@ -282,7 +280,7 @@ Stack: TypeScript (Node ≥ 22.13, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-ke
 
 ```bash
 npm install
-npm test                    # <!-- count:tests -->770<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
+npm test                    # <!-- count:tests -->771<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
 npm run test:sweep          # <!-- count:tests-sweep -->15<!-- /count --> hotel R20/R21 sweep tests; nightly, not part of npm test
 npm run typecheck
 npm run validate-templates  # V1–V15 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)
