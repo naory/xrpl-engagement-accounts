@@ -57,7 +57,9 @@ session; it is a demo, not a service.
 
 ## Scenarios
 
-A template dropdown switches between five scenarios, both in simulated and live mode:
+A template dropdown switches scenarios, both in simulated and live mode.
+
+Hotel (hotel@2) is disabled in the demo while it is frozen as legacy; see ROADMAP.md. Set DEMO_ENABLE_HOTEL=1 to re-enable.
 
 - **Procurement agent** (owner wallet, quorum 2): the agent spends repeatedly; the co-signer signs
   in-policy payments and refuses the rest.

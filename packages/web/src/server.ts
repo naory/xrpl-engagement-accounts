@@ -11,6 +11,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadEnv, resolveServiceEndpoint, type HotelPath } from '@eng/cosigner'
 import { DemoOrchestrator } from './orchestrator.ts'
+import { HOTEL_DEMO_NOTE, hotelDemoEnabled } from './demo-scenarios.ts'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 loadEnv([path.resolve(here, '../../..')]) // pick up repo-root .env before reading any config below
@@ -57,13 +58,20 @@ const server = http.createServer(async (req, res) => {
   const m = req.method ?? 'GET'
   try {
     if (m === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) return servePage(res, LANDING, '<script>window.__DEMO_URL__="/demo"</script>')
-    if (m === 'GET' && (url.pathname === '/demo' || url.pathname === '/demo.html')) return servePage(res, INDEX, `<script>window.__ENG_API__=${JSON.stringify({ live: true, explorer: orch.explorer, pooled: process.env.ENG_USE_POOL === '1' || process.env.ENG_USE_POOL === 'true' })}</script>`)
+    if (m === 'GET' && (url.pathname === '/demo' || url.pathname === '/demo.html')) return servePage(res, INDEX, `<script>window.__ENG_API__=${JSON.stringify({ live: true, explorer: orch.explorer, pooled: process.env.ENG_USE_POOL === '1' || process.env.ENG_USE_POOL === 'true', enableHotel: hotelDemoEnabled() })}</script>`)
     if (url.pathname.startsWith('/api/')) {
       await ensureConnected()
-      if (m === 'POST' && url.pathname === '/api/provision') return json(res, 200, await orch.provision((await readBody<{ scenario?: string }>(req)).scenario))
+      if (m === 'POST' && url.pathname === '/api/provision') {
+        const body = await readBody<{ scenario?: string }>(req)
+        if (body.scenario === 'hotel' && !hotelDemoEnabled()) return json(res, 403, { error: HOTEL_DEMO_NOTE })
+        return json(res, 200, await orch.provision(body.scenario))
+      }
       if (m === 'POST' && url.pathname === '/api/escrow') return json(res, 200, await orch.escrow(await readBody<{ path: string }>(req)))
-      if (m === 'POST' && url.pathname === '/api/hotel') return json(res, 200, await orch.hotel(await readBody<{ path: HotelPath }>(req)))
-      if (m === 'GET' && url.pathname === '/api/hotel') return json(res, 200, orch.hotelStatus())
+      if (url.pathname === '/api/hotel') {
+        if (!hotelDemoEnabled()) return json(res, 403, { error: HOTEL_DEMO_NOTE })
+        if (m === 'POST') return json(res, 200, await orch.hotel(await readBody<{ path: HotelPath }>(req)))
+        if (m === 'GET') return json(res, 200, orch.hotelStatus())
+      }
       if (m === 'POST' && url.pathname === '/api/x402') return json(res, 200, await orch.x402(await readBody<{ path: string; scheme?: string }>(req)))
       if (m === 'POST' && url.pathname === '/api/propose') return json(res, 200, await orch.propose(await readBody<PayBody>(req)))
       if (m === 'POST' && url.pathname === '/api/pay') return json(res, 200, await orch.pay(await readBody<PayBody>(req)))

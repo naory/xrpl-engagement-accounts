@@ -1,7 +1,9 @@
 // Hotel stay escrow (hotel@2) on XRPL Testnet: every path of spec §7.1 through the policy co-signer.
 //
-//   npm install && npm run demo:hotel        (from the repo root; ~25 min, most of it the AccountDelete age wait)
-//   XRPL_URL=wss://s.devnet.rippletest.net:51233 npm run demo:hotel
+//   DEMO_ENABLE_HOTEL=1 npm run demo:hotel   (from the repo root; ~25 min, most of it the AccountDelete age wait)
+//   DEMO_ENABLE_HOTEL=1 XRPL_URL=wss://s.devnet.rippletest.net:51233 npm run demo:hotel
+//   npm run demo:hotel -- --enable-hotel
+// Off unless DEMO_ENABLE_HOTEL=1 or --enable-hotel. See ROADMAP.md.
 //
 // The service's accreditor first issues the arbiter an ENG/ARBITER Credential (the arbiter accepts it); a deal naming an
 // unaccredited arbiter is refused at registration inside HotelFlow.open(), before the open Batch moves any money (H16). All engagement accounts are pre-created
@@ -19,6 +21,7 @@ import {
   CosignerService, DEMO_HOTEL_BOOKING, DEMO_HOTEL_TIMERS, HOTEL_PATHS, HotelFlow, XrplLedgerSource, hotelPathNights, hotelTerms, resolveTestnetEndpoint,
   type HotelCast, type HotelPath, type HotelStepResult,
 } from '../src/index.ts'
+import { assertHotelDemoEnabled } from '../../web/src/demo-scenarios.ts'
 import { ASF_DEFAULT_RIPPLE, accountInfo, currencyHex, iou, iouBalance, sendSimple, serverFees, sleep, type Fees, type SubmitResult } from '../src/xrpl-io.ts'
 
 type Wallet = InstanceType<typeof xrpl.Wallet>
@@ -82,6 +85,7 @@ async function ensureXrp(client: InstanceType<typeof xrpl.Client>, w: Wallet, dr
 }
 
 async function main() {
+  assertHotelDemoEnabled()
   URL_ = await resolveTestnetEndpoint()
   EXPLORER = URL_.includes('devnet') ? 'https://devnet.xrpl.org/transactions/' : 'https://testnet.xrpl.org/transactions/'
   results.url = URL_
