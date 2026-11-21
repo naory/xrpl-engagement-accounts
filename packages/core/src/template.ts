@@ -294,26 +294,15 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
   }
   ordered('checkInBy', 'entryDisputeBy', false, 'the guest must be able to dispute entry until check-in closes')
   ordered('claimBy', 'disputeWindowEnds', true, 'the guest must be able to answer the last possible claim')
-  // marketplace-escrow@1: both timers run from open. The gap is the buyer's inspection time after the last
-  // possible shipment. Floors are the Dev Lead policy params (24h ship window, 7d inspect gap).
-  // TODO(PR3): marketplaceEscrowTermsFindings must check the deal's own record.timers at register()
-  // (shipBy − open ≥ params.minShipWindow, inspectBy − shipBy ≥ params.minInspectGap).
-  // docs/specs/marketplace-escrow-at-1.md §3 items 2–3 and §8 C7. Lands with the flow in PR3.
+  // marketplace-escrow@1: shipBy ends strictly before inspectBy, and both run from the same anchor.
+  // The 24h ship window and 7d inspect gap are policy params (minShipWindow, minInspectGap). Core does not
+  // import the policy package. marketplaceEscrowTermsFindings checks the deal's record.timers against those
+  // params at register(). docs/specs/marketplace-escrow-at-1.md §3 items 2–3 and §8 C7.
   ordered('shipBy', 'inspectBy', true, 'the buyer must be able to inspect after the last possible shipment')
   const shipBy = timers.shipBy
   const inspectBy = timers.inspectBy
-  if (shipBy && inspectBy) {
-    if (shipBy.from !== inspectBy.from) {
-      err('V14', `timers shipBy (from ${shipBy.from}) and inspectBy (from ${inspectBy.from}) must share an anchor: the buyer must be able to inspect after the last possible shipment`)
-    } else {
-      if (shipBy.from === 'open' && shipBy.durationSecs < MIN_SHIP_WINDOW_SECS) {
-        err('V14', `timer shipBy (${shipBy.durationSecs}s) must be at least ${MIN_SHIP_WINDOW_SECS}s from open: minimum shipping window`)
-      }
-      const gap = inspectBy.durationSecs - shipBy.durationSecs
-      if (gap < MIN_INSPECT_GAP_SECS) {
-        err('V14', `timer inspectBy must end at least ${MIN_INSPECT_GAP_SECS}s after shipBy (gap ${gap}s from ${shipBy.from}): the buyer must be able to inspect after the last possible shipment`)
-      }
-    }
+  if (shipBy && inspectBy && shipBy.from !== inspectBy.from) {
+    err('V14', `timers shipBy (from ${shipBy.from}) and inspectBy (from ${inspectBy.from}) must share an anchor: the buyer must be able to inspect after the last possible shipment`)
   }
   // A declared dispute pages ops when its timer expires. That timer must not name a pre-signed outcome:
   // arbiter silence moves no money.
@@ -344,7 +333,3 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
 
   return { ok: errors.length === 0, errors, warnings, disclosures, minimalWinningSets: mws, ticketsNeeded: tickets, reserveDrops: reserve }
 }
-
-/** Dev Lead floors for marketplace-escrow@1. Policy params minShipWindow / minInspectGap use the same durations. */
-export const MIN_SHIP_WINDOW_SECS = 86_400
-export const MIN_INSPECT_GAP_SECS = 604_800

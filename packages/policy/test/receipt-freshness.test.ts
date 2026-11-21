@@ -7,6 +7,7 @@ import { LEDGER_INDEX, W, wallet } from './fixtures.ts'
 
 const carrier = wallet('marketplace-escrow-carrier')
 const rotated = wallet('marketplace-escrow-rotated')
+const stranger = wallet('marketplace-escrow-stranger')
 const ENG = 'eng_me_fresh'
 const EVAL = '2026-11-11T00:00:01Z'
 const OBSERVED = '2026-11-08T00:00:00Z' // three days before the evaluation ledger
@@ -102,5 +103,44 @@ describe('receipt-time judgement', () => {
       windows,
     )
     expect(out.rejected.map((r) => r.code)).toEqual(['STALE'])
+  })
+
+  it('a re-signed copy does not ride a receipt tied to the original signer', () => {
+    const original = ship()
+    const forged = signStatement({
+      v: 'eng.att/1', type: 'shipping.shipped/1', engagementId: ENG,
+      subject: { tracking: 'TRK-1' }, claim: { status: 'shipped' },
+      observedAt: OBSERVED, issuedAt: OBSERVED, nonce: 'fresh-ship-1',
+      attester: { account: carrier.address, kind: 'SHIPPING' },
+    }, stranger)
+    expect(forged.id).toBe(original.id)
+    const rotatedLedger = ledger(EVAL, {
+      [carrier.address]: { exists: true, masterDisabled: true, regularKey: rotated.address },
+    })
+    const out = verifyStatements([forged], eng(), rotatedLedger, new Map([[original.id, {
+      receivedAt: RECEIVED, attesterIsParty: false, signerPublicKey: original.proof.publicKey,
+    }]]), windows)
+    expect(out.rejected.map((r) => r.code)).toContain('KEY_NOT_AUTHORIZED')
+    expect(out.verified).toEqual([])
+  })
+
+  it('TYPE_NOT_ALLOWED when no naming entry allows the type, and not when one of them does', () => {
+    const review = signStatement({
+      v: 'eng.att/1', type: 'party.review/1', engagementId: ENG,
+      subject: { item: 'sku-1' }, claim: { rating: 1 },
+      observedAt: EVAL, issuedAt: EVAL, nonce: 'fresh-review-1',
+      attester: { account: carrier.address, kind: 'SHIPPING' },
+    }, carrier)
+    const onlyShip = verifyStatements([review], eng(), ledger(EVAL))
+    expect(onlyShip.rejected.map((r) => r.code)).toContain('TYPE_NOT_ALLOWED')
+
+    const either = verifyStatements([review], eng({
+      attesters: {
+        shipping: { accounts: [carrier.address], kind: 'SHIPPING', types: ['shipping.shipped/1'] },
+        qa: { accounts: [carrier.address], kind: 'QA', types: ['party.review/1'] },
+      },
+    }), ledger(EVAL))
+    expect(either.rejected.map((r) => r.code)).not.toContain('TYPE_NOT_ALLOWED')
+    expect(either.verified.map((v) => v.statement.id)).toEqual([review.id])
   })
 })
