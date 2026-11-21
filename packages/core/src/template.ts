@@ -99,6 +99,8 @@ export interface ValidationOptions {
   reserveIncDrops?: bigint
   preCreateFundingDrops?: bigint
   feeHeadroomDrops?: bigint
+  /** When set, dispute.bond.plusParam must name one of these policy params. */
+  policyParams?: Record<string, unknown>
 }
 
 export interface Finding { id: string; message: string }
@@ -320,6 +322,15 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
     const tm = name ? timers[name] : undefined
     if (!tm) err('V6', `dispute.overdueTimer ${JSON.stringify(name ?? null)} is not a timer`)
     else if (tm.onExpire !== 'escalate') err('V6', `timer ${name}: dispute overdue must be onExpire "escalate" (arbiter silence moves no money)`)
+    const by = t.dispute.by
+    if (!Array.isArray(by) || by.length === 0) err('V16', 'dispute.by must name at least one role defined on this template')
+    else for (const role of by) if (!t.roles[role]) err('V16', `dispute.by role ${JSON.stringify(role)} is not a role on this template`)
+    if (opts.policyParams) {
+      const plus = t.dispute.bond?.plusParam
+      if (typeof plus !== 'string' || !Object.prototype.hasOwnProperty.call(opts.policyParams, plus)) {
+        err('V16', `dispute.bond.plusParam ${JSON.stringify(plus ?? null)} is not a policy param`)
+      }
+    }
   }
 
   // V15: every arbiter role opts into the service's accreditation gate (the co-signer registers a deal only when

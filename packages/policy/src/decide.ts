@@ -39,7 +39,7 @@ export function decide(input: DecideInput): Decision {
 
   // Statements → verified set (attestation pipeline). Mandate is a statement too.
   const all = [...(input.mandate ? [input.mandate] : []), ...input.statements]
-  const pipeline = verifyStatements(all, eng, ledger)
+  const pipeline = verifyStatements(all, eng, ledger, input.receipted, template.attestationWindows)
   const att = new AttFacts(pipeline.verified)
   const mandateOk = input.mandate ? pipeline.verified.find((v) => v.statement.id === input.mandate!.id && v.roles.some((r) => r === 'principal' || r === 'owner')) : undefined
 

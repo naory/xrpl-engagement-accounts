@@ -16,7 +16,7 @@ The ledger stores Credential objects. It does not read spend caps, mandates, or 
 
 ## Shipped weights
 
-`minimalWinningSets` enumerates the minimal role sets whose weights reach the quorum (`minimalWinningSets` (`packages/core/src/template.ts:132`)). The validator rejects a service-operated weight that reaches quorum on its own (`serviceWeight` (`packages/core/src/template.ts:172`)).
+`minimalWinningSets` enumerates the minimal role sets whose weights reach the quorum (`minimalWinningSets` (`packages/core/src/template.ts:134`)). The validator rejects a service-operated weight that reaches quorum on its own (`serviceWeight` (`packages/core/src/template.ts:174`)).
 
 | Template | Weights | Quorum | Minimal winning sets |
 |---|---|---|---|
@@ -31,9 +31,9 @@ Sources: `weight` (`templates/hotel@2.json:6`), `quorum` (`templates/hotel@2.jso
 
 On `hotel@2`, counterparty weight is 3 (`weight` (`templates/hotel@2.json:7`)) and arbiter weight is 4 (`weight` (`templates/hotel@2.json:8`)). 3 + 4 = 7, and the quorum is 7 (`quorum` (`templates/hotel@2.json:11`)). Arbiter and counterparty (for example the hotel) together meet the ledger quorum. The guest's signature is not required. The co-signer's signature is not required.
 
-`settle.ruling` is signed by arbiter plus principal, or by arbiter plus counterparty. Its `enforcement` is `"none"` (`enforcement` (`templates/hotel@2.json:16`)). `signsStage` does not sign an outcome whose enforcement is `none` (`signsStage` (`packages/cosigner/src/service.ts:949`)). `settle.ruling` is not co-signed. Arbiter plus one party is the intended ruling path, so the real risk is an arbiter who isn't neutral, not the weights themselves.
+`settle.ruling` is signed by arbiter plus principal, or by arbiter plus counterparty. Its `enforcement` is `"none"` (`enforcement` (`templates/hotel@2.json:16`)). `signsStage` does not sign an outcome whose enforcement is `none` (`signsStage` (`packages/cosigner/src/service.ts:995`)). `settle.ruling` is not co-signed. Arbiter plus one party is the intended ruling path, so the real risk is an arbiter who isn't neutral, not the weights themselves.
 
-The template check records a V10 disclosure for every escrow winning set that excludes the principal: `{counterparty, arbiter}` can move funds without the principal (`V10` (`packages/core/src/template.ts:253`)).
+The template check records a V10 disclosure for every escrow winning set that excludes the principal: `{counterparty, arbiter}` can move funds without the principal (`V10` (`packages/core/src/template.ts:255`)).
 
 `hotel@1` is the same shape with smaller numbers: counterparty 2 plus arbiter 3 equals quorum 5 (`weight` (`templates/hotel@1.json:7`), `weight` (`templates/hotel@1.json:8`), `quorum` (`templates/hotel@1.json:11`)), and `settle.ruling` is also `enforcement` `"none"` (`enforcement` (`templates/hotel@1.json:15`)).
 
@@ -41,7 +41,7 @@ A longer neutrality design (several outside accreditors, a trust-list file) is n
 
 ## What the policy co-signer enforces
 
-`signsStage` signs a stage only when a template outcome maps to it, a signer set includes the co-signer, and enforcement is not `advisory` or `none` (`signsStage` (`packages/cosigner/src/service.ts:949`)). Other stages can still get a decision record. They do not get a signature.
+`signsStage` signs a stage only when a template outcome maps to it, a signer set includes the co-signer, and enforcement is not `advisory` or `none` (`signsStage` (`packages/cosigner/src/service.ts:995`)). Other stages can still get a decision record. They do not get a signature.
 
 On the owner wallets, owner weight 2 equals quorum 2 (`quorum` (`templates/procurement@1.json:11`)). `owner.close` is `enforcement` `advisory` (`enforcement` (`templates/procurement@1.json:14`), `enforcement` (`templates/shopping@1.json:14`)). The owner can sweep and delete the account without the co-signer. Caps below apply to agent spends, which need the co-signer to reach quorum (`enforcement` (`templates/procurement@1.json:13`)).
 
@@ -73,7 +73,7 @@ The accreditor is the classic address in `ENG_ARBITER_ACCREDITOR`. The co-signer
 
 Hotel policies put that one slot in `arbiterIssuers`, with `arbiterCredentialType` `ENG/ARBITER` (`arbiterCredentialType` (`policies/hotel@2.0.0.json:33`), `arbiterIssuers` (`policies/hotel@2.0.0.json:35`)). The demo accreditor submits `CredentialCreate`, and the arbiter submits `CredentialAccept` (`CredentialCreate` (`packages/cosigner/src/hotel/flow.ts:222`), `CredentialAccept` (`packages/cosigner/src/hotel/flow.ts:226`)). The co-signer does not issue the credential.
 
-`registerLocked` runs `neutralityFindings` for roles whose template says `accreditation` `"service"` (`neutralityFindings` (`packages/cosigner/src/service.ts:1093`), `accreditation` (`templates/hotel@2.json:8`)). The arbiter account must hold an accepted, unexpired credential of that type from a resolved issuer (`hasCredential` (`packages/policy/src/facts.ts:323`)). It must not be another party (`ARBITER_IS_PARTY` (`packages/cosigner/src/service.ts:1104`)). If the mandate lists `allowedArbiters`, the account must be in that list (`allowedArbiters` (`packages/cosigner/src/service.ts:1105`)). Otherwise `register` throws `NOT_NEUTRAL` and stores nothing (`NOT_NEUTRAL` (`packages/cosigner/src/service.ts:332`)).
+`registerLocked` runs `neutralityFindings` for roles whose template says `accreditation` `"service"` (`neutralityFindings` (`packages/cosigner/src/service.ts:1139`), `accreditation` (`templates/hotel@2.json:8`)). The arbiter account must hold an accepted, unexpired credential of that type from a resolved issuer (`hasCredential` (`packages/policy/src/facts.ts:323`)). It must not be another party (`ARBITER_IS_PARTY` (`packages/cosigner/src/service.ts:1150`)). If the mandate lists `allowedArbiters`, the account must be in that list (`allowedArbiters` (`packages/cosigner/src/service.ts:1151`)). Otherwise `register` throws `NOT_NEUTRAL` and stores nothing (`NOT_NEUTRAL` (`packages/cosigner/src/service.ts:332`)).
 
 `HotelFlow.open` calls `register` before it submits the open Batch. An unaccredited arbiter gets no SignerList and no room payment (`NOT_NEUTRAL` (`packages/cosigner/src/hotel/flow.ts:244`)).
 
@@ -91,7 +91,7 @@ It does not take an arbiter off a SignerList that is already installed. Arbiter 
 
 Arbiter neutrality is checked only at registration. `registerLocked` runs `neutralityFindings` and throws `NOT_NEUTRAL` before it stores the engagement (`registerLocked` (`packages/cosigner/src/service.ts:274`), `neutralityFindings` (`packages/cosigner/src/service.ts:311`), `NOT_NEUTRAL` (`packages/cosigner/src/service.ts:312`)). `decide` does not run `neutralityFindings` (`decide` (`packages/cosigner/src/service.ts:371`)).
 
-An arbiter revoked later stays on the signer list. `buildOpenBatch` installs that list once (`SignerListSet` (`packages/ledger/src/xrpl-io.ts:60`)). Nothing after open removes the arbiter entry, and this repository does not submit `CredentialDelete`. Arbiter plus one party can still sign: on `hotel@2`, the arbiter's weight is 4 and each party's weight is 3, and 4 + 3 meets quorum 7 (`weight` (`templates/hotel@2.json:9`), `weight` (`templates/hotel@2.json:7`), `quorum` (`templates/hotel@2.json:12`)), and `settle.ruling` is not co-signed (`signsStage` (`packages/cosigner/src/service.ts:929`)).
+An arbiter revoked later stays on the signer list. `buildOpenBatch` installs that list once (`SignerListSet` (`packages/ledger/src/xrpl-io.ts:60`)). Nothing after open removes the arbiter entry, and this repository does not submit `CredentialDelete`. Arbiter plus one party can still sign: on `hotel@2`, the arbiter's weight is 4 and each party's weight is 3, and 4 + 3 meets quorum 7 (`weight` (`templates/hotel@2.json:9`), `weight` (`templates/hotel@2.json:7`), `quorum` (`templates/hotel@2.json:12`)), and `settle.ruling` is not co-signed (`signsStage` (`packages/cosigner/src/service.ts:995`)).
 
 ## Not in this tree
 

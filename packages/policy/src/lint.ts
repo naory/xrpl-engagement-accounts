@@ -1,6 +1,7 @@
 // Policy lint (docs/spec/policy.md §11): L1 parse/type/float ban, L2 stage coverage, L3 statement
 // types in the registry, L5 enforcement vs template, L7 unique rule ids, L8 plain-English text, L9 stay-terms
-// consistency (per-night variant cap vs maxStayVariantNights; rulingWindow within its bounds), L10 slot placement.
+// consistency (per-night variant cap vs maxStayVariantNights; rulingWindow within its bounds), L10 slot placement,
+// L11 baselineRef agreement between a template policy and its template.
 // (L4 static cost bound and L6 layer monotonicity are follow-ups.)
 import type { Template } from '@eng/core'
 import { Assets } from './facts.ts'
@@ -64,7 +65,20 @@ export function lintPolicy(p: PolicyDoc, template?: Template): LintFinding[] {
   }
   out.push(...rulingWindowFindings(p))
   out.push(...slotFindings(p))
+  out.push(...baselineRefFindings(p, template))
   return out
+}
+
+/** L11: a template policy's baselineRef matches the template it applies to. Hotel omits both. */
+function baselineRefFindings(p: PolicyDoc, template?: Template): LintFinding[] {
+  if (!template || p.layer !== 'template') return []
+  if (p.baselineRef === undefined && template.baselineRef === undefined) return []
+  if (p.baselineRef === template.baselineRef) return []
+  return [{
+    id: 'L11',
+    where: 'baselineRef',
+    message: `policy baselineRef ${JSON.stringify(p.baselineRef ?? null)} does not match template baselineRef ${JSON.stringify(template.baselineRef ?? null)}`,
+  }]
 }
 
 /** L10: `$slot:` only on an asset issuer or in params.arbiterIssuers / params.kybIssuers, and only a known name. */
