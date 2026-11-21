@@ -22,6 +22,7 @@ import {
   CosignerService, MarketplaceEscrowFlow, XrplLedgerSource, ledgerClock, resolveTestnetEndpoint,
   type MarketplaceCast, type MarketplaceStepResult,
 } from '../src/index.ts'
+import { assertDemoNetwork } from './network-guard.ts'
 import {
   ASF_DEFAULT_RIPPLE, accountInfo, buildCloseBatch, currencyHex, currentLedger, hex, iou, memo, multisignBlob, sendSimple, serverFees, sleep, submit, combine,
   type Fees, type SubmitResult,
@@ -206,11 +207,20 @@ function signFor(account: string, signer: Wallet, tx: Json): string {
 
 async function main(): Promise<void> {
   const url = await resolveTestnetEndpoint()
-  EXPLORER = url.includes('devnet') ? 'https://devnet.xrpl.org/transactions/' : 'https://testnet.xrpl.org/transactions/'
   results.url = url
   const client = new xrpl.Client(url, { timeout: 60_000 })
   await client.connect()
-  log(`connected ${url}`)
+  // Network identity, not the URL. XRPL_URL can name any host; mainnet and anything else stop here.
+  let networkId: 1 | 2
+  try {
+    networkId = await assertDemoNetwork(client)
+  } catch (e) {
+    await client.disconnect().catch(() => undefined)
+    throw e
+  }
+  EXPLORER = networkId === 2 ? 'https://devnet.xrpl.org/transactions/' : 'https://testnet.xrpl.org/transactions/'
+  results.networkId = networkId
+  log(`connected ${url} network_id=${networkId}`)
   const fees = liveFees = await serverFees(client)
   const buyer = await fund(client, 'buyer')
   const seller = await fund(client, 'seller')

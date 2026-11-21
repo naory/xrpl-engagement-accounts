@@ -38,6 +38,33 @@ export function marketplaceTickets(): MarketplaceTicketPlan {
   return { slices, count: at }
 }
 
+/**
+ * Release settlement. The seller receives price − fee plus the bond, and the fee account receives the bps.
+ * A balance above price + bond adds a partial sweep to the buyer. An exact balance does not: those two
+ * legs already drain the trust line to zero.
+ */
+export function marketplaceDisputeReleasePayouts(o: {
+  price: string
+  bond: string
+  balance: string
+  seller: string
+  buyer: string
+  feeTo: string
+  feeBps?: number
+}): Array<{ to: string; value?: string; partial?: boolean }> {
+  const asset: AssetDef = { code: 'RLUSD', kind: 'IOU', currency: 'RLUSD', issuer: '', decimals: 6 }
+  const price = parseAmount(o.price, asset).minor
+  const bond = parseAmount(o.bond, asset).minor
+  const held = parseAmount(o.balance, asset).minor
+  const fee = (price * BigInt(o.feeBps ?? FEE_BPS)) / 10_000n
+  const payouts: Array<{ to: string; value?: string; partial?: boolean }> = [
+    { to: o.seller, value: formatAmount(new Amount('RLUSD', price - fee + bond), 6) },
+    { to: o.feeTo, value: formatAmount(new Amount('RLUSD', fee), 6) },
+  ].filter((p) => p.value !== '0' && !p.value!.startsWith('-'))
+  if (held > price + bond) payouts.push({ to: o.buyer, partial: true })
+  return payouts
+}
+
 /** Seller receives price − fee, the fee account receives the bps. Zero legs are dropped. */
 export function marketplaceReleasePayouts(price: string, feeBps: number, seller: string, feeTo: string): Array<{ to: string; value: string }> {
   const asset: AssetDef = { code: 'RLUSD', kind: 'IOU', currency: 'RLUSD', issuer: '', decimals: 6 }
@@ -214,21 +241,17 @@ export class MarketplaceEscrowFlow {
   /**
    * Arbiter plus the winning party close the account. No co-signer: enforcement is none.
    * Refund pays the balance to the buyer. Release pays the seller the price less the fee, plus the bond, and the fee.
+   * When the balance is more than price plus bond, the remainder is a partial sweep to the buyer.
+   * An exact balance has no sweep: the two legs drain the trust line to zero.
    */
   async disputeSettle(kind: 'refund' | 'release', bond: string, arbiterSigner?: Wallet): Promise<MarketplaceStepResult> {
     const { cast } = this.o
-    const asset = this.asset
+    const balance = await this.balance()
     const payouts: Payout[] = kind === 'refund'
-      ? [{ to: cast.buyer.address, value: await this.balance() }]
-      : (() => {
-          const price = parseAmount(this.price, asset).minor
-          const extra = parseAmount(bond, asset).minor
-          const fee = (price * BigInt(FEE_BPS)) / 10_000n
-          return [
-            { to: cast.seller.address, value: formatAmount(new Amount('RLUSD', price - fee + extra), 6) },
-            { to: cast.service.address, value: formatAmount(new Amount('RLUSD', fee), 6) },
-          ]
-        })()
+      ? [{ to: cast.buyer.address, value: balance }]
+      : marketplaceDisputeReleasePayouts({
+          price: this.price, bond, balance, seller: cast.seller.address, buyer: cast.buyer.address, feeTo: cast.service.address,
+        })
     const tx = await this.liveClose(payouts, `dispute.${kind}`, 2)
     const party = kind === 'refund' ? cast.buyer : cast.seller
     const arbiter = arbiterSigner ?? cast.arbiter

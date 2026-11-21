@@ -326,8 +326,13 @@ export class CosignerService {
       const assets = this.assetsOf(all, bound)
       const subjects = accredited.map((r) => bound.parties[r]).filter((a): a is string => typeof a === 'string')
       if (shipDeal) for (const a of bound.attesters?.shipping?.accounts ?? []) if (typeof a === 'string' && !subjects.includes(a)) subjects.push(a)
+      const keyAccounts = shipDeal && typeof bound.parties.principal === 'string' ? [bound.parties.principal] : []
       let ledger: LedgerSnapshot
-      try { ledger = await this.o.source.snapshot({ account: bound.account, assets, accounts: [], credentialSubjects: subjects, historySecs: 0 }) } catch (e) { throw new LedgerUnavailableError(e) }
+      try { ledger = await this.o.source.snapshot({ account: bound.account, assets, accounts: keyAccounts, credentialSubjects: subjects, historySecs: 0 }) } catch (e) { throw new LedgerUnavailableError(e) }
+      if (shipDeal) {
+        const keyError = marketplaceMandateSignerFinding(bound, mandate, ledger)
+        if (keyError) throw new Error(`INVALID_TERMS: ${keyError}`)
+      }
       if (accredited.length) {
         const codes = neutralityFindings(bound, mandate, accredited, all, new LedgerFacts(ledger, new Assets(assets)))
         if (codes.length) throw new Error(`NOT_NEUTRAL: ${codes.join(', ')}`)
@@ -1316,9 +1321,10 @@ function overdueRepeatMs(raw: unknown): number {
  * Deal-timer and mandate checks for a template that has shipBy and inspectBy (marketplace-escrow@1 §3).
  * Hotel templates have neither timer, so they return immediately. The 24h and 7d floors come from the
  * policy params, not from hardcoded template constants. Returns the first problem, or undefined.
- * The mandate is `party.mandate/1` for this engagement, signed by the principal's owner (decision 5:
- * the agent signs the deal as the principal, under that owner's mandate). `claim.payee` and
- * `claim.maximum` are the only amount fields. `claim.maximum` is a decimal string or `{ currency, value }`.
+ * The mandate is `party.mandate/1` for this engagement, signed by the principal. The signing key
+ * is checked against the ledger after the snapshot: the principal's master key, unless that key is
+ * disabled, or the principal's current RegularKey. `claim.payee` and `claim.maximum` are the only
+ * amount fields. `claim.maximum` is a decimal string or `{ currency, value }`.
  */
 function marketplaceEscrowTermsFindings(record: EngagementRecord, mandate: Statement | null, template: Template, layers: PolicyDoc[]): string | undefined {
   if (!template.timers?.shipBy || !template.timers?.inspectBy) return undefined
@@ -1342,7 +1348,6 @@ function marketplaceEscrowTermsFindings(record: EngagementRecord, mandate: State
   if (mandate.engagementId !== record.engagementId) return 'the mandate is for a different engagement'
   const signed = verifyStatement(mandate)
   if (!signed.ok) return 'the mandate signature is invalid'
-  if (signed.signerAddress !== record.parties.principal) return "the mandate must be signed by the principal's owner"
   const payee = mandatePayee(mandate.claim)
   if (payee !== record.parties.counterparty) return 'the seller is not the mandate payee'
   const assets = resolvedAssets(layers, record.trust)
@@ -1377,6 +1382,29 @@ function policyDuration(layers: PolicyDoc[], name: string): number | string {
   const raw = effectiveParam(layers, name)
   if (typeof raw !== 'string') return `policy param ${name} is missing`
   try { return celDurationMs(raw) } catch { return `policy param ${name} is not a duration` }
+}
+
+/**
+ * The mandate signing key must be the principal's master key, or the principal's current RegularKey.
+ * A disabled master key does not count. An account the ledger has not seen can still sign with its
+ * master key. This is the same rule the statement pipeline uses for an attester.
+ */
+function marketplaceMandateSignerFinding(record: EngagementRecord, mandate: Statement | null, ledger: LedgerSnapshot): string | undefined {
+  if (!mandate) return undefined
+  const signed = verifyStatement(mandate)
+  if (!signed.ok) return undefined
+  const account = record.parties.principal
+  if (typeof account !== 'string' || !mandateKeyAuthorized(ledger, account, signed.signerAddress)) {
+    return 'the mandate must be signed by the principal'
+  }
+  return undefined
+}
+
+function mandateKeyAuthorized(ledger: LedgerSnapshot, account: string, signerAddress: string): boolean {
+  const a = ledger.accounts[account]
+  if (!a || !a.exists) return signerAddress === account
+  if (signerAddress === account) return !a.masterDisabled
+  return a.regularKey === signerAddress
 }
 
 function mandatePayee(claim: unknown): string | undefined {

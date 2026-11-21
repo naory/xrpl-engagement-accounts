@@ -215,7 +215,7 @@ describe('marketplace-escrow register terms', () => {
       observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate-seller',
       attester: { account: W.atlas.address, kind: 'COUNTERPARTY' },
     }, W.atlas)
-    await expect((await bare()).register(record(), seller)).rejects.toThrow(/INVALID_TERMS: the mandate must be signed by the principal's owner/)
+    await expect((await bare()).register(record(), seller)).rejects.toThrow(/INVALID_TERMS: the mandate must be signed by the principal$/)
 
     const wrongType = signStatement({
       v: 'eng.att/1', type: 'party.review/1', engagementId: ENG,
@@ -259,6 +259,41 @@ describe('marketplace-escrow register terms', () => {
       attester: { account: W.dana.address, kind: 'PRINCIPAL' },
     }, W.dana)
     await expect((await bare()).register(record(), objectMax)).resolves.toMatchObject({ ok: true })
+  })
+
+  it('accepts a mandate signed by the principal RegularKey when the master key is disabled', async () => {
+    const ledger = snap({ closeTime: OPEN })
+    ledger.accounts[W.dana.address] = { exists: true, masterDisabled: true, regularKey: rotated.address }
+    const svc = new CosignerService({
+      signer: localSigner(W.cosigner), source: new FixtureLedgerSource(ledger),
+      templates: [template], policies: [baseline12, policy],
+    })
+    const byRegular = signStatement({
+      v: 'eng.att/1', type: 'party.mandate/1', engagementId: ENG,
+      subject: { mandateId: 'mnd_reg' }, claim: { maximum: '2.00', payee: W.atlas.address },
+      observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate-reg',
+      attester: { account: W.dana.address, kind: 'PRINCIPAL' },
+    }, rotated)
+    await expect(svc.register(record(), byRegular)).resolves.toMatchObject({ ok: true })
+  })
+
+  it('refuses a mandate key that is neither the principal master key nor its current RegularKey', async () => {
+    const ledger = snap({ closeTime: OPEN })
+    ledger.accounts[W.dana.address] = { exists: true, masterDisabled: true, regularKey: rotated.address }
+    const svc = new CosignerService({
+      signer: localSigner(W.cosigner), source: new FixtureLedgerSource(ledger),
+      templates: [template], policies: [baseline12, policy],
+    })
+    const body = {
+      v: 'eng.att/1' as const, type: 'party.mandate/1', engagementId: ENG,
+      subject: { mandateId: 'mnd_key' }, claim: { maximum: '2.00', payee: W.atlas.address },
+      observedAt: OPEN, issuedAt: OPEN,
+      attester: { account: W.dana.address, kind: 'PRINCIPAL' },
+    }
+    const strangerKey = signStatement({ ...body, nonce: 'me-mandate-stranger-key' }, stranger)
+    await expect(svc.register(record(), strangerKey)).rejects.toThrow(/INVALID_TERMS: the mandate must be signed by the principal$/)
+    const disabledMaster = signStatement({ ...body, nonce: 'me-mandate-disabled-master' }, W.dana)
+    await expect(svc.register(record(), disabledMaster)).rejects.toThrow(/INVALID_TERMS: the mandate must be signed by the principal$/)
   })
 
   it('rejects an ENG/ATTESTER/SHIPPING credential that expires before inspectBy', async () => {
