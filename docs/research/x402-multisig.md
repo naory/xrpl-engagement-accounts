@@ -120,7 +120,11 @@ Prepaid remains the default engagement path. An opt-in script, `npm run demo:x40
 
 `GET /supported` still does not advertise multisig. The body lists `exact`, `upto`, and `batch-settlement`, with `"signers": { "xrpl:*": [] }`. OpenAPI 0.1.0 defaults `asset` to `"XRP"` and leaves `extra` open. No t54 change note was found.
 
-The earlier `unsupported_payment_features` result was our payload, not a refusal of IOUs. Those probes sent `areFeesSponsored: false`, omitted `SendMax`, and omitted the invoice memo. The same official issuer, signed 2-of-2 with `SendMax`, the untyped invoice memo, and the two typed engagement memos, verified and settled.
+The earlier `unsupported_payment_features` result came from a payload that differed from the documented shape in three ways at once: it sent `areFeesSponsored: false`, it omitted `SendMax`, and it omitted the invoice memo. Those three differences were not isolated, so this note does not say which one the facilitator rejected. A later payment that matched the documented shape, and also carried the two typed engagement memos, verified and settled on the Testnet facilitator. That facilitator reports `environment: "rewards-testnet"` and `nonProduction: true` on the settle attestation. Production behavior is not verified here.
+
+`/verify` does not check `LastLedgerSequence` expiry. An already-expired blob still returned `isValid: true`. `/settle` is what catches it, with `submit_engine_result:tefMAX_LEDGER`.
+
+Settled on that Testnet facilitator: the first in-cap demo payment `F3C5BC1D508EA354C803B9008019819139A8E6DD5C10B154E493C7736C52F0F7`, and the 100/day-cap rerun `36514239677895C1575A2E06E8DEA90752049CB49E82C5D47DF3FBF0C1B34D3A`, both `tesSUCCESS`.
 
 The transaction carries three memos because the two sides check different ones. t54's documented binding is a memo whose only field is `MemoData = hex(utf8(invoiceId))` (or the `InvoiceID` field). The co-signer indexes memos by `MemoType` (`packages/policy/src/facts.ts`), so that untyped memo does not satisfy policy. Baseline B8 requires `eng/basis`, and procurement W6 requires `eng/invoice` equal to the vendor invoice. Adding those two typed memos keeps the t54 memo in the list. No policy change.
 

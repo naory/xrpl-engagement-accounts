@@ -89,8 +89,8 @@ The payment carries three memos. t54's untyped memo is `MemoData = hex(utf8(invo
 
 Console labels for a recording:
 
-- `Clip 1: capped payment via t54` — under the 1000.00 approval cap, settled, with a `testnet.xrpl.org` link.
-- `Clip 2: rogue agent refused` — 1500.00 (W5) and a payment whose destination is not the challenge payee (W7). Prints `facilitator not called`.
+- `Clip 1: capped payment via t54` — 1.00 RLUSD within a 100/day cap, settled, with a `testnet.xrpl.org` link.
+- `Clip 2: rogue agent refused` — 150.00 fails the daily cap (W3) alone, and a payment whose destination is not the challenge payee (W7). Prints `facilitator not called`.
 - `Optional: expired blob refused` — not a clip. The co-signer signs a 2-ledger window, then the blob is offered to t54 after that window has passed.
 
 ## Status

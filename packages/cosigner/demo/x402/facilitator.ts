@@ -66,6 +66,7 @@ export function createFacilitatorClient(opts?: { url?: string; fetchImpl?: typeo
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
     });
     const text = await res.text();
     let parsed: unknown = text;

@@ -13,7 +13,7 @@ import { buildT54Payment } from "./t54-payment.ts";
 
 const ENG = "eng_b1_fixture";
 
-async function service() {
+async function service(dailyCap = "10000.00") {
   const svc = new CosignerService({
     signer: localSigner(W.cosigner),
     source: new FixtureLedgerSource(b1Ledger({ balance: "5000" })),
@@ -22,7 +22,7 @@ async function service() {
   });
   const engagement = b1Engagement();
   engagement.trust = { ...engagement.trust, "rlusd.issuer": T54_RLUSD_ISSUER };
-  await svc.register(engagement, b1Mandate());
+  await svc.register(engagement, b1Mandate({ dailyCap }));
   return svc;
 }
 
@@ -53,8 +53,8 @@ function jsonResponse(body: unknown) {
 }
 
 describe("t54 exact path", () => {
-  it("refuses an over-cap payment before the facilitator, then settles an in-cap one", async () => {
-    const svc = await service();
+  it("refuses a payment over the daily cap before the facilitator, then settles one within it", async () => {
+    const svc = await service("100.00");
     const agent = agentFor(svc);
     const calls: string[] = [];
     const fetchImpl: typeof fetch = async (input) => {
@@ -71,12 +71,12 @@ describe("t54 exact path", () => {
     });
 
     const over = await agent.proposePayment({
-      destination: W.vendorA.address, amount: "1500.00", invoiceRef: "inv-over",
-      tx: payment("1500.00", "inv-over"),
-      statements: [invoice("1500.00", "inv-over"), b1Challenge({ invoiceId: "inv-over", amount: "1500.00" })],
+      destination: W.vendorA.address, amount: "150.00", invoiceRef: "inv-over",
+      tx: payment("150.00", "inv-over"),
+      statements: [invoice("150.00", "inv-over"), b1Challenge({ invoiceId: "inv-over", amount: "150.00" })],
     });
     expect(over.decision.decision).toBe("REFUSE");
-    expect(over.decision.failing).toContain("W5");
+    expect(over.decision.failing).toEqual(["W3"]);
     expect(over.combined).toBeUndefined();
     expect(calls).toEqual([]);
 
@@ -90,7 +90,9 @@ describe("t54 exact path", () => {
     expect(ok.decision.results.find((r) => r.id === "B8")!.result).toBe("pass");
     expect(ok.decision.results.find((r) => r.id === "W6")!.result).toBe("pass");
     expect(ok.combined).toBeTruthy();
-    const settled = await merchant.settlePresigned({ signedTxBlob: ok.combined!, invoiceId: "inv-ok" });
+    let settled: Awaited<ReturnType<typeof merchant.settlePresigned>> | undefined;
+    if (ok.combined) settled = await merchant.settlePresigned({ signedTxBlob: ok.combined, invoiceId: "inv-ok" });
+    if (!settled) throw new Error("expected a combined blob");
     expect(settled.accepted).toBe(true);
     expect(settled.transaction).toBe("AABB");
     expect(calls.map((u) => u.endsWith("/verify") ? "verify" : "settle")).toEqual(["verify", "settle"]);
@@ -119,13 +121,15 @@ describe("t54 exact path", () => {
     expect(merchant).toBeTruthy();
   });
 
-  it("asks the facilitator about an already-expired blob and does not settle when verify is invalid", async () => {
+  it("accepts an expired blob at /verify and records tefMAX_LEDGER from /settle", async () => {
     const svc = await service();
     const agent = agentFor(svc);
     const calls: string[] = [];
     const fetchImpl: typeof fetch = async (input) => {
-      calls.push(String(input));
-      return jsonResponse({ isValid: false, invalidReason: "missing_last_ledger_sequence", payer: W.engB1.address });
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith("/verify")) return jsonResponse({ isValid: true, invalidReason: null, payer: W.engB1.address });
+      return jsonResponse({ success: false, transaction: "", network: "xrpl:1", payer: W.engB1.address, errorReason: "submit_engine_result:tefMAX_LEDGER:Ledger sequence too high." });
     };
     const merchant = createMerchant({
       resource: "r", network: "xrpl:1", payTo: W.vendorA.address,
@@ -139,10 +143,11 @@ describe("t54 exact path", () => {
       statements: [invoice("1.00", "inv-old"), b1Challenge({ invoiceId: "inv-old", amount: "1.00" })],
     });
     expect(proposal.decision.decision).toBe("SIGN");
-    const settled = await merchant.settlePresigned({ signedTxBlob: proposal.combined!, invoiceId: "inv-old" });
+    let settled: Awaited<ReturnType<typeof merchant.settlePresigned>> | undefined;
+    if (proposal.combined) settled = await merchant.settlePresigned({ signedTxBlob: proposal.combined, invoiceId: "inv-old" });
+    if (!settled) throw new Error("expected a combined blob");
     expect(settled.accepted).toBe(false);
-    expect(settled.settle).toBeNull();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatch(/\/verify$/);
+    expect(settled.settle?.body).toMatchObject({ success: false, errorReason: expect.stringContaining("tefMAX_LEDGER") });
+    expect(calls.map((u) => u.endsWith("/verify") ? "verify" : "settle")).toEqual(["verify", "settle"]);
   });
 });

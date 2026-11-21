@@ -28,6 +28,7 @@ import {
   type SettlementResponse,
   type XrplMemoContainer,
 } from "x402-xrpl-settlement-adapter";
+import xrpl from "xrpl";
 import { createFacilitatorClient, t54Envelope, t54Requirements, type FacilitatorResult } from "./facilitator.ts";
 
 export interface MerchantConfig {
@@ -164,6 +165,7 @@ export function createMerchant(cfg: MerchantConfig): Merchant {
       const verify = await facilitator.verify(body);
       const isValid = Boolean(verify.body && typeof verify.body === "object" && (verify.body as { isValid?: boolean }).isValid === true);
       if (!isValid) return { verify, settle: null, accepted: false, transaction: null };
+      console.log(`   · hash ${xrpl.hashes.hashSignedTx(input.signedTxBlob)}`);
       const settle = await facilitator.settle(body);
       const transaction = settle.body && typeof settle.body === "object" ? String((settle.body as { transaction?: string }).transaction ?? "") : "";
       const success = Boolean(settle.body && typeof settle.body === "object" && (settle.body as { success?: boolean }).success === true && transaction);
