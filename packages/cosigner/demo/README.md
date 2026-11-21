@@ -1,11 +1,12 @@
 # Co-signer demos (Testnet)
 
-Both scripts run from the **repo root** on a machine that can reach XRPL Testnet over WebSocket. Every account is created fresh from the faucet on each run, and the script never needs a seed. Results land in `demo/results/`.
+The scripts run from the **repo root** on a machine that can reach XRPL Testnet over WebSocket. Every account is created fresh from the faucet on each run, and the script never needs a seed. Results land in `demo/results/`.
 
 ```bash
 npm install
 npm run demo:b1        # B1 procurement agent, ~20 min including the AccountDelete wait
 npm run demo:hotel     # hotel@2 stay escrow, every path (H1–H17), ~25 min including the AccountDelete wait
+npm run demo:hotel-dispute   # Clip 3: H5 ruling, then H2 refund when the hotel never confirms. Needs cosigner:local.
 SKIP_CLOSE=1 npm run demo:b1   # ~3 min, leaves the engagement account open
 npm run demo:x402      # x402 engagement-account purchase (needs x402-xrpl-settlement-adapter)
 npm run probe:x402     # probe a hosted facilitator for engagement-account support
@@ -68,6 +69,10 @@ Automatic endings return any extra money to the guest with a residual sweep (a `
 | H17 | 3-night stay, guest disputes in night 1, arbiter silent (`staySilent`) | `default.chargebackStay#1` SIGN: one night (133.333333) to the hotel less the fee, the other two nights + deposit + bond (376.666667) to the guest, account deleted |
 
 Results go to `demo/results/hotel-run-*.json`: every transaction hash, each path's steps (with the rule results from the co-signer's decision records), and the checks. The signed decision log is written next to them.
+
+## `hotel-dispute-testnet.ts`: Clip 3
+
+`npm run demo:hotel-dispute` records two of those outcomes against a running `npm run cosigner:local` (Testnet only; the scheduler submits H2 when `COSIGNER_TICK_SUBMIT=1`). Sub-step 1 is the H5 arbiter ruling. Sub-step 2 is H2: the hotel never confirms, so `default.refund` fires. It is not a dispute default. Walkthrough: [`docs/demo/hotel-dispute.md`](../../../docs/demo/hotel-dispute.md).
 
 ## `x402/b1-x402-testnet.ts`: what it checks
 
