@@ -81,6 +81,18 @@ default `npm test` / `npm run typecheck` so the repo builds without it.
    a different payee. Results and the co-signer decision log are written under
    `demo/results/`. The account is left open (close is covered by `demo:b1`).
 
+## Opt-in: t54 exact settlement
+
+`npm run demo:x402:t54` keeps this prepaid flow as the default and adds a second script. The agent builds a 1.00 RLUSD payment (official Testnet issuer `rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV`), `propose_payment` gets a signature from `cosigner:local`, and the merchant submits that blob only through t54 `POST /verify` then `POST /settle`. The facilitator URL defaults to `https://xrpl-facilitator-testnet.t54.ai`.
+
+The payment carries three memos. t54's untyped memo is `MemoData = hex(utf8(invoiceId))`. Baseline B8 also requires a typed `eng/basis` memo, and procurement W6 requires a typed `eng/invoice` memo equal to the vendor invoice. `SendMax` equals `Amount`, `Flags` is 0, and `LastLedgerSequence` is the open ledger plus 20 (asserted to stay within 30). RLUSD is bought with faucet XRP on the Testnet AMM. No GitHub or Circle sign-in.
+
+Console labels for a recording:
+
+- `Clip 1: capped payment via t54` — 1.00 RLUSD within a 100/day cap, settled, with a `testnet.xrpl.org` link.
+- `Clip 2: rogue agent refused` — 150.00 fails the daily cap (W3) alone, and a payment whose destination is not the challenge payee (W7). Prints `facilitator not called`.
+- `Optional: expired blob refused` — not a clip. The co-signer signs a 2-ledger window, then the blob is offered to t54 after that window has passed.
+
 ## Status
 
 - ✅ `merchant.ts` + `merchant.test.ts` — the full chain, verified in process.

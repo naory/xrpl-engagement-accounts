@@ -87,6 +87,8 @@ An engagement account pays an x402 merchant through the settlement adapter's `pr
 
 Run with `npm run demo:x402` (needs `x402-xrpl-settlement-adapter`). The in-process integration test is `npm run test:x402`.
 
+`npm run demo:x402:t54` is the opt-in path that asks t54's Testnet facilitator to settle a 2-of-2 RLUSD payment within a 100/day cap. Prepaid X1–X4 stay the default. Labels: `Clip 1: capped payment via t54` and `Clip 2: rogue agent refused`.
+
 ## `x402-probe.ts`
 
 A capability probe: does a hosted x402 facilitator accept and settle an **engagement-account-shaped** payment — a multisigned `Payment` from a master-disabled account, with and without the engagement memos (`eng/basis`, `eng/invoice`) and invoice binding? It builds those payments to a fresh Testnet merchant and posts them to a facilitator's `/verify`, alongside a single-signed control that confirms the envelope is right. `FACILITATOR_URLS` takes a comma-separated list; `SETTLE=1` also settles the payments that verify and reads the result back from the ledger (a few thousand drops of Testnet XRP).

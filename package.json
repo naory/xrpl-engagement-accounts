@@ -30,6 +30,7 @@
     "test:mpp": "vitest run -c vitest.mpp.config.ts",
     "typecheck:x402": "tsc -p tsconfig.x402.json --noEmit",
     "demo:x402": "tsx --conditions=source packages/cosigner/demo/x402/b1-x402-testnet.ts",
+    "demo:x402:t54": "tsx --conditions=source packages/cosigner/demo/x402/b1-x402-t54-testnet.ts",
     "demo:privy": "tsx --conditions=source packages/cosigner/demo/privy-engagement-testnet.ts",
     "demo:mpp": "tsx --conditions=source packages/cosigner/demo/mpp/b1-mpp-testnet.ts",
     "mcp": "tsx --conditions=source packages/agent-mcp/src/bin/eng-mcp.ts",
