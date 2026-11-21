@@ -40,7 +40,7 @@ Clip 3: hotel dispute
 Signer weights are guest 3, hotel 3, arbiter 4, co-signer 2, quorum 7
 (`templates/hotel@2.json:7`-`templates/hotel@2.json:12`). The service fee is 50 bps of the
 hotel's gross, paid by the hotel (`templates/hotel@2.json:49`, `policies/hotel@2.0.0.json:28`).
-On this split the hotel's gross is 300, so the fee is 1.5.
+On this split the hotel's gross is 300, so the fee is 1.5. The silent-cut shot list for this clip and the t54 clips is [n2a-storyboard.md](n2a-storyboard.md).
 
 ## 1. Arbiter ruling (H5)
 
