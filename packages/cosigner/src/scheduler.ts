@@ -95,8 +95,12 @@ export function startTickScheduler(svc: CosignerService, o: TickSchedulerOptions
     const alert = await svc.overdue(id)
     if (!alert) return
     try {
-      await o.onAlert?.(id, alert)
-    } catch (e) { log('error', 'onAlert failed', { engagementId: id, error: String((e as Error).message ?? e) }) }
+      if (o.onAlert) await o.onAlert(id, alert)
+      await svc.noteAlertDelivery(id, true)
+    } catch (e) {
+      try { await svc.noteAlertDelivery(id, false) } catch { /* the overdue log already happened; the next tick retries */ }
+      log('error', 'onAlert failed', { engagementId: id, error: String((e as Error).message ?? e) })
+    }
   }
 
   async function runRound(): Promise<void> {

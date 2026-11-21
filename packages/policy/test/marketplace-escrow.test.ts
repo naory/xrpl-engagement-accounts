@@ -156,6 +156,19 @@ describe('marketplace-escrow@1 policy', () => {
     expect(celDurationMs(String(policy.params!.minInspectGap))).toBe(604_800 * 1000)
   })
 
+  it('L12 fails a 1h ship window or a short inspect gap, and passes the template defaults', () => {
+    const shortShip = structuredClone(template)
+    shortShip.timers!.shipBy.durationSecs = 3600
+    shortShip.timers!.inspectBy.durationSecs = 3600 + 604_800
+    expect(lintPolicy(policy, shortShip).map((f) => `${f.id} ${f.where}`)).toContain('L12 timers.shipBy')
+
+    const shortGap = structuredClone(template)
+    shortGap.timers!.inspectBy.durationSecs = shortGap.timers!.shipBy.durationSecs + 3600
+    expect(lintPolicy(policy, shortGap).map((f) => `${f.id} ${f.where}`)).toContain('L12 timers.inspectBy')
+
+    expect(lintPolicy(policy, template).filter((f) => f.id === 'L12')).toEqual([])
+  })
+
   it('L11 fails when baselineRef drifts and passes when the policy matches the template', () => {
     const drifted = structuredClone(policy)
     drifted.baselineRef = 'pol_baseline@1.1.0'

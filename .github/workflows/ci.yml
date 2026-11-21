@@ -66,8 +66,8 @@ jobs:
       - name: Cost sheet matches validate-templates and hotelTickets
         run: npm run costs -- --check
 
-      # Implemented rules are L1–L3, L5 and L7–L11. L4 and L6 are not implemented.
-      - name: Lint policies (L1–L3, L5, L7–L11)
+      # Implemented rules are L1–L3, L5 and L7–L12. L4 and L6 are not implemented.
+      - name: Lint policies (L1–L3, L5, L7–L12)
         run: npm run lint-policies
 
       - name: x402 + MPP adapter integration

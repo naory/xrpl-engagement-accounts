@@ -281,12 +281,12 @@ Stack: TypeScript (Node ≥ 22.13, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-ke
 
 ```bash
 npm install
-npm test                    # <!-- count:tests -->811<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
+npm test                    # <!-- count:tests -->816<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
 npm run test:sweep          # <!-- count:tests-sweep -->15<!-- /count --> hotel R20/R21 sweep tests; nightly, not part of npm test
 npm run typecheck
 npm run validate-templates  # V1–V16 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)
 npm run costs               # regenerate docs/costs.md from validate-templates and hotelTickets
-npm run lint-policies       # L1–L3, L5, L7–L11 for policies/*.json against their templates (L4 and L6 are not implemented)
+npm run lint-policies       # L1–L3, L5, L7–L12 for policies/*.json against their templates (L4 and L6 are not implemented)
 npm run vectors:build       # regenerate vectors/*.json (deterministic; review the diff)
 npm run demo:b1             # live B1 procurement demo on Testnet (see packages/cosigner/demo/README.md)
 npm run demo:x402           # live x402 engagement-account purchase on Testnet (needs x402-xrpl-settlement-adapter)

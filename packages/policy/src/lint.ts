@@ -1,7 +1,8 @@
 // Policy lint (docs/spec/policy.md §11): L1 parse/type/float ban, L2 stage coverage, L3 statement
 // types in the registry, L5 enforcement vs template, L7 unique rule ids, L8 plain-English text, L9 stay-terms
 // consistency (per-night variant cap vs maxStayVariantNights; rulingWindow within its bounds), L10 slot placement,
-// L11 baselineRef agreement between a template policy and its template.
+// L11 baselineRef agreement between a template policy and its template,
+// L12 the template's default ship window and inspect gap against minShipWindow / minInspectGap.
 // (L4 static cost bound and L6 layer monotonicity are follow-ups.)
 import type { Template } from '@eng/core'
 import { Assets } from './facts.ts'
@@ -66,6 +67,37 @@ export function lintPolicy(p: PolicyDoc, template?: Template): LintFinding[] {
   out.push(...rulingWindowFindings(p))
   out.push(...slotFindings(p))
   out.push(...baselineRefFindings(p, template))
+  out.push(...shipWindowFindings(p, template))
+  return out
+}
+
+/**
+ * L12: when the policy sets minShipWindow / minInspectGap and the template has those timers, the
+ * template defaults have to meet them. The floors are not copied into the template validator.
+ */
+function shipWindowFindings(p: PolicyDoc, template?: Template): LintFinding[] {
+  const ship = template?.timers?.shipBy
+  const inspect = template?.timers?.inspectBy
+  if (!ship || !inspect) return []
+  const out: LintFinding[] = []
+  const window = p.params?.minShipWindow
+  const gap = p.params?.minInspectGap
+  if (typeof window === 'string') {
+    let ms: number
+    try { ms = celDurationMs(window) } catch {
+      return [{ id: 'L12', where: 'params.minShipWindow', message: `${JSON.stringify(window)} is not a duration` }]
+    }
+    if (ship.durationSecs * 1000 < ms) out.push({ id: 'L12', where: 'timers.shipBy', message: `shipBy ${ship.durationSecs}s is shorter than minShipWindow ${window}` })
+  }
+  if (typeof gap === 'string') {
+    let ms: number
+    try { ms = celDurationMs(gap) } catch {
+      out.push({ id: 'L12', where: 'params.minInspectGap', message: `${JSON.stringify(gap)} is not a duration` })
+      return out
+    }
+    const span = inspect.durationSecs - ship.durationSecs
+    if (ship.from === inspect.from && span * 1000 < ms) out.push({ id: 'L12', where: 'timers.inspectBy', message: `inspectBy − shipBy ${span}s is shorter than minInspectGap ${gap}` })
+  }
   return out
 }
 
