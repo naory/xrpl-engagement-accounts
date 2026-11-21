@@ -9,7 +9,7 @@ import * as keypairs from 'ripple-keypairs'
 import { encodeForMultisigning } from 'ripple-binary-codec'
 import { Amount, documentHash, formatAmount, newNonce, parseAmount, signStatementAsync, signerBlob, verifyStatement, zero, type AssetDef, type Signer, type Statement, type Template } from '@eng/core'
 import {
-  Assets, LedgerFacts, REGISTRY, TxFacts, canonicalTrust, celDurationMs, decide, decisionStatementBody, isClassicAddress, layerHash, nightsElapsed, resolvePolicy, resolvedAssets, withCanonicalTrust,
+  Assets, LedgerFacts, REGISTRY, TxFacts, baselineFor, canonicalTrust, celDurationMs, decide, decisionStatementBody, isClassicAddress, layerHash, nightsElapsed, resolvePolicy, resolvedAssets, withCanonicalTrust,
   type Decision, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc, verifyStatements,
 } from '@eng/policy'
 import type { LedgerSource } from './snapshot.ts'
@@ -282,8 +282,8 @@ export class CosignerService {
     if (!template) throw new Error(`unknown template ${record.template}`)
     if (record.parties.cosigner && record.parties.cosigner !== this.address) throw new Error(`engagement names a different co-signer (${record.parties.cosigner})`)
     if (mandate && !verifyStatement(mandate).ok) throw new Error('mandate signature invalid')
-    const baseline = this.o.policies.find((p) => p.layer === 'baseline')
-    if (!baseline) throw new Error('no baseline policy loaded')
+    const baseline = baselineFor(template, this.o.policies)
+    if (!baseline) throw new Error(template.baselineRef ? `baseline ${template.baselineRef} not available` : 'no baseline policy loaded')
     let layers: PolicyDoc[]
     if (record.policyLayers?.length) {
       layers = record.policyLayers.map((h) => {

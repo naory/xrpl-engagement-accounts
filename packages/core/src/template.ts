@@ -49,6 +49,26 @@ export interface BlueprintDef {
   closes: boolean
 }
 
+export interface DisputeBond {
+  /** "amount" = the deal amount, plus the named policy param. */
+  base: string
+  plusParam: string
+}
+
+/**
+ * Template-declared dispute (marketplace-escrow@1). Absent on hotel@1 and hotel@2, which keep
+ * their own dispute path. Arbiter silence is not an outcome: `overdueTimer` must be `escalate`.
+ */
+export interface DisputeDef {
+  /** Roles allowed to open the one dispute. */
+  by: string[]
+  bond: DisputeBond
+  /** "accept" still receipts a ruling after the SLA. Anything else keeps the refusal. */
+  lateRuling?: string
+  /** Timer whose expiry only pages ops. Must be `onExpire: "escalate"`. */
+  overdueTimer?: string
+}
+
 export interface Template {
   templateId: string
   class: TemplateClass
@@ -65,6 +85,13 @@ export interface Template {
   /** Statement-type (or `type#phase`) -> timer name whose expiry closes the window in which it may be posted. */
   attestationWindows?: Record<string, string>
   policyRef?: string
+  /**
+   * Baseline this deal is evaluated with (`pol_baseline@1.2.0`). Absent means baseline 1.1.0,
+   * which is what hotel@1 and hotel@2 stay pinned to.
+   */
+  baselineRef?: string
+  /** Present only when the template declares its own dispute. Hotel templates omit this. */
+  dispute?: DisputeDef
 }
 
 export interface ValidationOptions {
@@ -265,6 +292,35 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
   }
   ordered('checkInBy', 'entryDisputeBy', false, 'the guest must be able to dispute entry until check-in closes')
   ordered('claimBy', 'disputeWindowEnds', true, 'the guest must be able to answer the last possible claim')
+  // marketplace-escrow@1: both timers run from open. The gap is the buyer's inspection time after the last
+  // possible shipment. Floors are the Dev Lead policy params (24h ship window, 7d inspect gap).
+  // TODO(PR3): marketplaceEscrowTermsFindings must check the deal's own record.timers at register()
+  // (shipBy − open ≥ params.minShipWindow, inspectBy − shipBy ≥ params.minInspectGap).
+  // docs/specs/marketplace-escrow-at-1.md §3 items 2–3 and §8 C7. Lands with the flow in PR3.
+  ordered('shipBy', 'inspectBy', true, 'the buyer must be able to inspect after the last possible shipment')
+  const shipBy = timers.shipBy
+  const inspectBy = timers.inspectBy
+  if (shipBy && inspectBy) {
+    if (shipBy.from !== inspectBy.from) {
+      err('V14', `timers shipBy (from ${shipBy.from}) and inspectBy (from ${inspectBy.from}) must share an anchor: the buyer must be able to inspect after the last possible shipment`)
+    } else {
+      if (shipBy.from === 'open' && shipBy.durationSecs < MIN_SHIP_WINDOW_SECS) {
+        err('V14', `timer shipBy (${shipBy.durationSecs}s) must be at least ${MIN_SHIP_WINDOW_SECS}s from open: minimum shipping window`)
+      }
+      const gap = inspectBy.durationSecs - shipBy.durationSecs
+      if (gap < MIN_INSPECT_GAP_SECS) {
+        err('V14', `timer inspectBy must end at least ${MIN_INSPECT_GAP_SECS}s after shipBy (gap ${gap}s from ${shipBy.from}): the buyer must be able to inspect after the last possible shipment`)
+      }
+    }
+  }
+  // A declared dispute pages ops when its timer expires. That timer must not name a pre-signed outcome:
+  // arbiter silence moves no money.
+  if (t.dispute) {
+    const name = t.dispute.overdueTimer
+    const tm = name ? timers[name] : undefined
+    if (!tm) err('V6', `dispute.overdueTimer ${JSON.stringify(name ?? null)} is not a timer`)
+    else if (tm.onExpire !== 'escalate') err('V6', `timer ${name}: dispute overdue must be onExpire "escalate" (arbiter silence moves no money)`)
+  }
 
   // V15: every arbiter role opts into the service's accreditation gate (the co-signer registers a deal only when
   // the arbiter holds an accepted, unexpired ENG/ARBITER credential from an issuer the policy lists).
@@ -277,3 +333,7 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
 
   return { ok: errors.length === 0, errors, warnings, disclosures, minimalWinningSets: mws, ticketsNeeded: tickets, reserveDrops: reserve }
 }
+
+/** Dev Lead floors for marketplace-escrow@1. Policy params minShipWindow / minInspectGap use the same durations. */
+export const MIN_SHIP_WINDOW_SECS = 86_400
+export const MIN_INSPECT_GAP_SECS = 604_800

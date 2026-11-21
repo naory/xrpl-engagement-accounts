@@ -259,8 +259,8 @@ xrpl-engagement-accounts/
 │   ├── agent-mcp/       # agent-side MCP server: propose → co-sign → combine → submit (4 tools)
 │   ├── provisioning/    # eng.provision/1: non-custodial signer enrolment (proof-of-possession)
 │   └── web/             # demo UI (simulated + live Testnet) over the stack above
-├── templates/           # hotel@1.json, hotel@2.json, procurement@1.json, shopping@1.json
-├── policies/            # baseline@1.1.0, hotel@1.1.0, hotel@2.0.0, procurement@1.3.0, shopping@1.0.0
+├── templates/           # hotel@1.json, hotel@2.json, marketplace-escrow@1.json, procurement@1.json, shopping@1.json
+├── policies/            # baseline@1.1.0, baseline@1.2.0, hotel@1.1.0, hotel@2.0.0, marketplace-escrow@1.0.0, procurement@1.3.0, shopping@1.0.0
 ├── norms/               # hotel@1.json (pre-booking norms profile)
 ├── vectors/             # conformance vectors (counts in vectors/README.md)
 ├── docs/
@@ -281,7 +281,7 @@ Stack: TypeScript (Node ≥ 22.13, `tsx`, `vitest` 5), `xrpl.js` 5.3, `ripple-ke
 
 ```bash
 npm install
-npm test                    # <!-- count:tests -->775<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
+npm test                    # <!-- count:tests -->787<!-- /count --> tests in the default suite: packages/*/test (core, policy, co-signer, agent-mcp, provisioning, web), including conformance vectors (Node ≥ 22.13). Not counted here: test:x402, test:mpp, and the sweep.
 npm run test:sweep          # <!-- count:tests-sweep -->15<!-- /count --> hotel R20/R21 sweep tests; nightly, not part of npm test
 npm run typecheck
 npm run validate-templates  # V1–V15 for templates/*.json (minimal winning sets, tickets, reserve, disclosures)

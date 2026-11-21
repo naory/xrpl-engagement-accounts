@@ -1,0 +1,218 @@
+{
+  "templateId": "settlement-vault/marketplace-escrow@1",
+  "class": "escrow",
+  "description": "Marketplace escrow: an agent buys from a seller. Refund if no carrier-attested shipment by shipBy; release after inspectBy if shipped and undisputed; disputes ruled live (full refund or full release) by an accredited arbiter, bond to the winner. No arbiter-silent defaults; the ruling deadline only raises an ops alert, which repeats until the account closes.",
+  "asset": {
+    "code": "RLUSD"
+  },
+  "roles": {
+    "principal": {
+      "weight": 3,
+      "kind": "principal",
+      "operatedBy": "external"
+    },
+    "counterparty": {
+      "weight": 3,
+      "kind": "counterparty",
+      "operatedBy": "external"
+    },
+    "arbiter": {
+      "weight": 4,
+      "kind": "arbiter",
+      "operatedBy": "external",
+      "accreditation": "service"
+    },
+    "cosigner": {
+      "weight": 2,
+      "kind": "cosigner",
+      "operatedBy": "service"
+    }
+  },
+  "quorum": 7,
+  "outcomes": {
+    "release.confirm": {
+      "description": "The buyer confirms receipt: the seller is paid the price less the fee; anything extra goes back to the buyer.",
+      "signers": [
+        [
+          "principal",
+          "counterparty",
+          "cosigner"
+        ]
+      ],
+      "blueprint": "close.split",
+      "policyStage": "release.confirm",
+      "enforcement": "ledger"
+    },
+    "refund.agreed": {
+      "description": "Buyer and seller cancel (for example before shipping): everything goes back to the buyer.",
+      "signers": [
+        [
+          "principal",
+          "counterparty",
+          "cosigner"
+        ]
+      ],
+      "blueprint": "close.refundAll",
+      "policyStage": "refund.agreed",
+      "enforcement": "ledger"
+    },
+    "dispute.refund": {
+      "description": "The arbiter rules for the buyer and signs with the buyer: everything, bond included, back to the buyer. The co-signer is not involved.",
+      "signers": [
+        [
+          "arbiter",
+          "principal"
+        ]
+      ],
+      "blueprint": "close.refundAll",
+      "policyStage": null,
+      "enforcement": "none",
+      "requires": "ruling"
+    },
+    "dispute.release": {
+      "description": "The arbiter rules for the seller and signs with the seller: the price less the fee, plus the dispute bond (bond to the winner), to the seller. The co-signer is not involved.",
+      "signers": [
+        [
+          "arbiter",
+          "counterparty"
+        ]
+      ],
+      "blueprint": "close.split",
+      "policyStage": null,
+      "enforcement": "none",
+      "requires": "ruling"
+    },
+    "default.refund": {
+      "description": "The seller never recorded a shipment by shipBy: everything goes back to the buyer automatically.",
+      "presigned": true,
+      "finalSigner": "cosigner",
+      "signers": [
+        [
+          "principal",
+          "counterparty",
+          "cosigner"
+        ]
+      ],
+      "blueprint": "close.refundAll",
+      "policyStage": "default.refund",
+      "enforcement": "final-signature"
+    },
+    "default.release": {
+      "description": "Shipped, and nobody disputed by inspectBy: the seller is paid the price less the fee automatically (account holds exactly the price).",
+      "presigned": true,
+      "finalSigner": "cosigner",
+      "signers": [
+        [
+          "principal",
+          "counterparty",
+          "cosigner"
+        ]
+      ],
+      "blueprint": "close.releaseAll",
+      "policyStage": "default.release",
+      "enforcement": "final-signature"
+    },
+    "default.releaseSweep": {
+      "description": "The same release, signed a second time for when the account holds more than the price: the extra goes back to the buyer. The co-signer completes whichever version fits the balance.",
+      "presigned": true,
+      "finalSigner": "cosigner",
+      "signers": [
+        [
+          "principal",
+          "counterparty",
+          "cosigner"
+        ]
+      ],
+      "blueprint": "close.releaseWithSweep",
+      "policyStage": "default.release",
+      "enforcement": "final-signature"
+    }
+  },
+  "timers": {
+    "shipBy": {
+      "description": "Fixed at open: the named carrier attester must record the shipment (shipping.shipped/1) by this time.",
+      "from": "open",
+      "durationSecs": 259200,
+      "onExpire": "default.refund"
+    },
+    "inspectBy": {
+      "description": "Fixed at open: the buyer must dispute by this time; after it, a recorded shipment with no open dispute releases to the seller.",
+      "from": "open",
+      "durationSecs": 864000,
+      "onExpire": [
+        "default.release",
+        "default.releaseSweep"
+      ]
+    },
+    "rulingDueBy": {
+      "description": "Arbiter SLA for ruling on an open dispute. Expiry raises a RULING_OVERDUE ops alert that repeats until the account is deleted; it moves no money, and a later ruling is still accepted (dispute.lateRuling = accept).",
+      "from": "disputeOpened",
+      "durationSecs": 432000,
+      "onExpire": "escalate"
+    }
+  },
+  "attestationWindows": {
+    "shipping.shipped/1": "shipBy",
+    "party.dispute/1": "inspectBy"
+  },
+  "dispute": {
+    "by": [
+      "principal"
+    ],
+    "bond": {
+      "base": "amount",
+      "plusParam": "minDisputeBond"
+    },
+    "lateRuling": "accept",
+    "overdueTimer": "rulingDueBy"
+  },
+  "blueprints": {
+    "close.split": {
+      "steps": [
+        "pay.counterparty?",
+        "pay.serviceFee?",
+        "pay.principal?",
+        "trustline.remove",
+        "account.delete"
+      ],
+      "closes": true
+    },
+    "close.releaseAll": {
+      "steps": [
+        "pay.counterparty",
+        "pay.serviceFee",
+        "trustline.remove",
+        "account.delete"
+      ],
+      "closes": true
+    },
+    "close.refundAll": {
+      "steps": [
+        "pay.principal",
+        "trustline.remove",
+        "account.delete"
+      ],
+      "closes": true
+    },
+    "close.releaseWithSweep": {
+      "steps": [
+        "pay.counterparty",
+        "pay.serviceFee",
+        "pay.principal",
+        "trustline.remove",
+        "account.delete"
+      ],
+      "closes": true
+    }
+  },
+  "reserveObjects": {
+    "trustlines": 1,
+    "signerList": 1
+  },
+  "fees": {
+    "serviceFeeBps": 50,
+    "paidBy": "counterparty"
+  },
+  "policyRef": "pol_marketplace-escrow@1.0.0",
+  "baselineRef": "pol_baseline@1.2.0"
+}
