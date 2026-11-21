@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { MIN_INSPECT_GAP_SECS, MIN_SHIP_WINDOW_SECS, documentHash, signStatement, type Statement, type Template } from '@eng/core'
+import { documentHash, signStatement, type Statement, type Template } from '@eng/core'
 import {
   baselineFor, celDurationMs, decide, layerHash, lintPolicy,
   type DecideInput, type Decision, type EngagementRecord, type LedgerSnapshot, type PolicyDoc,
@@ -140,16 +140,20 @@ describe('marketplace-escrow@1 policy', () => {
   it('lints, has the Dev Lead windows, and has no rulingWindow or ruling-absence rule', () => {
     expect(lintPolicy(policy, template)).toEqual([])
     expect(policy.params).not.toHaveProperty('rulingWindow')
-    expect(celDurationMs(String(policy.params!.minShipWindow))).toBe(MIN_SHIP_WINDOW_SECS * 1000)
-    expect(celDurationMs(String(policy.params!.minInspectGap))).toBe(MIN_INSPECT_GAP_SECS * 1000)
     expect(celDurationMs(String(policy.params!.rulingOverdueRepeat))).toBe(86_400 * 1000)
     expect(policy.params!.serviceFeeBps).toBe(50)
-    // Confirmed bond. The deal-timer check against these params is TODO(PR3) next to V14 in template.ts (spec §3).
     expect(policy.params!.minDisputeBond).toBe('0.50')
     expect(template.baselineRef).toBe('pol_baseline@1.2.0')
     expect(policy.baselineRef).toBe('pol_baseline@1.2.0')
     const checks = Object.values(policy.stages).flatMap((s) => s.rules.map((r) => `${r.when ?? ''} ${r.check}`))
     expect(checks.join('\n')).not.toMatch(/ruling|party\.ruling/)
+  })
+
+  it('minShipWindow is 24h and minInspectGap is 7d, and those params are the only floors', () => {
+    expect(policy.params!.minShipWindow).toBe('86400s')
+    expect(policy.params!.minInspectGap).toBe('604800s')
+    expect(celDurationMs(String(policy.params!.minShipWindow))).toBe(86_400 * 1000)
+    expect(celDurationMs(String(policy.params!.minInspectGap))).toBe(604_800 * 1000)
   })
 
   it('L11 fails when baselineRef drifts and passes when the policy matches the template', () => {

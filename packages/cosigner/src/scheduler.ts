@@ -1,12 +1,15 @@
 // Tick scheduler: a stored pre-signed default completes when its conditions come true, not only when someone calls
-// the tick endpoint. One round ticks every open engagement, one after another, in quiet mode; the next round starts
-// `intervalMs` after the previous one FINISHES (a setTimeout chain), so rounds never overlap.
-import type { CosignerService, TickResult } from './service.ts'
+// the tick endpoint. One round also pages overdue() for every open engagement, whether or not a blob is stored.
+// Engagements run one after another, in quiet mode; the next round starts `intervalMs` after the previous one
+// FINISHES (a setTimeout chain), so rounds never overlap.
+import type { CosignerService, RulingOverdue, TickResult } from './service.ts'
 
 export interface TickSchedulerOptions {
   intervalMs: number
   /** Called for each SIGN result (it carries the submittable `blob`). A throw is logged and does not stop the round. */
   onResult?: (engagementId: string, r: TickResult) => Promise<void> | void
+  /** Called when overdue() pages a ruling SLA. Independent of stored blobs. A throw is logged and does not stop the round. */
+  onAlert?: (engagementId: string, alert: RulingOverdue) => Promise<void> | void
   /** A fatal error that stopped the scheduler (STORE_LOCKED: the store lease is lost). The caller should exit. */
   onError?: (e: Error) => void
   log?: (level: 'warn' | 'error', msg: string, extra?: Record<string, unknown>) => void
@@ -88,8 +91,24 @@ export function startTickScheduler(svc: CosignerService, o: TickSchedulerOptions
     handed.set(id, new Set([...seen].filter((b) => current.has(b))))
   }
 
+  async function alertOne(id: string): Promise<void> {
+    const alert = await svc.overdue(id)
+    if (!alert) return
+    try {
+      await o.onAlert?.(id, alert)
+    } catch (e) { log('error', 'onAlert failed', { engagementId: id, error: String((e as Error).message ?? e) }) }
+  }
+
   async function runRound(): Promise<void> {
     for (const id of svc.openEngagementIds()) {
+      if (stopped) return
+      try {
+        await alertOne(id)
+      } catch (e) {
+        const message = String((e as Error)?.message ?? e)
+        if (message.startsWith('STORE_LOCKED')) return fatal(e as Error)
+        log('error', 'overdue failed', { engagementId: id, error: message })
+      }
       if (stopped) return
       try {
         await tickOne(id)

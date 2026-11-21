@@ -75,6 +75,22 @@ export interface ReceiptAnchor {
   receivedAt: string
   /** True when the attester account is one of the deal's parties. Party statements keep the decision-time key check. */
   attesterIsParty: boolean
+  /**
+   * Public key on the receipted statement. When set, a re-signed copy of the same id does not skip
+   * the key check: the skip belongs to the signer that was authorized at receipt.
+   */
+  signerPublicKey?: string
+}
+
+/**
+ * AttesterTerms type allowlist. An account named by no entry is unrestricted here. An account named
+ * by several entries may post a type when any of those entries allows it (an entry with no `types`
+ * allows every type).
+ */
+export function attesterTypeAllowed(attesters: EngagementRecord['attesters'], account: string, type: string): boolean {
+  const named = Object.values(attesters ?? {}).filter((t) => t.accounts?.includes(account))
+  if (named.length === 0) return true
+  return named.some((t) => !t.types || t.types.includes(type))
 }
 
 function windowGovernedType(windows: Record<string, string> | undefined, type: string): boolean {
@@ -102,12 +118,15 @@ export function verifyStatements(
     if (!meta) { reject(s, 'UNKNOWN_TYPE'); continue }
     const v = verifyStatement(s)
     if (!v.ok) { reject(s, v.reason); continue }
+    if (s.attester?.account && !attesterTypeAllowed(eng.attesters, s.attester.account, s.type)) { reject(s, 'TYPE_NOT_ALLOWED'); continue }
     // A receipted window-governed statement is fresh against its receipt, and a non-party attester's key
     // was already checked then. Party statements, and anything not window-governed, stay on this ledger.
+    // The skip is tied to the receipted signer when the anchor records one.
     const anchor = s?.id ? receipted?.get(s.id) : undefined
     const windowed = Boolean(anchor && windowGovernedType(attestationWindows, s.type))
     const receivedAt = anchor ? Date.parse(anchor.receivedAt) : Number.NaN
-    const skipKey = windowed && anchor != null && !anchor.attesterIsParty && !Number.isNaN(receivedAt)
+    const sameSigner = anchor?.signerPublicKey == null || anchor.signerPublicKey === s.proof?.publicKey
+    const skipKey = windowed && anchor != null && !anchor.attesterIsParty && !Number.isNaN(receivedAt) && sameSigner
     // 5: key authorized for the attester account (trust ledger = evaluation ledger when unanchored)
     if (!skipKey && !keyAuthorized(ledger, s.attester.account, v.signerAddress)) { reject(s, 'KEY_NOT_AUTHORIZED'); continue }
     // 6–7: roles: party roles, plus attester roles from the deal terms (with accreditation if required)

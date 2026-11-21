@@ -9,7 +9,7 @@ import * as keypairs from 'ripple-keypairs'
 import { encodeForMultisigning } from 'ripple-binary-codec'
 import { Amount, documentHash, formatAmount, newNonce, parseAmount, signStatementAsync, signerBlob, verifyStatement, zero, type AssetDef, type Signer, type Statement, type Template } from '@eng/core'
 import {
-  Assets, LedgerFacts, REGISTRY, TxFacts, baselineFor, canonicalTrust, celDurationMs, decide, decisionStatementBody, isClassicAddress, layerHash, nightsElapsed, resolvePolicy, resolvedAssets, withCanonicalTrust,
+  Assets, LedgerFacts, REGISTRY, TxFacts, attesterTypeAllowed, baselineFor, canonicalTrust, celDurationMs, decide, decisionStatementBody, isClassicAddress, layerHash, nightsElapsed, resolvePolicy, resolvedAssets, withCanonicalTrust,
   type Decision, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc, verifyStatements,
 } from '@eng/policy'
 import type { LedgerSource } from './snapshot.ts'
@@ -71,6 +71,17 @@ interface EngagementState {
   lastRefusal: Map<string, string>
   /** Marked closed (its account is gone): still readable, no longer ticked. */
   closed: boolean
+  /** Last time a ruling-overdue alert was raised (ledger close time). The next one waits out rulingOverdueRepeat. */
+  alertedAt?: string
+}
+
+/** Ops page from overdue(). No signature and no blob: the account still exists and the ruling SLA has passed. */
+export interface RulingOverdue {
+  alert: 'RULING_OVERDUE'
+  engagementId: string
+  caseOpenedAt: string
+  dueAt: string
+  rulingReceipted: boolean
 }
 
 /**
@@ -200,7 +211,7 @@ export class CosignerService {
         presigned: new Map(of(snap.presigned, id).map((p) => [p.outcome, p.blob])),
         completed: new Map(of(snap.completed, id).map((c) => [c.txHash, c.result])),
         lastRefusal: new Map(of(snap.lastRefusal, id).map((r) => [r.outcome, r.fingerprint])),
-        closed: e.closed,
+        closed: e.closed, alertedAt: snap.meta[alertedAtKey(id)],
       })
     }
     this.inflight = snap.inflight
@@ -300,16 +311,22 @@ export class CosignerService {
     // Canonical trust (sorted keys, exactly the slots these layers name). Throws UNRESOLVED_SLOT / BAD_ADDRESS / TRUST_KEY.
     const bound = withCanonicalTrust(record, all)
     this.requireConfiguredTrust(bound)
-    const termsError = stayTermsFindings(bound, mandate, template, all)
+    const termsError = stayTermsFindings(bound, mandate, template, all) ?? marketplaceEscrowTermsFindings(bound, mandate, template, all)
     if (termsError) throw new Error(`INVALID_TERMS: ${termsError}`)
     const accredited = Object.entries(template.roles).filter(([, r]) => r.accreditation === 'service').map(([n]) => n)
-    if (accredited.length) {
+    const shipDeal = Boolean(template.timers?.shipBy && template.timers?.inspectBy)
+    if (accredited.length || shipDeal) {
       const assets = this.assetsOf(all, bound)
       const subjects = accredited.map((r) => bound.parties[r]).filter((a): a is string => typeof a === 'string')
+      if (shipDeal) for (const a of bound.attesters?.shipping?.accounts ?? []) if (typeof a === 'string' && !subjects.includes(a)) subjects.push(a)
       let ledger: LedgerSnapshot
       try { ledger = await this.o.source.snapshot({ account: bound.account, assets, accounts: [], credentialSubjects: subjects, historySecs: 0 }) } catch (e) { throw new LedgerUnavailableError(e) }
-      const codes = neutralityFindings(bound, mandate, accredited, all, new LedgerFacts(ledger, new Assets(assets)))
-      if (codes.length) throw new Error(`NOT_NEUTRAL: ${codes.join(', ')}`)
+      if (accredited.length) {
+        const codes = neutralityFindings(bound, mandate, accredited, all, new LedgerFacts(ledger, new Assets(assets)))
+        if (codes.length) throw new Error(`NOT_NEUTRAL: ${codes.join(', ')}`)
+      }
+      const cred = marketplaceShippingCredentialFinding(bound, template, ledger)
+      if (cred) throw new Error(`INVALID_TERMS: ${cred}`)
     }
     const st: EngagementState = {
       record: structuredClone({ consumed: [], ...bound }), registered: jsonCopy({ record: bound, mandate }), mandate, layers: all, template,
@@ -393,9 +410,8 @@ export class CosignerService {
     // Named by account, not by accreditation kind: a kind-only attester is still NOT_A_PARTY.
     const named = Object.values(st.record.attesters ?? {}).filter((t) => t.accounts?.includes(attester))
     if (!party && named.length === 0) throw new Error(`NOT_A_PARTY: ${attester}`)
-    for (const terms of named) {
-      if (terms.types && !terms.types.includes(s.type)) throw new Error(`TYPE_NOT_ALLOWED: ${s.type} is not in this attester's types`)
-    }
+    // Any naming entry may allow the type. One entry's list does not veto another entry that allows it.
+    if (named.length > 0 && !attesterTypeAllowed(st.record.attesters, attester, s.type)) throw new Error(`TYPE_NOT_ALLOWED: ${s.type} is not in this attester's types`)
 
     const assets = this.assetsOf(st.layers, st.record)
     const ledger = await this.o.source.snapshot({ account: st.record.account, assets, accounts: [attester], credentialSubjects: [attester], historySecs: 0 })
@@ -448,8 +464,8 @@ export class CosignerService {
   }
 
   /**
-   * marketplace-escrow@1 shipment order: nothing before open, and only the first receipted shipment counts.
-   * Hotel has no `dispute` block, so it never reaches here.
+   * Shipment order for a template that windows `shipping.shipped/1`: nothing before open, and only the
+   * first receipted shipment counts. The window is the gate, not `template.dispute` and not the template id.
    */
   private checkShipmentSequence(st: EngagementState, ledger: LedgerSnapshot): void {
     const open = Date.parse(st.record.timers?.open ?? '')
@@ -475,26 +491,28 @@ export class CosignerService {
     if (!asset || !amount) throw new Error('NOT_BONDED: the deal has no amount to bond against')
     const facts = new LedgerFacts(ledger, new Assets(assets))
     if (!facts.credentialExists(parties[role]!, account, disputeCredentialType(st.layers))) {
-      throw new Error(`NOT_BONDED: post the ${disputeCredentialType(st.layers)} Credential and the bond (amount plus minDisputeBond) before the dispute statement`)
+      throw new Error(`NOT_BONDED: post the ${disputeCredentialType(st.layers)} Credential and the bond (amount plus ${dispute.bond?.plusParam ?? 'the bond param'}) before the dispute statement`)
     }
-    const bond = effectiveParam(st.layers, 'minDisputeBond')
+    const plus = dispute.bond?.plusParam
+    if (typeof plus !== 'string' || plus.length === 0) throw new Error('NOT_BONDED: dispute.bond.plusParam is missing')
+    const bond = effectiveParam(st.layers, plus)
+    if (typeof bond !== 'string') throw new Error(`NOT_BONDED: policy param ${plus} is missing; the bond is not the amount alone`)
     const base = dispute.bond?.base === 'amount' ? parseAmount(amount.value, asset) : undefined
     if (!base) throw new Error(`NOT_BONDED: dispute bond base ${JSON.stringify(dispute.bond?.base ?? null)} is not "amount"`)
-    let need = base
-    if (typeof bond === 'string') need = need.add(parseAmount(bond, asset))
+    const need = base.add(parseAmount(bond, asset))
     if (facts.balance(account, asset.code).cmp(need) < 0) {
-      throw new Error(`NOT_BONDED: post the ${disputeCredentialType(st.layers)} Credential and the bond (amount plus minDisputeBond) before the dispute statement`)
+      throw new Error(`NOT_BONDED: post the ${disputeCredentialType(st.layers)} Credential and the bond (amount plus ${plus}) before the dispute statement`)
     }
   }
 
   /** Receipt time and whether the attester is a party, for statements already stored. */
-  private receiptAnchors(st: EngagementState): Map<string, { receivedAt: string; attesterIsParty: boolean }> {
+  private receiptAnchors(st: EngagementState): Map<string, { receivedAt: string; attesterIsParty: boolean; signerPublicKey?: string }> {
     const parties = new Set(Object.values(st.record.parties))
-    const map = new Map<string, { receivedAt: string; attesterIsParty: boolean }>()
+    const map = new Map<string, { receivedAt: string; attesterIsParty: boolean; signerPublicKey?: string }>()
     for (const { statement, receipt } of st.attestations.values()) {
       const receivedAt = (receipt.statement.claim as { receivedAt?: unknown }).receivedAt
       if (typeof receivedAt !== 'string') continue
-      map.set(statement.id, { receivedAt, attesterIsParty: parties.has(statement.attester.account) })
+      map.set(statement.id, { receivedAt, attesterIsParty: parties.has(statement.attester.account), signerPublicKey: statement.proof?.publicKey })
     }
     return map
   }
@@ -517,7 +535,7 @@ export class CosignerService {
       if (s.attester.account !== parties.counterparty) throw new Error(`NOT_COUNTERPARTY: only the counterparty confirms the booking (${s.attester.account})`)
       if (firstConfirmation) throw new Error('ALREADY_CONFIRMED: the booking already has a receipted confirmation')
     }
-    if (st.template.dispute && s.type === 'shipping.shipped/1') this.checkShipmentSequence(st, ledger)
+    if (st.template.attestationWindows?.['shipping.shipped/1'] && s.type === 'shipping.shipped/1') this.checkShipmentSequence(st, ledger)
     if (s.type === 'party.dispute/1' && st.template.dispute) {
       this.checkDeclaredDispute(st, s, assets, ledger)
     } else if (s.type === 'party.dispute/1') {
@@ -644,7 +662,8 @@ export class CosignerService {
     const posted = [...st.attestations.values()].map((a) => a.statement)
     const d = posted.find((p) => p.type === 'party.dispute/1' && p.attester.account === parties.principal)
     if (d) {
-      // A template-declared dispute (marketplace-escrow@1) opens at the dispute's issuedAt. No hotel anchor.
+      // A template-declared dispute opens at the dispute's issuedAt. No hotel anchor.
+      // This lookup only sees a principal dispute: dispute.by is principal on marketplace-escrow@1.
       if (st.template.dispute) return { kind: 'dispute', at: Date.parse(d.issuedAt) }
       const anchor = Date.parse(((d.claim as { phase?: unknown }).phase === 'settlement' ? timers?.deliveryBy : timers?.checkIn) ?? '')
       const issued = Date.parse(d.issuedAt)
@@ -928,7 +947,9 @@ export class CosignerService {
       notReceipted.push({ id: s?.id ?? '(none)', type: s?.type, code: 'NOT_RECEIPTED' })
       return false
     })
-    const statements = [...new Map([...stored, ...passed].map((s) => [s?.id, s])).values()]
+    // Stored wins on a shared id. A re-signed copy has the same id and must not replace the receipted
+    // statement, or its new signer would ride that receipt's key skip.
+    const statements = [...new Map([...passed, ...stored].map((s) => [s?.id, s])).values()]
     const assets = this.assetsOf(st.layers, st.record)
 
     // Snapshot: key state for attesters; credentials for payees, attesters and the account.
@@ -1071,6 +1092,50 @@ export class CosignerService {
       console.warn(`decisions.jsonl export failed: ${String((e as Error)?.message ?? e)}`)
     }
   }
+
+  /**
+   * Ruling-overdue page (spec §4.4). Nothing is signed. Fires once the validated close time is past
+   * caseOpenedAt + the escalate timer, then again every params.rulingOverdueRepeat, until the account is gone.
+   * A receipted ruling does not stop it.
+   */
+  async overdue(engagementId: string): Promise<RulingOverdue | null> {
+    return this.serialized(engagementId, () => this.overdueLocked(engagementId))
+  }
+
+  private async overdueLocked(engagementId: string): Promise<RulingOverdue | null> {
+    const st = this.engagements.get(engagementId)
+    if (!st || st.closed) return null
+    const name = st.template.dispute?.overdueTimer
+    const timer = name ? st.template.timers?.[name] : undefined
+    if (!timer || timer.onExpire !== 'escalate') return null
+    const opened = this.caseOpenedAt(st)
+    if (!opened || opened.kind !== 'dispute') return null
+    const dueAtMs = opened.at + timer.durationSecs * 1000
+    const assets = this.assetsOf(st.layers, st.record)
+    const ledger = await this.o.source.snapshot({
+      account: st.record.account, assets, accounts: [], credentialSubjects: [], historySecs: 0,
+    })
+    if (ledger.accounts[st.record.account]?.exists !== true) return null
+    const closeMs = Date.parse(ledger.closeTime)
+    if (Number.isNaN(closeMs) || closeMs <= dueAtMs) return null
+    const repeatRaw = effectiveParam(st.layers, 'rulingOverdueRepeat')
+    let repeatMs = Number.POSITIVE_INFINITY
+    if (typeof repeatRaw === 'string') {
+      try { repeatMs = celDurationMs(repeatRaw) } catch { return null }
+    }
+    const prev = st.alertedAt ? Date.parse(st.alertedAt) : Number.NaN
+    if (!Number.isNaN(prev) && closeMs < prev + repeatMs) return null
+    await this.store.transaction((tx) => tx.setMeta(alertedAtKey(engagementId), ledger.closeTime))
+    st.alertedAt = ledger.closeTime
+    const rulingReceipted = [...st.attestations.values()].some((a) => a.statement.type === 'party.ruling/1' && a.statement.attester.account === st.record.parties.arbiter)
+    return {
+      alert: 'RULING_OVERDUE',
+      engagementId,
+      caseOpenedAt: new Date(opened.at).toISOString(),
+      dueAt: new Date(dueAtMs).toISOString(),
+      rulingReceipted,
+    }
+  }
 }
 
 /** "default.chargebackStay#2" → ["default.chargebackStay", "2"]; a name without '#' → [name, undefined]. */
@@ -1190,4 +1255,83 @@ function seqOf(tx: Json): { sequence?: number; ticket?: number } {
 
 function emptyLedger(account: string): LedgerSnapshot {
   return { index: 0, hash: '', closeTime: new Date(0).toISOString(), baseFeeDrops: '10', reserveIncDrops: '0', accounts: {}, balances: { [account]: {} }, credentials: [], history: {} }
+}
+
+const alertedAtKey = (engagementId: string): string => `alertedAt:${engagementId}`
+
+/**
+ * Deal-timer and mandate checks for a template that has shipBy and inspectBy (marketplace-escrow@1 §3).
+ * Hotel templates have neither timer, so they return immediately. The 24h and 7d floors come from the
+ * policy params, not from hardcoded template constants. Returns the first problem, or undefined.
+ * Spec §3 item 6 does not name the mandate fields. This reads `claim.payee` (or `constraints.payee`)
+ * and `claim.maximum` (or `constraints.maxTotal`), a decimal string or `{ value }`.
+ */
+function marketplaceEscrowTermsFindings(record: EngagementRecord, mandate: Statement | null, template: Template, layers: PolicyDoc[]): string | undefined {
+  if (!template.timers?.shipBy || !template.timers?.inspectBy) return undefined
+  const open = Date.parse(record.timers?.open ?? '')
+  const ship = Date.parse(record.timers?.shipBy ?? '')
+  const inspect = Date.parse(record.timers?.inspectBy ?? '')
+  if (!(open < ship && ship < inspect)) return 'record.timers must satisfy open < shipBy < inspectBy'
+  const shipWindow = policyDuration(layers, 'minShipWindow')
+  if (typeof shipWindow !== 'number') return shipWindow
+  const inspectGap = policyDuration(layers, 'minInspectGap')
+  if (typeof inspectGap !== 'number') return inspectGap
+  if (ship - open < shipWindow) return `shipBy − open is under minShipWindow (${shipWindow / 1000}s)`
+  if (inspect - ship < inspectGap) return `inspectBy − shipBy is under minInspectGap (${inspectGap / 1000}s)`
+  const accounts = record.attesters?.shipping?.accounts
+  if (!Array.isArray(accounts) || accounts.length === 0 || accounts.some((a) => typeof a !== 'string' || a.length === 0)) {
+    return 'record.attesters.shipping.accounts must name the carrier'
+  }
+  if (record.terms?.rulingWindow !== undefined) return 'terms.rulingWindow is not a term of this deal'
+  if (!mandate) return "the buyer's mandate is required"
+  const payee = mandatePayee(mandate.claim)
+  if (payee !== record.parties.counterparty) return 'the seller is not the mandate payee'
+  const maximum = mandateMaximum(mandate.claim)
+  if (maximum === undefined) return 'the mandate has no maximum'
+  const assets = resolvedAssets(layers, record.trust)
+  const asset = assets[record.amount?.asset ?? record.asset ?? template.asset.code]
+  if (!asset || typeof record.amount?.value !== 'string') return 'the deal has no amount in a known asset'
+  try {
+    if (parseAmount(record.amount.value, asset).cmp(parseAmount(maximum, asset)) > 0) return 'the amount is over the mandate maximum'
+  } catch {
+    return 'the mandate maximum is not an amount of the deal asset'
+  }
+  return undefined
+}
+
+/** If an ENG/ATTESTER/SHIPPING credential for a named carrier is present, its expiry must be ≥ inspectBy. */
+function marketplaceShippingCredentialFinding(record: EngagementRecord, template: Template, ledger: LedgerSnapshot): string | undefined {
+  if (!template.timers?.shipBy || !template.timers?.inspectBy) return undefined
+  const inspect = Date.parse(record.timers?.inspectBy ?? '')
+  if (Number.isNaN(inspect)) return undefined
+  const accounts = new Set(record.attesters?.shipping?.accounts ?? [])
+  for (const c of ledger.credentials) {
+    if (c.type !== 'ENG/ATTESTER/SHIPPING' || !accounts.has(c.subject)) continue
+    if (c.expiration == null) continue
+    const exp = Date.parse(c.expiration)
+    if (Number.isNaN(exp) || exp < inspect) return `ENG/ATTESTER/SHIPPING credential for ${c.subject} expires before inspectBy`
+  }
+  return undefined
+}
+
+function policyDuration(layers: PolicyDoc[], name: string): number | string {
+  const raw = effectiveParam(layers, name)
+  if (typeof raw !== 'string') return `policy param ${name} is missing`
+  try { return celDurationMs(raw) } catch { return `policy param ${name} is not a duration` }
+}
+
+function mandatePayee(claim: unknown): string | undefined {
+  if (!claim || typeof claim !== 'object') return undefined
+  const c = claim as { payee?: unknown; constraints?: { payee?: unknown } }
+  const raw = c.payee ?? c.constraints?.payee
+  return typeof raw === 'string' ? raw : undefined
+}
+
+function mandateMaximum(claim: unknown): string | undefined {
+  if (!claim || typeof claim !== 'object') return undefined
+  const c = claim as { maximum?: unknown; constraints?: { maxTotal?: unknown } }
+  const raw = c.maximum ?? c.constraints?.maxTotal
+  if (typeof raw === 'string') return raw
+  if (raw && typeof raw === 'object' && typeof (raw as { value?: unknown }).value === 'string') return (raw as { value: string }).value
+  return undefined
 }

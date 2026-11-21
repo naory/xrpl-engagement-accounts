@@ -150,10 +150,11 @@ export interface DecideInput {
   ledger: LedgerSnapshot
   /**
    * Receipt anchors for statements already receipted. For a window-governed type, maxLag is measured
-   * from `receivedAt`, and key authorization is skipped when the attester is not a party.
+   * from `receivedAt`, and key authorization is skipped when the attester is not a party and the
+   * statement still carries the receipted signer (`signerPublicKey`, when the anchor has one).
    * Built by the co-signer from stored receipts. Absent means every statement is judged at `ledger`.
    */
-  receipted?: ReadonlyMap<string, { receivedAt: string; attesterIsParty: boolean }>
+  receipted?: ReadonlyMap<string, { receivedAt: string; attesterIsParty: boolean; signerPublicKey?: string }>
   inflight: InflightEntry[]
   registry?: string[]
   /** Cost budget in rule evaluations × AST nodes (rough CEL cost proxy). */

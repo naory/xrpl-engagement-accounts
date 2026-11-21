@@ -4,7 +4,6 @@ import xrpl from 'xrpl'
 import {
   Amount, AssetMismatchError, bps, canonicalize, formatAmount, parseAmount, toMinor,
   signStatement, verifyStatement, statementId, newNonce, validateTemplate, minimalWinningSets, weightOf,
-  MIN_INSPECT_GAP_SECS, MIN_SHIP_WINDOW_SECS,
   type StatementBody, type Template,
 } from '../src/index.ts'
 
@@ -208,27 +207,20 @@ describe('template validator', () => {
       expect(r.minimalWinningSets).not.toContainEqual(set)
     }
   })
-  it('V14: shipBy must end before inspectBy, with a 24h ship window and a 7d inspect gap', () => {
+  it('V14: shipBy must end strictly before inspectBy; the 24h and 7d floors are policy params, not V14', () => {
     const badOrder = marketplace()
     badOrder.timers!.inspectBy.durationSecs = badOrder.timers!.shipBy.durationSecs
     expect(validateTemplate(badOrder).errors.map((e) => e.id)).toContain('V14')
 
-    const shortGap = marketplace()
-    shortGap.timers!.shipBy.durationSecs = MIN_SHIP_WINDOW_SECS
-    shortGap.timers!.inspectBy.durationSecs = MIN_SHIP_WINDOW_SECS + MIN_INSPECT_GAP_SECS - 1
-    const gapErrors = validateTemplate(shortGap).errors
-    expect(gapErrors.map((e) => e.id)).toEqual(['V14'])
-    expect(gapErrors[0].message).toContain(`${MIN_INSPECT_GAP_SECS}s`)
+    const differentAnchor = marketplace()
+    differentAnchor.timers!.inspectBy.from = 'shipBy'
+    expect(validateTemplate(differentAnchor).errors.map((e) => e.id)).toContain('V14')
 
-    const shortShip = marketplace()
-    shortShip.timers!.shipBy.durationSecs = MIN_SHIP_WINDOW_SECS - 1
-    shortShip.timers!.inspectBy.durationSecs = shortShip.timers!.shipBy.durationSecs + MIN_INSPECT_GAP_SECS
-    expect(validateTemplate(shortShip).errors.map((e) => e.id)).toEqual(['V14'])
-
-    const ok = marketplace()
-    ok.timers!.shipBy.durationSecs = MIN_SHIP_WINDOW_SECS
-    ok.timers!.inspectBy.durationSecs = MIN_SHIP_WINDOW_SECS + MIN_INSPECT_GAP_SECS
-    expect(validateTemplate(ok).errors).toEqual([])
+    // A 1h ship window and a 1h inspect gap still order correctly. Register rejects them via minShipWindow / minInspectGap.
+    const short = marketplace()
+    short.timers!.shipBy.durationSecs = 3600
+    short.timers!.inspectBy.durationSecs = 7200
+    expect(validateTemplate(short).errors).toEqual([])
     expect(validateTemplate(marketplace()).errors).toEqual([])
   })
   it('V16: dispute.by names template roles, and plusParam names a policy param', () => {

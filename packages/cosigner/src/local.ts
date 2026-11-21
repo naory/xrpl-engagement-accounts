@@ -10,7 +10,7 @@ import xrpl from 'xrpl'
 import { localSigner } from '@eng/core'
 import { loadEnv } from './env.ts'
 import { startTickScheduler, submitUntilValidated } from './scheduler.ts'
-import { createServer, loadLibrary, loadTrustConfig, assertDeployTrust, serverOptionsFromEnv, type ServerOptions } from './server.ts'
+import { createServer, loadLibrary, loadTrustConfig, assertDeployTrust, reportRulingOverdue, serverOptionsFromEnv, type ServerOptions } from './server.ts'
 import { CosignerService } from './service.ts'
 import { XrplLedgerSource, type LedgerSource } from './snapshot.ts'
 import { SqliteStateStore } from './store/sqlite.ts'
@@ -349,6 +349,7 @@ export async function startLocalCosigner(options: LocalCosignerOptions = {}): Pr
   const say = (entry: Record<string, unknown>) => log(JSON.stringify({ t: new Date().toISOString(), ...entry }))
   scheduler = startTickScheduler(svc, {
     intervalMs: tickMs,
+    onAlert: (_engagementId, alert) => reportRulingOverdue(alert, say, env.COSIGNER_ALERT_WEBHOOK),
     onResult: async (engagementId, r) => {
       if (!r.blob) return
       const hash = xrpl.hashes.hashSignedTx(r.blob)

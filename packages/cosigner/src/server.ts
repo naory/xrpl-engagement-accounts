@@ -25,7 +25,7 @@ import path from 'node:path'
 import xrpl from 'xrpl'
 import type { Template } from '@eng/core'
 import { isClassicAddress, PLACEHOLDERS, slotViolations, slotsInLayers, type PolicyDoc } from '@eng/policy'
-import { CosignerService, LedgerUnavailableError } from './service.ts'
+import { CosignerService, LedgerUnavailableError, type RulingOverdue } from './service.ts'
 import { signerProviderFromEnv, type SignerProvider } from './keys.ts'
 import { XrplLedgerSource } from './snapshot.ts'
 import { MemoryStateStore } from './store/memory.ts'
@@ -56,6 +56,22 @@ export interface ServerOptions {
    * `npm run cosigner` leaves this unset.
    */
   loopbackRequestGuard?: boolean
+}
+
+/** Structured error log, plus an optional COSIGNER_ALERT_WEBHOOK POST. No signature and no blob. */
+export async function reportRulingOverdue(
+  alert: RulingOverdue,
+  log: (entry: Record<string, unknown>) => void,
+  webhook?: string,
+  fetchImpl: typeof fetch = globalThis.fetch,
+): Promise<void> {
+  log({
+    level: 'error', msg: 'ruling overdue', alert: alert.alert, engagementId: alert.engagementId,
+    caseOpenedAt: alert.caseOpenedAt, dueAt: alert.dueAt, rulingReceipted: alert.rulingReceipted,
+  })
+  if (!webhook) return
+  const res = await fetchImpl(webhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(alert) })
+  if (!res.ok) throw new Error(`alert webhook ${res.status}`)
 }
 
 const json = (res: http.ServerResponse, code: number, body: unknown, headers: Record<string, string> = {}) => {
@@ -291,6 +307,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
   const scheduler = tickMs > 0
     ? startTickScheduler(svc, {
         intervalMs: tickMs,
+        onAlert: (_engagementId, alert) => reportRulingOverdue(alert, say, process.env.COSIGNER_ALERT_WEBHOOK),
         onResult: async (engagementId, r) => {
           if (!r.blob) return
           const hash = xrpl.hashes.hashSignedTx(r.blob)

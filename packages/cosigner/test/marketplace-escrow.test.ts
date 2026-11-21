@@ -1,9 +1,9 @@
 // marketplace-escrow@1 intake, receipt freshness, disputes, and the lateRuling gate.
 // Hotel's own suites cover the unchanged hotel path, including a late ruling staying LATE.
 import fs from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { localSigner, signStatement, type Statement, type Template } from '@eng/core'
-import { CosignerService, FixtureLedgerSource } from '@eng/cosigner'
+import { CosignerService, FixtureLedgerSource, MemoryStateStore, reportRulingOverdue, startTickScheduler, type RulingOverdue } from '@eng/cosigner'
 import { arbiterAccreditation, closeBatch, fixtureTrust, memo, wallet, LEDGER_INDEX, W } from '../../policy/test/fixtures.ts'
 import type { EngagementRecord, LedgerSnapshot, PolicyDoc } from '@eng/policy'
 
@@ -62,10 +62,21 @@ function snap(over: { closeTime: string; balance?: string; dispute?: boolean; ca
     balances: { [eng.address]: { RLUSD: over.balance ?? '2.00' } },
     credentials: [
       arbiterAccreditation(),
+      { issuer: W.accreditor.address, subject: carrier.address, type: 'ENG/ATTESTER/SHIPPING', accepted: true, expiration: INSPECT_BY },
       ...(over.dispute ? [{ issuer: W.dana.address, subject: eng.address, type: 'ENG/DISPUTE', accepted: true, expiration: null }] : []),
     ],
     history: {},
   }
+}
+
+function mandate(over: { maximum?: string; payee?: string } = {}): Statement {
+  return signStatement({
+    v: 'eng.att/1', type: 'party.mandate/1', engagementId: ENG,
+    subject: { mandateId: 'mnd_me' },
+    claim: { maximum: over.maximum ?? '2.00', payee: over.payee ?? W.atlas.address },
+    observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate',
+    attester: { account: W.dana.address, kind: 'PRINCIPAL' },
+  }, W.dana)
 }
 
 function signed(signer: { address: string; publicKey: string; privateKey: string }, type: string, at: string, nonce: string, claim: Record<string, unknown> = {}): Statement {
@@ -85,7 +96,7 @@ async function setup(closeTime: string, balance?: string, dispute = false, timer
   })
   const rec = record()
   if (timers) rec.timers = timers
-  await svc.register(rec, null)
+  await svc.register(rec, mandate())
   return { svc, source }
 }
 
@@ -129,12 +140,10 @@ describe('marketplace-escrow intake and disputes', () => {
     expect(d.failing).toEqual([])
   })
 
-  it('a receipted shipment observed three days before inspectBy still releases, including after the carrier rotates its key', async () => {
-    const observed = '2026-11-08T00:00:00Z'
-    // shipBy stays after the receipt; inspectBy is three days after observedAt. The 1-day maxLag would drop it at inspectBy.
-    const { svc, source } = await setup('2026-11-08T00:01:00Z', '2.00', false, {
-      open: OPEN, shipBy: '2026-11-09T00:00:00Z', inspectBy: '2026-11-11T00:00:00Z',
-    })
+  it('a receipted shipment observed before shipBy still releases at inspectBy, including after the carrier rotates its key', async () => {
+    const observed = '2026-11-03T00:00:00Z'
+    // Receipt is a day before shipBy. inspectBy is eight days after observedAt, past the 1-day maxLag.
+    const { svc, source } = await setup('2026-11-03T00:01:00Z', '2.00', false)
     await svc.ingest(ENG, signed(carrier, 'shipping.shipped/1', observed, 'me-ship-old'))
     source.snap = snap({
       closeTime: '2026-11-11T00:00:01Z',
@@ -163,3 +172,274 @@ describe('marketplace-escrow intake and disputes', () => {
     expect(svc.statements(ENG).some((s) => s.type === 'party.ruling/1')).toBe(true)
   })
 })
+
+describe('marketplace-escrow register terms', () => {
+  async function bare(closeTime = OPEN) {
+    const source = new FixtureLedgerSource(snap({ closeTime }))
+    const svc = new CosignerService({
+      signer: localSigner(W.cosigner), source, templates: [template], policies: [baseline12, policy],
+    })
+    return svc
+  }
+
+  it('rejects a ship window under 24h, an inspect gap under 7d, a missing carrier, rulingWindow, and a bad mandate', async () => {
+    const shortShip = record()
+    shortShip.timers = { open: OPEN, shipBy: '2026-11-01T23:59:59Z', inspectBy: '2026-11-08T23:59:59Z' }
+    await expect((await bare()).register(shortShip, mandate())).rejects.toThrow(/INVALID_TERMS: shipBy − open is under minShipWindow/)
+
+    const shortGap = record()
+    shortGap.timers = { open: OPEN, shipBy: '2026-11-02T00:00:00Z', inspectBy: '2026-11-08T23:59:59Z' }
+    await expect((await bare()).register(shortGap, mandate())).rejects.toThrow(/INVALID_TERMS: inspectBy − shipBy is under minInspectGap/)
+
+    const noCarrier = record()
+    noCarrier.attesters = { shipping: { accounts: [], kind: 'SHIPPING', types: ['shipping.shipped/1'] } }
+    await expect((await bare()).register(noCarrier, mandate())).rejects.toThrow(/INVALID_TERMS: record.attesters.shipping.accounts/)
+
+    const windowed = record()
+    windowed.terms = { nights: 1, nightly: '0', rulingWindow: '3600s' }
+    await expect((await bare()).register(windowed, mandate())).rejects.toThrow(/INVALID_TERMS: terms.rulingWindow/)
+
+    await expect((await bare()).register(record(), mandate({ maximum: '1.99' }))).rejects.toThrow(/INVALID_TERMS: the amount is over the mandate maximum/)
+    await expect((await bare()).register(record(), mandate({ payee: W.dana.address }))).rejects.toThrow(/INVALID_TERMS: the seller is not the mandate payee/)
+    await expect((await bare()).register(record(), null)).rejects.toThrow(/INVALID_TERMS: the buyer's mandate is required/)
+
+    const exact = record()
+    exact.timers = { open: OPEN, shipBy: '2026-11-02T00:00:00Z', inspectBy: '2026-11-09T00:00:00Z' }
+    await expect((await bare()).register(exact, mandate())).resolves.toMatchObject({ ok: true })
+  })
+
+  it('rejects an ENG/ATTESTER/SHIPPING credential that expires before inspectBy', async () => {
+    const ledger = snap({ closeTime: OPEN })
+    const cred = ledger.credentials.find((c) => c.type === 'ENG/ATTESTER/SHIPPING')!
+    cred.expiration = '2026-11-10T23:59:59Z'
+    const svc = new CosignerService({
+      signer: localSigner(W.cosigner), source: new FixtureLedgerSource(ledger),
+      templates: [template], policies: [baseline12, policy],
+    })
+    await expect(svc.register(record(), mandate())).rejects.toThrow(/INVALID_TERMS: ENG\/ATTESTER\/SHIPPING credential/)
+  })
+})
+
+describe('shipment rules follow the shipping window, and the bond reads plusParam', () => {
+  it('runs TOO_EARLY and ALREADY_SHIPPED without a dispute block, and skips them when the window is absent', async () => {
+    const noDispute = structuredClone(template)
+    delete noDispute.dispute
+    const early = new CosignerService({
+      signer: localSigner(W.cosigner), source: new FixtureLedgerSource(snap({ closeTime: '2026-10-31T23:00:00Z' })),
+      templates: [noDispute], policies: [baseline12, policy],
+    })
+    await early.register(record(), mandate())
+    await expect(early.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-10-31T22:59:00Z', 'me-win-early'))).rejects.toThrow(/TOO_EARLY/)
+
+    const shippedTpl = structuredClone(template)
+    delete shippedTpl.dispute
+    const shipped = new CosignerService({
+      signer: localSigner(W.cosigner), source: new FixtureLedgerSource(snap({ closeTime: '2026-11-02T12:00:00Z' })),
+      templates: [shippedTpl], policies: [baseline12, policy],
+    })
+    await shipped.register(record(), mandate())
+    await shipped.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-11-02T11:59:00Z', 'me-win-1'))
+    await expect(shipped.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-11-02T11:59:30Z', 'me-win-2'))).rejects.toThrow(/ALREADY_SHIPPED/)
+
+    const unwinnowed = structuredClone(template)
+    delete unwinnowed.attestationWindows!['shipping.shipped/1']
+    const open = new CosignerService({
+      signer: localSigner(W.cosigner), source: new FixtureLedgerSource(snap({ closeTime: '2026-10-31T23:00:00Z' })),
+      templates: [unwinnowed], policies: [baseline12, policy],
+    })
+    await open.register(record(), mandate())
+    await open.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-10-31T22:59:00Z', 'me-nowin-1'))
+    await open.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-10-31T22:59:30Z', 'me-nowin-2'))
+    expect(open.statements(ENG)).toHaveLength(2)
+  })
+
+  it('bonds amount plus dispute.bond.plusParam, and refuses when that param is missing', async () => {
+    const renamed = structuredClone(template)
+    renamed.dispute!.bond.plusParam = 'escrowBond'
+    const layered = structuredClone(policy)
+    layered.params = { ...layered.params, escrowBond: '1.00' }
+    delete layered.params.minDisputeBond
+    const source = new FixtureLedgerSource(snap({ closeTime: '2026-11-05T12:00:00Z', balance: '2.50', dispute: true }))
+    const svc = new CosignerService({
+      signer: localSigner(W.cosigner), source, templates: [renamed], policies: [baseline12, layered],
+    })
+    await svc.register(record(), mandate())
+    const dispute = signed(W.dana, 'party.dispute/1', '2026-11-05T11:59:00Z', 'me-plus-1', { reason: 'not received' })
+    await expect(svc.ingest(ENG, dispute)).rejects.toThrow(/NOT_BONDED/)
+
+    source.snap = snap({ closeTime: '2026-11-05T12:00:00Z', balance: '3.00', dispute: true })
+    await svc.ingest(ENG, dispute)
+
+    const missing = structuredClone(policy)
+    delete missing.params!.minDisputeBond
+    const bare = new FixtureLedgerSource(snap({ closeTime: '2026-11-05T12:00:00Z', balance: '2.50', dispute: true }))
+    const uncovered = new CosignerService({
+      signer: localSigner(W.cosigner), source: bare, templates: [template], policies: [baseline12, missing],
+    })
+    await uncovered.register(record(), mandate())
+    await expect(uncovered.ingest(ENG, signed(W.dana, 'party.dispute/1', '2026-11-05T11:59:00Z', 'me-plus-missing', { reason: 'not received' }))).rejects.toThrow(/NOT_BONDED: policy param minDisputeBond is missing/)
+  })
+})
+
+describe('attester type allowlist', () => {
+  it('allows a type when any naming entry allows it, at intake and at decide', async () => {
+    const both = record()
+    both.attesters = {
+      shipping: { accounts: [carrier.address], kind: 'SHIPPING', types: ['shipping.shipped/1'] },
+      qa: { accounts: [carrier.address], kind: 'QA', types: ['party.review/1'] },
+    }
+    const { svc } = await setup('2026-11-02T12:00:00Z')
+    const rec = record()
+    rec.engagementId = 'eng_marketplace_allow'
+    rec.attesters = both.attesters
+    const allow = new CosignerService({
+      signer: localSigner(W.cosigner),
+      source: new FixtureLedgerSource(snap({ closeTime: '2026-11-02T12:00:00Z' })),
+      templates: [template], policies: [baseline12, policy],
+    })
+    await allow.register(rec, signStatement({
+      v: 'eng.att/1', type: 'party.mandate/1', engagementId: rec.engagementId,
+      subject: { mandateId: 'mnd_allow' }, claim: { maximum: '2.00', payee: W.atlas.address },
+      observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate-allow',
+      attester: { account: W.dana.address, kind: 'PRINCIPAL' },
+    }, W.dana))
+    const review = signStatement({
+      v: 'eng.att/1', type: 'party.review/1', engagementId: rec.engagementId,
+      subject: { item: 'sku-1' }, claim: { rating: 5 },
+      observedAt: '2026-11-02T11:59:00Z', issuedAt: '2026-11-02T11:59:00Z', nonce: 'me-review-ok',
+      attester: { account: carrier.address, kind: 'QA' },
+    }, carrier)
+    await allow.ingest(rec.engagementId, review)
+    await expect(allow.ingest(rec.engagementId, signStatement({
+      v: 'eng.att/1', type: 'party.invoice/1', engagementId: rec.engagementId,
+      subject: { item: 'sku-1' }, claim: { amount: '2.00' },
+      observedAt: '2026-11-02T11:59:10Z', issuedAt: '2026-11-02T11:59:10Z', nonce: 'me-invoice-no',
+      attester: { account: carrier.address, kind: 'QA' },
+    }, carrier))).rejects.toThrow(/TYPE_NOT_ALLOWED/)
+
+    const passed = signStatement({
+      v: 'eng.att/1', type: 'party.review/1', engagementId: ENG,
+      subject: { item: 'sku-1' }, claim: { rating: 1 },
+      observedAt: '2026-11-02T11:59:00Z', issuedAt: '2026-11-02T11:59:00Z', nonce: 'me-review-decide',
+      attester: { account: carrier.address, kind: 'SHIPPING' },
+    }, carrier)
+    const blocked = await svc.decide({ engagementId: ENG, stage: 'default.refund', tx: refundAll('2.00'), statements: [passed] })
+    expect(blocked.statementsRejected.map((r) => r.code)).toContain('TYPE_NOT_ALLOWED')
+
+    const opened = await allow.decide({ engagementId: rec.engagementId, stage: 'default.refund', tx: refundAll('2.00'), statements: [review] })
+    expect(opened.statementsRejected.map((r) => r.code)).not.toContain('TYPE_NOT_ALLOWED')
+  })
+})
+
+describe('stored statement wins over a re-signed copy', () => {
+  it('a stranger re-signing the receipted shipment cannot ride the key skip', async () => {
+    const observed = '2026-11-03T00:00:00Z'
+    const body = {
+      v: 'eng.att/1' as const, type: 'shipping.shipped/1', engagementId: ENG,
+      subject: { item: 'sku-1' }, claim: { status: 'shipped' },
+      observedAt: observed, issuedAt: observed, nonce: 'me-stored-wins',
+      attester: { account: carrier.address, kind: 'SHIPPING' },
+    }
+    const original = signStatement(body, carrier)
+    const forged = signStatement(body, stranger)
+    expect(forged.id).toBe(original.id)
+    const { svc, source } = await setup('2026-11-03T00:01:00Z')
+    await svc.ingest(ENG, original)
+    source.snap = snap({
+      closeTime: '2026-11-11T00:00:01Z',
+      carrier: { exists: true, masterDisabled: true, regularKey: rotated.address },
+    })
+    const d = await svc.decide({ engagementId: ENG, stage: 'default.release', tx: releaseExact(), statements: [forged] })
+    expect(d.statementsRejected.map((r) => r.code)).not.toContain('KEY_NOT_AUTHORIZED')
+    expect(d.decision).toBe('SIGN')
+  })
+})
+
+describe('ruling overdue alert', () => {
+  const issued = '2026-11-05T11:59:00Z'
+  const due = '2026-11-10T11:59:00Z'
+
+  async function opened(closeTime: string) {
+    const source = new FixtureLedgerSource(snap({ closeTime: '2026-11-05T12:00:00Z', balance: '2.50', dispute: true }))
+    const store = new MemoryStateStore()
+    const svc = await CosignerService.open({
+      signer: localSigner(W.cosigner), source, store,
+      templates: [template], policies: [baseline12, policy],
+    })
+    await svc.register(record(), mandate())
+    await svc.ingest(ENG, signed(W.dana, 'party.dispute/1', issued, 'me-overdue', { reason: 'not received' }))
+    source.snap = snap({ closeTime, balance: '2.50', dispute: true })
+    return { svc, source, store }
+  }
+
+  it('fires at the deadline, repeats after 24h, keeps firing after a ruling, and stops when the account is gone', async () => {
+    const early = await opened(due)
+    expect(await early.svc.overdue(ENG)).toBeNull()
+    await early.svc.close()
+
+    const { svc, source, store } = await opened('2026-11-10T11:59:01Z')
+    const first = await svc.overdue(ENG)
+    expect(first).toMatchObject({
+      alert: 'RULING_OVERDUE', engagementId: ENG, rulingReceipted: false,
+      caseOpenedAt: '2026-11-05T11:59:00.000Z', dueAt: '2026-11-10T11:59:00.000Z',
+    })
+    expect(await svc.overdue(ENG)).toBeNull()
+    expect(await svc.tick(ENG)).toEqual([])
+    await svc.close()
+
+    const again = await CosignerService.open({
+      signer: localSigner(W.cosigner), source, store,
+      templates: [template], policies: [baseline12, policy],
+    })
+    expect(await again.overdue(ENG)).toBeNull()
+    source.snap = snap({ closeTime: '2026-11-11T11:59:01Z', balance: '2.50', dispute: true })
+    expect((await again.overdue(ENG))?.rulingReceipted).toBe(false)
+
+    source.snap = snap({ closeTime: '2026-11-11T12:00:00Z', balance: '2.50', dispute: true })
+    await again.ingest(ENG, signed(W.arbiter, 'party.ruling/1', '2026-11-11T11:59:30Z', 'me-overdue-ruling', { outcome: 'refund' }))
+    source.snap = snap({ closeTime: '2026-11-12T12:00:00Z', balance: '2.50', dispute: true })
+    expect((await again.overdue(ENG))?.rulingReceipted).toBe(true)
+
+    source.snap.accounts[eng.address]!.exists = false
+    expect(await again.overdue(ENG)).toBeNull()
+    await again.close()
+  })
+
+  it('the scheduler pages onAlert and does not sign', async () => {
+    const { svc } = await opened('2026-11-10T11:59:01Z')
+    const alerts: RulingOverdue[] = []
+    const signs: unknown[] = []
+    vi.useFakeTimers()
+    try {
+      const stop = startTickScheduler(svc, {
+        intervalMs: 1000,
+        onAlert: (_id, alert) => { alerts.push(alert) },
+        onResult: (_id, r) => { signs.push(r) },
+      })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(alerts.map((a) => a.alert)).toEqual(['RULING_OVERDUE'])
+      expect(signs).toEqual([])
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(alerts).toHaveLength(1)
+      await stop.stop()
+    } finally {
+      vi.useRealTimers()
+    }
+    await svc.close()
+  })
+
+  it('logs ruling overdue and posts the webhook when one is set', async () => {
+    const lines: Record<string, unknown>[] = []
+    let posted = ''
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      posted = String(init?.body ?? '')
+      return new Response(null, { status: 204 })
+    }
+    const alert: RulingOverdue = { alert: 'RULING_OVERDUE', engagementId: ENG, caseOpenedAt: issued, dueAt: due, rulingReceipted: false }
+    await reportRulingOverdue(alert, (e) => lines.push(e), 'https://alerts.example/hook', fetchImpl)
+    expect(lines[0]).toMatchObject({ level: 'error', msg: 'ruling overdue', engagementId: ENG, rulingReceipted: false })
+    expect(JSON.parse(posted).alert).toBe('RULING_OVERDUE')
+  })
+})
+
+afterEach(() => { vi.useRealTimers() })
