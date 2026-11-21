@@ -28,6 +28,7 @@ import {
   type SettlementResponse,
   type XrplMemoContainer,
 } from "x402-xrpl-settlement-adapter";
+import { createFacilitatorClient, t54Envelope, t54Requirements, type FacilitatorResult } from "./facilitator.ts";
 
 export interface MerchantConfig {
   /** The resource id/URL being sold. */
@@ -52,6 +53,17 @@ export interface MerchantConfig {
   now?: () => Date;
   /** Mints a unique invoice id per challenge (default: random). */
   newInvoiceId?: () => string;
+  /**
+   * Opt-in t54 exact settlement. Absent on the prepaid merchant: `challenge` and `handle` ignore it.
+   * `settlePresigned` is the only caller.
+   */
+  exact?: {
+    asset: string;
+    issuer: string;
+    sourceTag?: number;
+    facilitatorUrl?: string;
+    fetchImpl?: typeof fetch;
+  };
 }
 
 export interface Challenge402 {
@@ -64,6 +76,14 @@ export interface Challenge402 {
   requiredMemo: XrplMemoContainer;
 }
 
+export interface ExactSettleResult {
+  verify: FacilitatorResult;
+  settle: FacilitatorResult | null;
+  /** True only when /verify returned isValid and /settle returned success with a transaction hash. */
+  accepted: boolean;
+  transaction: string | null;
+}
+
 export type HandleResult =
   | { status: 200; paymentResponseHeader: string; response: SettlementResponse; body: unknown; idempotent: boolean }
   | { status: 402 | 502; error: string; code?: string };
@@ -73,6 +93,11 @@ export interface Merchant {
   challenge(): Challenge402;
   /** Handle a retry carrying a `PAYMENT-SIGNATURE` header (prepaid payload: `{ txHash }`). */
   handle(paymentSignatureHeader: string): Promise<HandleResult>;
+  /**
+   * Submit a co-signed blob through the t54 facilitator. Does not broadcast it itself.
+   * Requires `exact` on the config.
+   */
+  settlePresigned(input: { signedTxBlob: string; invoiceId: string }): Promise<ExactSettleResult>;
   /** The XRPL Memo a client must attach for a given invoice id. */
   memoFor(invoiceId: string): XrplMemoContainer;
 }
@@ -123,6 +148,27 @@ export function createMerchant(cfg: MerchantConfig): Merchant {
     },
 
     memoFor,
+
+    async settlePresigned(input: { signedTxBlob: string; invoiceId: string }): Promise<ExactSettleResult> {
+      if (!cfg.exact) throw new Error("exact facilitator is not configured");
+      const requirements = t54Requirements({
+        payTo: cfg.payTo,
+        amount: cfg.price.amount,
+        invoiceId: input.invoiceId,
+        asset: cfg.exact.asset,
+        issuer: cfg.exact.issuer,
+        sourceTag: cfg.exact.sourceTag,
+      });
+      const body = t54Envelope({ requirements, signedTxBlob: input.signedTxBlob, invoiceId: input.invoiceId });
+      const facilitator = createFacilitatorClient({ url: cfg.exact.facilitatorUrl, fetchImpl: cfg.exact.fetchImpl });
+      const verify = await facilitator.verify(body);
+      const isValid = Boolean(verify.body && typeof verify.body === "object" && (verify.body as { isValid?: boolean }).isValid === true);
+      if (!isValid) return { verify, settle: null, accepted: false, transaction: null };
+      const settle = await facilitator.settle(body);
+      const transaction = settle.body && typeof settle.body === "object" ? String((settle.body as { transaction?: string }).transaction ?? "") : "";
+      const success = Boolean(settle.body && typeof settle.body === "object" && (settle.body as { success?: boolean }).success === true && transaction);
+      return { verify, settle, accepted: success, transaction: transaction || null };
+    },
 
     async handle(paymentSignatureHeader: string): Promise<HandleResult> {
       let invoiceId: string;

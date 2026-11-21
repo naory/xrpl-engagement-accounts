@@ -113,3 +113,31 @@ become one.** Rather than build on unspecified behaviour, we chose to ship our o
 - XRPL.org, Agentic payments with x402: <https://xrpl.org/docs/agents/agentic-payments-x402>
 - t54 `x402-xrpl` (PyPI): <https://pypi.org/project/x402-xrpl/>
 - `x402-xrpl-settlement-adapter` on npm: <https://www.npmjs.com/package/x402-xrpl-settlement-adapter>
+
+## 2026-11-21: t54 Testnet confirmation
+
+Prepaid remains the default engagement path. An opt-in script, `npm run demo:x402:t54`, also submits a co-signed RLUSD payment through t54's Testnet facilitator (`https://xrpl-facilitator-testnet.t54.ai`). The requirements follow [t54's exact scheme](https://xrpl-x402.t54.ai/docs/xrpl-scheme) and `x402-xrpl` 0.3.4: `asset` is the 40-hex RLUSD currency, `amount` is a decimal string, and `extra` is only `{ sourceTag, issuer, invoiceId }` with issuer `rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV`. There is no `areFeesSponsored` field. The transaction sets `SendMax` equal to that same-currency `Amount`, `Flags` 0, and `InvoiceID = SHA-256(invoiceId)`.
+
+`GET /supported` still does not advertise multisig. The body lists `exact`, `upto`, and `batch-settlement`, with `"signers": { "xrpl:*": [] }`. OpenAPI 0.1.0 defaults `asset` to `"XRP"` and leaves `extra` open. No t54 change note was found.
+
+The earlier `unsupported_payment_features` result was our payload, not a refusal of IOUs. Those probes sent `areFeesSponsored: false`, omitted `SendMax`, and omitted the invoice memo. The same official issuer, signed 2-of-2 with `SendMax`, the untyped invoice memo, and the two typed engagement memos, verified and settled.
+
+The transaction carries three memos because the two sides check different ones. t54's documented binding is a memo whose only field is `MemoData = hex(utf8(invoiceId))` (or the `InvoiceID` field). The co-signer indexes memos by `MemoType` (`packages/policy/src/facts.ts`), so that untyped memo does not satisfy policy. Baseline B8 requires `eng/basis`, and procurement W6 requires `eng/invoice` equal to the vendor invoice. Adding those two typed memos keeps the t54 memo in the list. No policy change.
+
+T36 (`SETTLE=1` against the same facilitator, 2026-11-20), XRP unless noted:
+
+| Case | Expected | Result |
+|---|---|---|
+| P0 single-signed | valid | `/verify` valid, `/settle` success, `tesSUCCESS` `4F2C17BB2D3EB138EA84E0E7C4C179F04742F209107A70B00F4CE7A103C45324` |
+| P1 multisig 2-of-2 | valid. Reference facilitator: `invalid_exact_xrpl_payload_multisig_not_supported` | valid, `tesSUCCESS` `773C32B27C621D4C4492796E2BA9B399D28EF6C2E94A7566588F350040F629D0` |
+| P2 multisig + invoice memo + `eng/basis` | valid. Reference: `invalid_exact_xrpl_payload_memos_not_allowed` | valid, `tesSUCCESS` `98584D504D4DA68A150782D527B4A12122A8DC46EF178B74B365D98F0D2E2ABC` |
+| P3 `eng/basis` + `eng/invoice` | valid. Same memo refusal in the reference | valid, `tesSUCCESS` `174C5A3887848626C31B8CD35F05E073FADDFC9B3FDC64AF2AB0C29D93A016FD` |
+| N1 one signature | invalid | `signer_quorum_not_met` |
+| N2 outsider signer | invalid | `signer_not_in_signer_list` |
+| N3 tampered fee | invalid | `signature_invalid` |
+| N4 memo without the invoice id | invalid | `invoice_binding_mismatch` |
+| N7 no list signer | invalid | `signer_not_in_signer_list` |
+| N5 tampered single-sig | invalid | `signature_invalid` |
+| N6 wrong single-sig key | invalid | `signing_key_not_authorized` |
+
+A later pass with the documented IOU shape settled official Testnet RLUSD: single-sig `0C7F1540E89C10417E8C298D827F5D02F2528773DD6EC6BEEE3952EE2A87A81D` and 2-of-2 `2CF7CD756E6A8EED8F8A265A9EC43A4A6A0F2EACAC6F280AB626A9B4E3542BEC`, both `tesSUCCESS`. USDC from Circle's issuer `rHuGNhqTG32mfmAvWA8hUyWRLV3tCSwKQt` verified and then failed settlement with `tecPATH_DRY` at a zero balance. There was no XRP/USDC AMM to buy it without Circle's faucet.
