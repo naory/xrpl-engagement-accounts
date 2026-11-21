@@ -10,6 +10,8 @@ What's built and what isn't: [docs/SCOPE.md](docs/SCOPE.md).
 
 What the ledger enforces vs the co-signer: [Trust model](docs/trust-model.md).
 
+What a platform runs, and what is missing: [For platforms](docs/for-platforms.md).
+
 ---
 
 ## TL;DR
