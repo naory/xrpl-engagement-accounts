@@ -39,6 +39,11 @@ export interface AttesterTerms {
   accounts?: string[]
   accreditors?: string[]
   kind?: string
+  /**
+   * Statement types this named attester may post. Absent means no extra restriction, so records
+   * that predate the field are unchanged.
+   */
+  types?: string[]
 }
 
 /** The engagement record (hotel spec §4), the object every component reads. */
@@ -143,6 +148,12 @@ export interface DecideInput {
   mandate?: Statement | null
   statements: Statement[]
   ledger: LedgerSnapshot
+  /**
+   * Receipt anchors for statements already receipted. For a window-governed type, maxLag is measured
+   * from `receivedAt`, and key authorization is skipped when the attester is not a party.
+   * Built by the co-signer from stored receipts. Absent means every statement is judged at `ledger`.
+   */
+  receipted?: ReadonlyMap<string, { receivedAt: string; attesterIsParty: boolean }>
   inflight: InflightEntry[]
   registry?: string[]
   /** Cost budget in rule evaluations × AST nodes (rough CEL cost proxy). */

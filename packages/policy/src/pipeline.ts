@@ -70,7 +70,25 @@ function credentialValid(ledger: LedgerSnapshot, issuer: string, subject: string
   )
 }
 
-export function verifyStatements(statements: Statement[], eng: EngagementRecord, ledger: LedgerSnapshot): PipelineResult {
+/** A receipted statement's anchor. `receivedAt` is the co-signer's receipt time, not the evaluation ledger. */
+export interface ReceiptAnchor {
+  receivedAt: string
+  /** True when the attester account is one of the deal's parties. Party statements keep the decision-time key check. */
+  attesterIsParty: boolean
+}
+
+function windowGovernedType(windows: Record<string, string> | undefined, type: string): boolean {
+  if (!windows) return false
+  return Object.keys(windows).some((k) => k === type || k.startsWith(`${type}#`))
+}
+
+export function verifyStatements(
+  statements: Statement[],
+  eng: EngagementRecord,
+  ledger: LedgerSnapshot,
+  receipted?: ReadonlyMap<string, ReceiptAnchor>,
+  attestationWindows?: Record<string, string>,
+): PipelineResult {
   const verified: VerifiedStatement[] = []
   const rejected: StatementRejection[] = []
   const reject = (s: Statement, code: string) => rejected.push({ id: s?.id ?? '(none)', type: s?.type, code })
@@ -84,8 +102,14 @@ export function verifyStatements(statements: Statement[], eng: EngagementRecord,
     if (!meta) { reject(s, 'UNKNOWN_TYPE'); continue }
     const v = verifyStatement(s)
     if (!v.ok) { reject(s, v.reason); continue }
+    // A receipted window-governed statement is fresh against its receipt, and a non-party attester's key
+    // was already checked then. Party statements, and anything not window-governed, stay on this ledger.
+    const anchor = s?.id ? receipted?.get(s.id) : undefined
+    const windowed = Boolean(anchor && windowGovernedType(attestationWindows, s.type))
+    const receivedAt = anchor ? Date.parse(anchor.receivedAt) : Number.NaN
+    const skipKey = windowed && anchor != null && !anchor.attesterIsParty && !Number.isNaN(receivedAt)
     // 5: key authorized for the attester account (trust ledger = evaluation ledger when unanchored)
-    if (!keyAuthorized(ledger, s.attester.account, v.signerAddress)) { reject(s, 'KEY_NOT_AUTHORIZED'); continue }
+    if (!skipKey && !keyAuthorized(ledger, s.attester.account, v.signerAddress)) { reject(s, 'KEY_NOT_AUTHORIZED'); continue }
     // 6–7: roles: party roles, plus attester roles from the deal terms (with accreditation if required)
     const roles = partyRoles(s.attester.account)
     let accreditationFailed = false
@@ -105,7 +129,8 @@ export function verifyStatements(statements: Statement[], eng: EngagementRecord,
     const observed = Date.parse(s.observedAt)
     if (Number.isNaN(issued) || Number.isNaN(observed)) { reject(s, 'MALFORMED'); continue }
     if (issued > now + CLOCK_SKEW_SECS * 1000 || observed > issued + CLOCK_SKEW_SECS * 1000) { reject(s, 'FUTURE_DATED'); continue }
-    if (meta.maxLagSecs != null && now - observed > meta.maxLagSecs * 1000) { reject(s, 'STALE'); continue }
+    const lagClock = windowed && !Number.isNaN(receivedAt) ? receivedAt : now
+    if (meta.maxLagSecs != null && lagClock - observed > meta.maxLagSecs * 1000) { reject(s, 'STALE'); continue }
     if (s.validUntil && Date.parse(s.validUntil) <= now) { reject(s, 'EXPIRED'); continue }
     // 10: self-attestation
     const isParty = partyRoles(s.attester.account).length > 0
