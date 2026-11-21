@@ -16,6 +16,7 @@
     "build": "tsc -b tsconfig.build.json --pretty false",
     "pack-smoke": "tsx --conditions=source scripts/pack-smoke.ts",
     "validate-templates": "tsx --conditions=source packages/core/src/cli.ts validate-template templates/*.json",
+    "costs": "tsx --conditions=source scripts/costs.ts",
     "lint-policies": "tsx --conditions=source packages/policy/src/cli.ts lint",
     "vectors:build": "tsx --conditions=source vectors/build.ts",
     "cosigner": "tsx --conditions=source packages/cosigner/src/server.ts",
