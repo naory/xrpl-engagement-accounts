@@ -85,6 +85,11 @@ export interface Template {
   /** Statement-type (or `type#phase`) -> timer name whose expiry closes the window in which it may be posted. */
   attestationWindows?: Record<string, string>
   policyRef?: string
+  /**
+   * Baseline this deal is evaluated with (`pol_baseline@1.2.0`). Absent means baseline 1.1.0,
+   * which is what hotel@1 and hotel@2 stay pinned to.
+   */
+  baselineRef?: string
   /** Present only when the template declares its own dispute. Hotel templates omit this. */
   dispute?: DisputeDef
 }
@@ -289,6 +294,9 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
   ordered('claimBy', 'disputeWindowEnds', true, 'the guest must be able to answer the last possible claim')
   // marketplace-escrow@1: both timers run from open. The gap is the buyer's inspection time after the last
   // possible shipment. Floors are the Dev Lead policy params (24h ship window, 7d inspect gap).
+  // TODO(PR3): marketplaceEscrowTermsFindings must check the deal's own record.timers at register()
+  // (shipBy − open ≥ params.minShipWindow, inspectBy − shipBy ≥ params.minInspectGap).
+  // docs/specs/marketplace-escrow-at-1.md §3 items 2–3 and §8 C7. Lands with the flow in PR3.
   ordered('shipBy', 'inspectBy', true, 'the buyer must be able to inspect after the last possible shipment')
   const shipBy = timers.shipBy
   const inspectBy = timers.inspectBy

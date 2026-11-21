@@ -23,6 +23,8 @@ export interface PolicyDoc {
   version: string
   layer: 'baseline' | 'template' | 'engagement' | 'counterparty'
   appliesTo: string[]
+  /** Baseline version this template policy is evaluated with (`pol_baseline@1.2.0`). Hotel policies omit it. */
+  baselineRef?: string
   language: 'cel-eng/1'
   registry?: string
   assets?: Record<string, AssetDef>

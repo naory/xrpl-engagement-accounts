@@ -4,11 +4,11 @@ XRP an engagement account locks as reserve, and XRP it burns as fees, for one de
 
 ## Tickets and reserve
 
-`validate-templates` runs `validateTemplate` on each file in `templates/` and prints `ticketsNeeded` and the reserve (`validateTemplate` (`packages/core/src/cli.ts:14`), `ticketsNeeded` (`packages/core/src/cli.ts:17`)). The reserve is the base plus one increment for each trust line, the signer list, and each Ticket (`reserve` (`packages/core/src/template.ts:239`)).
+`validate-templates` runs `validateTemplate` on each file in `templates/` and prints `ticketsNeeded` and the reserve (`validateTemplate` (`packages/core/src/cli.ts:14`), `ticketsNeeded` (`packages/core/src/cli.ts:17`)). The reserve is the base plus one increment for each trust line, the signer list, and each Ticket (`reserve` (`packages/core/src/template.ts:244`)).
 
-Those figures use the validator defaults: a base of 1 XRP (`reserveBaseDrops` of 1000000 drops) and an owner increment of 0.2 XRP (`reserveIncDrops` of 200000 drops) (`reserveBaseDrops` (`packages/core/src/template.ts:236`), `reserveIncDrops` (`packages/core/src/template.ts:237`)). Those match Testnet and Mainnet today. Reserves are network-set and may change. A live snapshot reads the ledger fee object's `BaseFeeDrops` and `ReserveIncrementDrops`, with the same 10-drop and 200000-drop fallbacks (`baseFeeDrops` (`packages/cosigner/src/snapshot.ts:75`), `reserveIncDrops` (`packages/cosigner/src/snapshot.ts:76`)).
+Those figures use the validator defaults: a base of 1 XRP (`reserveBaseDrops` of 1000000 drops) and an owner increment of 0.2 XRP (`reserveIncDrops` of 200000 drops) (`reserveBaseDrops` (`packages/core/src/template.ts:241`), `reserveIncDrops` (`packages/core/src/template.ts:242`)). Those match Testnet and Mainnet today. Reserves are network-set and may change. A live snapshot reads the ledger fee object's `BaseFeeDrops` and `ReserveIncrementDrops`, with the same 10-drop and 200000-drop fallbacks (`baseFeeDrops` (`packages/cosigner/src/snapshot.ts:75`), `reserveIncDrops` (`packages/cosigner/src/snapshot.ts:76`)).
 
-Stay rows for `settlement-vault/hotel@2` are 1 through 14 nights. The Ticket count is `hotelTickets` (`packages/cosigner/src/hotel/flow.ts:87`). The reserve is `validateTemplate` on a copy whose `default.chargebackStay` `variants.max` is the number of stay variants that call booked (`variants` (`templates/hotel@2.json:23`), `tickets` (`packages/core/src/template.ts:232`)).
+Stay rows for `settlement-vault/hotel@2` are 1 through 14 nights. The Ticket count is `hotelTickets` (`packages/cosigner/src/hotel/flow.ts:87`). The reserve is `validateTemplate` on a copy whose `default.chargebackStay` `variants.max` is the number of stay variants that call booked (`variants` (`templates/hotel@2.json:23`), `tickets` (`packages/core/src/template.ts:237`)).
 
 The cap is 14 nights. The template sets `variants.max` to 13 (`variants` (`templates/hotel@2.json:23`)). `hotelTickets` reads that into `STAY_VARIANT_MAX` and adds a `default.chargebackStay` variant only while `nights - 1` is within it, so 14 nights books every variant (`hotelTickets` (`packages/cosigner/src/hotel/flow.ts:75-92`)). The policy states the same cap as `maxStayVariantNights` 14 (`maxStayVariantNights` (`policies/hotel@2.0.0.json:38`)).
 
@@ -124,7 +124,7 @@ The template check allows preCreateFundingDrops of 25.0 XRP. A stay of 14 nights
 
 A pre-signed hotel close passes `signatures` 3 and leaves headroom at the default (`signatures` (`packages/cosigner/src/hotel/flow.ts:648`), `headroom` (`packages/ledger/src/xrpl-io.ts:46`)). An agreed live close uses 3 signatures (`liveClose` (`packages/cosigner/src/hotel/flow.ts:425`)). A ruling close uses 2 (`liveClose` (`packages/cosigner/src/hotel/flow.ts:438`)). The procurement owner's close uses 1 (`signatures` (`packages/cosigner/demo/b1-testnet.ts:284`)).
 
-Generated fee figures use the 10-drop fallback written in `baseFeeDrops`, the value used when the ledger fee object has neither `BaseFeeDrops` nor `BaseFee` (`baseFeeDrops` (`packages/cosigner/src/snapshot.ts:75`)), and the validator default reserve increment (`reserveIncDrops` (`packages/core/src/template.ts:237`)). The AccountDelete special fee shown there is that increment once per delete (`deletes` (`packages/ledger/src/xrpl-io.ts:44`)).
+Generated fee figures use the 10-drop fallback written in `baseFeeDrops`, the value used when the ledger fee object has neither `BaseFeeDrops` nor `BaseFee` (`baseFeeDrops` (`packages/cosigner/src/snapshot.ts:75`)), and the validator default reserve increment (`reserveIncDrops` (`packages/core/src/template.ts:242`)). The AccountDelete special fee shown there is that increment once per delete (`deletes` (`packages/ledger/src/xrpl-io.ts:44`)).
 
 ## Where the reserve goes at close
 
@@ -136,6 +136,6 @@ Generated fee figures use the 10-drop fallback written in `baseFeeDrops`, the va
 
 ## Pre-create funding
 
-`validate-templates` passes `preCreateFundingDrops` into the validator (`preCreateFundingDrops` (`packages/core/src/cli.ts:14`)). V9 compares the reserve plus `feeHeadroomDrops` with that funding (`feeHeadroomDrops` (`packages/core/src/template.ts:241`)). The generated block records both amounts.
+`validate-templates` passes `preCreateFundingDrops` into the validator (`preCreateFundingDrops` (`packages/core/src/cli.ts:14`)). V9 compares the reserve plus `feeHeadroomDrops` with that funding (`feeHeadroomDrops` (`packages/core/src/template.ts:246`)). The generated block records both amounts.
 
 `precreateDrops` funds the base reserve, one increment for the trust line and the signer list, one increment per Ticket from `hotelTickets`, and a flat drops literal on that same line (`precreateDrops` (`packages/cosigner/src/hotel/flow.ts:177`)). The pool CLI's unset `ENG_CREATE_DROPS` falls back to the `createAmountDrops` literal (`createAmountDrops` (`packages/cosigner/src/pool-cli.ts:88`)). The procurement demo pays the new account `xrpToDrops` of a whole-XRP literal (`xrpToDrops` (`packages/cosigner/demo/b1-testnet.ts:112`)).

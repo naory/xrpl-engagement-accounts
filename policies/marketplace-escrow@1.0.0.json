@@ -2,6 +2,7 @@
   "policyId": "pol_marketplace-escrow",
   "version": "1.0.0",
   "layer": "template",
+  "baselineRef": "pol_baseline@1.2.0",
   "appliesTo": [
     "settlement-vault/marketplace-escrow@1"
   ],

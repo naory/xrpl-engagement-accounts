@@ -213,5 +213,6 @@
     "serviceFeeBps": 50,
     "paidBy": "counterparty"
   },
-  "policyRef": "pol_marketplace-escrow@1.0.0"
+  "policyRef": "pol_marketplace-escrow@1.0.0",
+  "baselineRef": "pol_baseline@1.2.0"
 }
