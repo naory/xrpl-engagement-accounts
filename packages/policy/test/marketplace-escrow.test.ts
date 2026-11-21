@@ -152,6 +152,13 @@ describe('marketplace-escrow@1 policy', () => {
     expect(checks.join('\n')).not.toMatch(/ruling|party\.ruling/)
   })
 
+  it('L11 fails when baselineRef drifts and passes when the policy matches the template', () => {
+    const drifted = structuredClone(policy)
+    drifted.baselineRef = 'pol_baseline@1.1.0'
+    expect(lintPolicy(drifted, template).map((f) => `${f.id} ${f.where}`)).toEqual(['L11 baselineRef'])
+    expect(lintPolicy(policy, template).filter((f) => f.id === 'L11')).toEqual([])
+  })
+
   it('refuses default.refund before shipBy and signs it after, with no shipment', () => {
     const early = decide(input({ ledger: ledger('2026-11-03T23:59:59Z', '2.00') }))
     expect(early.decision).toBe('REFUSE')
