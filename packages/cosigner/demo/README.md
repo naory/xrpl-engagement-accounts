@@ -10,8 +10,6 @@ npm run demo:x402      # x402 engagement-account purchase (needs x402-xrpl-settl
 npm run probe:x402     # probe a hosted facilitator for engagement-account support
 ```
 
-Hotel (hotel@2) is disabled in the demo while it is frozen as legacy; see ROADMAP.md. Set DEMO_ENABLE_HOTEL=1 to re-enable.
-
 ```bash
 DEMO_ENABLE_HOTEL=1 npm run demo:hotel          # hotel@2 stay escrow, every path (H1–H17), ~25 min including the AccountDelete wait
 DEMO_ENABLE_HOTEL=1 npm run demo:hotel-dispute  # Clip 3: H5 ruling, then H2 refund when the hotel never confirms. Needs cosigner:local.

@@ -11,7 +11,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadEnv, resolveServiceEndpoint, type HotelPath } from '@eng/cosigner'
 import { DemoOrchestrator } from './orchestrator.ts'
-import { HOTEL_DEMO_NOTE, hotelDemoEnabled } from './demo-scenarios.ts'
+import { hotelDemoEnabled, unavailableScenarioReply } from './demo-scenarios.ts'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 loadEnv([path.resolve(here, '../../..')]) // pick up repo-root .env before reading any config below
@@ -27,6 +27,12 @@ try {
 } catch (e) {
   console.error((e as Error).message ?? e)
   process.exit(1)
+}
+
+function refuseScenario(res: http.ServerResponse): void {
+  const reply = unavailableScenarioReply()
+  res.writeHead(reply.status, { 'content-type': reply.contentType, 'cache-control': 'no-store' })
+  res.end(reply.body)
 }
 
 const json = (res: http.ServerResponse, code: number, bodyVal: unknown): void => {
@@ -63,12 +69,12 @@ const server = http.createServer(async (req, res) => {
       await ensureConnected()
       if (m === 'POST' && url.pathname === '/api/provision') {
         const body = await readBody<{ scenario?: string }>(req)
-        if (body.scenario === 'hotel' && !hotelDemoEnabled()) return json(res, 403, { error: HOTEL_DEMO_NOTE })
+        if (body.scenario === 'hotel' && !hotelDemoEnabled()) return refuseScenario(res)
         return json(res, 200, await orch.provision(body.scenario))
       }
       if (m === 'POST' && url.pathname === '/api/escrow') return json(res, 200, await orch.escrow(await readBody<{ path: string }>(req)))
       if (url.pathname === '/api/hotel') {
-        if (!hotelDemoEnabled()) return json(res, 403, { error: HOTEL_DEMO_NOTE })
+        if (!hotelDemoEnabled()) return refuseScenario(res)
         if (m === 'POST') return json(res, 200, await orch.hotel(await readBody<{ path: HotelPath }>(req)))
         if (m === 'GET') return json(res, 200, orch.hotelStatus())
       }
