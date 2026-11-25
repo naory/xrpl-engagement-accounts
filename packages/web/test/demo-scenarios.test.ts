@@ -1,7 +1,7 @@
 // Hotel stays out of the demo menus unless DEMO_ENABLE_HOTEL=1 or --enable-hotel.
 import fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { HOTEL_DEMO_NOTE, hotelDemoEnabled, listedDemoScenarios } from '../src/demo-scenarios.ts'
+import { SCENARIO_UNAVAILABLE, assertHotelDemoEnabled, hotelDemoEnabled, listedDemoScenarios, unavailableScenarioReply } from '../src/demo-scenarios.ts'
 
 const repo = new URL('../../../', import.meta.url)
 
@@ -30,16 +30,46 @@ describe('demo scenario list', () => {
     expect(listedDemoScenarios(true).map((scenario) => scenario.id)).toEqual(['procurement', 'hotel', 'bond', 'x402', 'mpp'])
   })
 
-  it('the web demo lists every non-hotel scenario and the disabled note, and adds hotel only behind the flag', () => {
+  it('the web demo lists every non-hotel scenario with no notice, and adds hotel only behind the flag', () => {
     const html = read('packages/web/public/index.html')
+    const bar = html.match(/<div class="scenario-bar">[\s\S]*?<\/div>/)
+    if (!bar) throw new Error('scenario bar missing')
     expect(scenarioSelectValues(html)).toEqual(listedDemoScenarios(false).map((scenario) => scenario.id))
-    expect(html).toContain(HOTEL_DEMO_NOTE)
+    expect(bar[0]).not.toMatch(/hotel|frozen|legacy|ROADMAP|DEMO_ENABLE_HOTEL|enable-hotel/i)
+    expect(html).not.toContain('id="hotelNote"')
+    expect(html).not.toContain('frozen as legacy')
+    expect(html).not.toContain('Hotel (hotel@2) is disabled')
     expect(html).toContain('id:"hotel"')
     const gate = html.slice(html.indexOf('function gateHotelScenario'))
     expect(gate.startsWith('function gateHotelScenario'), 'gateHotelScenario missing').toBe(true)
     expect(gate).toContain('CFG && CFG.enableHotel')
     expect(gate).toContain('opt.value = "hotel"')
     expect(gate.indexOf('if (on)')).toBeLessThan(gate.indexOf('opt.value = "hotel"'))
+  })
+
+  it('a disabled hotel request is exactly "scenario not available", on the 403 body and on the CLI', () => {
+    expect(unavailableScenarioReply()).toEqual({ status: 403, contentType: 'text/plain; charset=utf-8', body: 'scenario not available' })
+    expect(SCENARIO_UNAVAILABLE).toBe('scenario not available')
+    const server = read('packages/web/src/server.ts')
+    expect(server.match(/return refuseScenario\(res\)/g)).toHaveLength(2)
+    expect(server).toContain('res.end(reply.body)')
+    expect(server).not.toMatch(/frozen|legacy|ROADMAP|DEMO_ENABLE_HOTEL|enable-hotel/)
+
+    const lines: string[] = []
+    const error = console.error
+    const exit = process.exit
+    console.error = (...args: unknown[]) => { lines.push(args.map(String).join(' ')) }
+    process.exit = ((code?: number) => { throw new Error(`exit ${code}`) }) as typeof process.exit
+    try {
+      expect(() => assertHotelDemoEnabled({}, ['node', 'demo'])).toThrow('exit 1')
+      expect(lines).toEqual(['scenario not available'])
+      lines.length = 0
+      expect(() => assertHotelDemoEnabled({ DEMO_ENABLE_HOTEL: '1' }, [])).not.toThrow()
+      expect(lines).toEqual([])
+    } finally {
+      console.error = error
+      process.exit = exit
+    }
   })
 
   it('the hotel Testnet scripts refuse to start before they touch the ledger', () => {

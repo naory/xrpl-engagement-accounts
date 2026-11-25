@@ -1,8 +1,13 @@
 // Which scenarios the demo offers. Hotel (hotel@2) stays in the catalog so it can be turned
 // back on, and is omitted from the selectable list unless DEMO_ENABLE_HOTEL=1 or --enable-hotel.
 
-export const HOTEL_DEMO_NOTE =
-  'Hotel (hotel@2) is disabled in the demo while it is frozen as legacy; see ROADMAP.md. Set DEMO_ENABLE_HOTEL=1 to re-enable.'
+/** Refusal for a hotel entry point while the flag is off. The reason is not included. */
+export const SCENARIO_UNAVAILABLE = 'scenario not available'
+
+/** The HTTP refusal. The body is the neutral sentence and nothing else. */
+export function unavailableScenarioReply(): { status: 403; contentType: 'text/plain; charset=utf-8'; body: typeof SCENARIO_UNAVAILABLE } {
+  return { status: 403, contentType: 'text/plain; charset=utf-8', body: SCENARIO_UNAVAILABLE }
+}
 
 export interface DemoScenario {
   id: string
@@ -27,9 +32,9 @@ export function listedDemoScenarios(enableHotel: boolean): DemoScenario[] {
   return DEMO_SCENARIOS.filter((scenario) => enableHotel || scenario.id !== 'hotel')
 }
 
-/** Refuse a hotel demo entry point. Prints the re-enable note and exits. No-op when the flag is on. */
+/** Refuse a hotel demo entry point. Prints the neutral refusal and exits. No-op when the flag is on. */
 export function assertHotelDemoEnabled(env: NodeJS.ProcessEnv = process.env, argv: readonly string[] = process.argv): void {
   if (hotelDemoEnabled(env, argv)) return
-  console.error(HOTEL_DEMO_NOTE)
+  console.error(SCENARIO_UNAVAILABLE)
   process.exit(1)
 }

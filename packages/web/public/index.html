@@ -65,7 +65,6 @@
 
   .scenario-bar{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
   .scenario-bar label{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
-  .scenario-note{flex:1 1 100%;margin:0;max-width:78ch;color:var(--muted);font-size:13px;line-height:1.45}
   select{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--fg);background:var(--panel);
     border:1px solid var(--line);border-radius:10px;padding:9px 12px;cursor:pointer;min-width:220px}
   select:hover{border-color:var(--accent)}
@@ -332,7 +331,6 @@
       <option value="x402">x402 metered purchase — pay-per-use</option>
       <option value="mpp">MPP push payment — Stripe/Tempo rail</option>
     </select>
-    <p class="scenario-note" id="hotelNote">Hotel (hotel@2) is disabled in the demo while it is frozen as legacy; see ROADMAP.md. Set DEMO_ENABLE_HOTEL=1 to re-enable.</p>
   </div>
 
   <section class="hero" id="hero"></section>
@@ -1302,7 +1300,6 @@
   // (DEMO_ENABLE_HOTEL=1 or --enable-hotel). SCENARIOS.hotel stays so the flag turns it back on.
   function gateHotelScenario(){
     var on = !!(CFG && CFG.enableHotel);
-    var note = $("#hotelNote");
     var sel = $("#scenario");
     if (on) {
       if (!sel.querySelector('option[value="hotel"]')) {
@@ -1311,12 +1308,10 @@
         opt.textContent = "Hotel stay — Research (hotel@2)";
         sel.insertBefore(opt, sel.querySelector('option[value="bond"]'));
       }
-      if (note) note.hidden = true;
     } else {
       var existing = sel.querySelector('option[value="hotel"]');
       if (existing) existing.remove();
       if (sel.value === "hotel") sel.value = "procurement";
-      if (note) note.hidden = false;
     }
   }
   gateHotelScenario();
