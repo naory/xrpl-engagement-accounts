@@ -12,7 +12,7 @@ npm run probe:x402     # probe a hosted facilitator for engagement-account suppo
 
 ```bash
 npm run demo:hotel          # hotel stay escrow, every path (H1–H17), when that scenario is enabled. ~25 min including the AccountDelete wait
-npm run demo:hotel-dispute  # hotel Clip 3: H5 ruling, then H2 refund when the hotel never confirms. Needs cosigner:local.
+npm run demo:hotel-dispute  # hotel H5 ruling, then H2 refund when the hotel never confirms. Needs cosigner:local. Not the silent-cut Clip 3.
 ```
 
 With no `XRPL_URL`, the demo and probe scripts use `resolveTestnetEndpoint` (`@eng/cosigner`): `wss://testnet.xrpl-labs.com`, then `wss://s.altnet.rippletest.net:51233` if that connect fails or times out. Set `XRPL_URL` to pin an endpoint, including Devnet (`XRPL_URL=wss://s.devnet.rippletest.net:51233`).
@@ -73,13 +73,13 @@ Automatic endings return any extra money to the guest with a residual sweep (a `
 
 Results go to `demo/results/hotel-run-*.json`: every transaction hash, each path's steps (with the rule results from the co-signer's decision records), and the checks. The signed decision log is written next to them.
 
-## `hotel-dispute-testnet.ts`: Clip 3
+## `hotel-dispute-testnet.ts`
 
-`npm run demo:hotel-dispute` records two of those outcomes against a running `npm run cosigner:local` (Testnet only; the scheduler submits H2 when `COSIGNER_TICK_SUBMIT=1`). Sub-step 1 is the H5 arbiter ruling. Sub-step 2 is H2: the hotel never confirms, so `default.refund` fires. It is not a dispute default. Walkthrough: [`docs/demo/hotel-dispute.md`](../../../docs/demo/hotel-dispute.md).
+`npm run demo:hotel-dispute` records two of those outcomes against a running `npm run cosigner:local` (Testnet only; the scheduler submits H2 when `COSIGNER_TICK_SUBMIT=1`). Sub-step 1 is the H5 arbiter ruling. Sub-step 2 is H2: the hotel never confirms, so `default.refund` fires. It is not a dispute default. Walkthrough: [`docs/demo/hotel-dispute.md`](../../../docs/demo/hotel-dispute.md). The silent-cut Clip 3 is the marketplace script below.
 
 ## `marketplace-escrow-testnet.ts`
 
-`npm run demo:marketplace-escrow` runs ME1–ME11 and ME15–ME20 on XRPL Testnet. The co-signer is in that process and exposes the v1 timeout routes on loopback. `npm run demo:marketplace-escrow-dispute` runs the Clip 3 path only (ME6 then ME4). Walkthrough: [`docs/demo/marketplace-escrow-dispute.md`](../../../docs/demo/marketplace-escrow-dispute.md).
+`npm run demo:marketplace-escrow` runs ME1–ME11 and ME15–ME20 on XRPL Testnet. The co-signer is in that process and exposes the v1 timeout routes on loopback. `npm run demo:marketplace-escrow-dispute` runs the silent-cut Clip 3 dispute (ME6 then ME4). The live-signed timeout in that cut is ME2 from the full run. Walkthrough: [`docs/demo/marketplace-escrow-dispute.md`](../../../docs/demo/marketplace-escrow-dispute.md). Shot list: [`docs/demo/n2a-storyboard.md`](../../../docs/demo/n2a-storyboard.md).
 
 v4 live signing: the template books zero Tickets and stores zero pre-signed transactions, and the reserve is 1.4 XRP. The buyer (`parties.principal`) signs `party.mandate/1`. A missed deadline publishes a facts-only `cosigner.timeout/1` notice. The party pulls a one-shot proposal, signs first, and posts it to `POST /v1/engagements/:id/timeout/signatures`. The arbiter reads its own validated ledger, checks the nine conditions, signs, and the relay submits. Option (a): either party may be that first signature; ME2 uses the seller on a refund, and the sweep still pays the buyer. The proposal's last ledger is 30 ledgers out. The run records how many ledgers and how much wall time that window used.
 
