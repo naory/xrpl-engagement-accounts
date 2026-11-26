@@ -92,6 +92,8 @@ export interface Template {
   baselineRef?: string
   /** Present only when the template declares its own dispute. Hotel templates omit this. */
   dispute?: DisputeDef
+  /** "live": no outcome may be pre-signed and the deal books no Tickets (V17). */
+  signing?: 'live'
 }
 
 export interface ValidationOptions {
@@ -144,6 +146,16 @@ export function minimalWinningSets(t: Template): string[][] {
   return minimal
     .map((m) => names.filter((_, i) => m & (1 << i)))
     .sort((a, b) => a.length - b.length || a.join().localeCompare(b.join()))
+}
+
+/**
+ * A live timeout outcome (v4.1): only on a `signing: "live"` template; advisory with a named policy stage the
+ * co-signer evaluates; an arbiter in every signer set. Signed after expiry, never pre-signed.
+ */
+function isLiveTimeout(t: Template, o: OutcomeDef): boolean {
+  return t.signing === 'live' && o.requires === 'timeout' && o.enforcement === 'advisory' &&
+    typeof o.policyStage === 'string' && o.policyStage.length > 0 && o.signers.length > 0 &&
+    o.signers.every((set) => set.some((r) => t.roles[r]?.kind === 'arbiter'))
 }
 
 export function validateTemplate(t: Template, opts: ValidationOptions = {}): ValidationResult {
@@ -220,7 +232,7 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
     for (const n of names) {
       const o = t.outcomes[n]
       if (!o) err('V6', `timer ${tn}: onExpire ${n} is not an outcome`)
-      else if (!o.presigned) err('V6', `timer ${tn}: onExpire outcome ${n} is not pre-signed`)
+      else if (!o.presigned && !isLiveTimeout(t, o)) err('V6', `timer ${tn}: onExpire outcome ${n} is neither pre-signed nor a live arbiter timeout (signing "live", requires "timeout", advisory, a policyStage, arbiter in every signer set)`)
     }
   }
 
@@ -320,6 +332,12 @@ export function validateTemplate(t: Template, opts: ValidationOptions = {}): Val
         err('V16', `dispute.bond.plusParam ${JSON.stringify(plus ?? null)} is not a policy param`)
       }
     }
+  }
+
+  // V17: a live-signing template has no pre-signed outcome and books no Tickets.
+  if (t.signing === 'live') {
+    for (const [on, o] of Object.entries(t.outcomes)) if (o.presigned || o.finalSigner || o.variants) err('V17', `outcome ${on}: signing is "live", so no outcome may be pre-signed`)
+    if (tickets !== 0) err('V17', `signing is "live" but the template books ${tickets} Tickets`)
   }
 
   // V15: every arbiter role opts into the service's accreditation gate (the co-signer registers a deal only when

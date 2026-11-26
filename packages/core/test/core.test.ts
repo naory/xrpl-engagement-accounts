@@ -239,4 +239,119 @@ describe('template validator', () => {
     expect(validateTemplate(silent).errors.map((e) => e.id)).toContain('V6')
     expect(validateTemplate(marketplace()).errors).toEqual([])
   })
+
+  // Option (a) live marketplace, inlined. Every outcome is signed when it runs; no Tickets.
+  const liveMarketplace = (): Template => structuredClone({
+    templateId: 'settlement-vault/marketplace-escrow@1',
+    class: 'escrow',
+    asset: { code: 'RLUSD' },
+    roles: {
+      principal: { weight: 3, kind: 'principal', operatedBy: 'external' },
+      counterparty: { weight: 3, kind: 'counterparty', operatedBy: 'external' },
+      arbiter: { weight: 4, kind: 'arbiter', operatedBy: 'external', accreditation: 'service' },
+      cosigner: { weight: 2, kind: 'cosigner', operatedBy: 'service' },
+    },
+    quorum: 7,
+    outcomes: {
+      'release.confirm': { signers: [['principal', 'counterparty', 'cosigner']], blueprint: 'close.split', policyStage: 'release.confirm', enforcement: 'ledger' },
+      'refund.agreed': { signers: [['principal', 'counterparty', 'cosigner']], blueprint: 'close.refundAll', policyStage: 'refund.agreed', enforcement: 'ledger' },
+      'dispute.refund': { signers: [['arbiter', 'principal']], blueprint: 'close.refundAll', policyStage: null, enforcement: 'none', requires: 'ruling' },
+      'dispute.release': { signers: [['arbiter', 'counterparty']], blueprint: 'close.split', policyStage: null, enforcement: 'none', requires: 'ruling' },
+      'default.refund': {
+        signers: [['arbiter', 'principal'], ['arbiter', 'counterparty']],
+        blueprint: 'close.refundAll', policyStage: 'default.refund', enforcement: 'advisory', requires: 'timeout',
+      },
+      'default.release': {
+        signers: [['arbiter', 'principal'], ['arbiter', 'counterparty']],
+        blueprint: 'close.split', policyStage: 'default.release', enforcement: 'advisory', requires: 'timeout',
+      },
+    },
+    timers: {
+      shipBy: { from: 'open', durationSecs: 259200, onExpire: 'default.refund' },
+      inspectBy: { from: 'open', durationSecs: 864000, onExpire: 'default.release' },
+      rulingDueBy: { from: 'disputeOpened', durationSecs: 432000, onExpire: 'escalate' },
+    },
+    attestationWindows: { 'shipping.shipped/1': 'shipBy', 'party.dispute/1': 'inspectBy' },
+    dispute: { by: ['principal'], bond: { base: 'amount', plusParam: 'minDisputeBond' }, lateRuling: 'accept', overdueTimer: 'rulingDueBy' },
+    blueprints: {
+      'close.split': { steps: ['pay.counterparty?', 'pay.serviceFee?', 'pay.principal?', 'trustline.remove', 'account.delete'], closes: true },
+      'close.refundAll': { steps: ['pay.principal', 'trustline.remove', 'account.delete'], closes: true },
+    },
+    reserveObjects: { trustlines: 1, signerList: 1 },
+    fees: { serviceFeeBps: 50, paidBy: 'counterparty' },
+    policyRef: 'pol_marketplace-escrow@1.1.0',
+    baselineRef: 'pol_baseline@1.2.0',
+    signing: 'live',
+  } as Template)
+  const ids = (t: Template) => validateTemplate(t).errors.map((e) => e.id)
+
+  it('live marketplace: 0 Tickets, 1.4 XRP, only the V10 disclosure', () => {
+    const r = validateTemplate(liveMarketplace())
+    expect(r.errors).toEqual([])
+    expect(r.ticketsNeeded).toBe(0)
+    expect(r.reserveDrops).toBe(1_400_000n)
+    expect(r.disclosures.map((d) => d.id)).toEqual(['V10'])
+  })
+  it('option (a) live marketplace passes with no errors and no Tickets', () => {
+    const r = validateTemplate(liveMarketplace())
+    expect(r.errors).toEqual([])
+    expect(r.ticketsNeeded).toBe(0)
+  })
+  it('V6: a live timeout on a template without signing "live" is refused', () => {
+    const t = liveMarketplace()
+    delete (t as { signing?: string }).signing
+    expect(ids(t)).toEqual(['V6', 'V6'])
+  })
+  it('V6: a live timeout with policyStage null is refused', () => {
+    const t = liveMarketplace()
+    t.outcomes['default.refund'].policyStage = null
+    expect(ids(t)).toEqual(['V6'])
+  })
+  it('V6: a live timeout with no arbiter in a signer set is refused', () => {
+    const t = liveMarketplace()
+    t.outcomes['default.release'].signers = [['arbiter', 'counterparty'], ['principal', 'counterparty', 'cosigner']]
+    expect(ids(t)).toContain('V6')
+  })
+  it('V6: requires other than timeout is refused', () => {
+    const t = liveMarketplace()
+    t.outcomes['default.refund'].requires = 'ruling'
+    expect(ids(t)).toEqual(['V6'])
+  })
+  it('V6: enforcement other than advisory is refused', () => {
+    const t = liveMarketplace()
+    t.outcomes['default.refund'].enforcement = 'none'
+    expect(ids(t)).toEqual(['V6'])
+  })
+  it('V17: a pre-signed outcome on a live template is refused, and so are its Tickets', () => {
+    const t = liveMarketplace()
+    t.outcomes['default.refund'] = {
+      ...t.outcomes['default.refund'],
+      presigned: true,
+      finalSigner: 'cosigner',
+      signers: [['principal', 'counterparty', 'cosigner']],
+      enforcement: 'final-signature',
+      requires: undefined,
+    }
+    const e = ids(t)
+    expect(e.filter((x) => x === 'V17')).toHaveLength(2)
+  })
+  it('V17: a stray finalSigner alone is refused', () => {
+    const t = liveMarketplace()
+    t.outcomes['default.release'].finalSigner = 'cosigner'
+    expect(ids(t)).toContain('V17')
+  })
+  it('non-live templates are unchanged', () => {
+    const shipped: Array<[string, number]> = [
+      ['hotel@1.json', 9],
+      ['hotel@2.json', 109],
+      ['marketplace-escrow@1.json', 15],
+      ['procurement@1.json', 0],
+      ['shopping@1.json', 0],
+    ]
+    for (const [file, tickets] of shipped) {
+      const r = validateTemplate(load(file))
+      expect(r.errors, file).toEqual([])
+      expect(r.ticketsNeeded, file).toBe(tickets)
+    }
+  })
 })
