@@ -241,20 +241,22 @@ export class MarketplaceEscrowFlow {
    * No co-signer signature: enforcement is advisory.
    */
   async timeoutSettle(kind: 'refund' | 'release', signer?: Wallet): Promise<MarketplaceStepResult> {
-    const { cast } = this.o
-    const balance = await this.balance()
-    const held = parseAmount(balance, this.asset).minor
-    const price = parseAmount(this.price, this.asset).minor
-    const payouts: Payout[] = kind === 'refund'
-      ? [{ to: cast.buyer.address, partial: true }]
-      : [
-          ...marketplaceReleasePayouts(this.price, FEE_BPS, cast.seller.address, cast.service.address),
-          ...(held > price ? [{ to: cast.buyer.address, partial: true }] : []),
-        ]
-    const tx = await this.liveClose(payouts, `default.${kind}`, 2)
+    const { cast, svc } = this.o
+    const outcome = `default.${kind}` as const
+    const proposed = await svc.proposeTimeout(this.id, outcome)
+    if (proposed.decision !== 'SIGN' || !proposed.proposal) {
+      return { step: outcome, decision: 'REFUSE', failing: proposed.failing }
+    }
     const party = signer ?? (kind === 'refund' ? cast.buyer : cast.seller)
-    const r = await submit(this.o.client, combine([multisignBlob(cast.arbiter, tx), multisignBlob(party, tx)]))
-    return { step: `default.${kind}`, ...(await this.closeResult(r, tx)) }
+    const tx = proposed.proposal.txJson
+    await svc.submitTimeoutSignature(this.id, proposed.proposal.proposedTxHash, multisignBlob(party, tx))
+    const verdict = await svc.verifyTimeout(this.id, {
+      outcome, tx, builtAtLedger: proposed.proposal.builtAtLedger, partyAccount: party.address,
+      statements: svc.statements(this.id),
+    })
+    if (!verdict.ok) return { step: outcome, decision: 'REFUSE', failing: [verdict.reason] }
+    const sent = await svc.submitTimeoutSignature(this.id, proposed.proposal.proposedTxHash, multisignBlob(cast.arbiter, tx), (blob) => submit(this.o.client, blob))
+    return { step: outcome, decision: 'SIGN', tx: sent.hash, final: sent.final }
   }
 
   /** Mutual cancel: the whole balance back to the buyer. Buyer, seller, and the co-signer. */

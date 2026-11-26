@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { localSigner, signStatement, type Statement, type Template } from '@eng/core'
-import { CosignerService, FixtureLedgerSource, LedgerUnavailableError, MemoryStateStore, reportRulingOverdue, startTickScheduler, type RulingOverdue } from '@eng/cosigner'
+import { CosignerService, FixtureLedgerSource, LedgerUnavailableError, MemoryStateStore, multisignBlob, reportRulingOverdue, startTickScheduler, type RulingOverdue } from '@eng/cosigner'
 import { arbiterAccreditation, closeBatch, fixtureTrust, memo, wallet, LEDGER_INDEX, W } from '../../policy/test/fixtures.ts'
 import type { EngagementRecord, LedgerSnapshot, PolicyDoc } from '@eng/policy'
 
@@ -578,6 +578,114 @@ describe('ruling overdue alert', () => {
     await reportRulingOverdue(alert, (e) => lines.push(e), 'https://alerts.example/hook', fetchImpl)
     expect(lines[0]).toMatchObject({ level: 'error', msg: 'ruling overdue', engagementId: ENG, rulingReceipted: false })
     expect(JSON.parse(posted).alert).toBe('RULING_OVERDUE')
+  })
+
+  it('a due live deal notices once, proposes a sweep, and drops a tec proposal', async () => {
+    const early = await setup('2026-11-02T00:00:00Z')
+    expect(await early.svc.timeouts(ENG)).toBeNull()
+    expect((await early.svc.proposeTimeout(ENG, 'default.refund')).failing).toContain('NOT_DUE')
+    await expect(early.svc.storePresigned(ENG, 'default.refund', '00')).rejects.toThrow(/NOT_PRESIGNED/)
+    expect(await early.svc.tick(ENG)).toEqual([])
+
+    const { svc, source } = await setup('2026-11-04T00:00:01Z')
+    source.snap.accounts[eng.address].sequence = 40
+    const notice = await svc.timeouts(ENG)
+    expect(notice?.outcome).toBe('default.refund')
+    expect(svc.decisions(ENG).filter((s) => s.type === 'cosigner.timeout/1')).toHaveLength(1)
+    expect(await svc.timeouts(ENG)).toBeNull()
+
+    const proposed = await svc.proposeTimeout(ENG, 'default.refund')
+    expect(proposed.decision).toBe('SIGN')
+    expect(proposed.proposal?.txJson.TicketSequence).toBeUndefined()
+    expect(proposed.proposal?.lastLedgerSequence).toBe(LEDGER_INDEX + 30)
+    const tx = proposed.proposal!.txJson
+    const hash = proposed.proposal!.proposedTxHash
+    await expect(svc.submitTimeoutSignature(ENG, hash, multisignBlob(W.arbiter, tx))).rejects.toThrow(/ORDER/)
+    expect((await svc.submitTimeoutSignature(ENG, hash, multisignBlob(W.dana, tx))).ready).toBe(false)
+    expect((await svc.verifyTimeout(ENG, { outcome: 'default.refund', tx, builtAtLedger: proposed.proposal!.builtAtLedger, partyAccount: W.dana.address, statements: [] })).ok).toBe(true)
+    await expect(svc.submitTimeoutSignature(ENG, hash, multisignBlob(W.arbiter, tx), async () => ({ hash: 'AB', final: 'tecPATH_DRY', validated: true }))).rejects.toThrow(/DEAD tecPATH_DRY/)
+    await expect(svc.submitTimeoutSignature(ENG, hash, multisignBlob(W.dana, tx))).rejects.toThrow(/UNKNOWN_PROPOSAL/)
+  })
+
+  it('a receipted dispute blocks release only when the arbiter ledger also holds the bond', async () => {
+    const { svc, source } = await setup('2026-11-03T00:01:00Z')
+    await svc.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-11-03T00:00:00Z', 'me-timeout-ship'))
+    source.snap = snap({ closeTime: '2026-11-11T00:00:01Z', balance: '2.00' })
+    source.snap.accounts[eng.address].sequence = 40
+    const exact = await svc.proposeTimeout(ENG, 'default.release')
+    expect(exact.decision).toBe('SIGN')
+    const presented = {
+      statement: signed(W.dana, 'party.dispute/1', '2026-11-05T00:00:00Z', 'me-timeout-dispute', { reason: 'no' }),
+      receipt: signStatement({
+        v: 'eng.att/1', type: 'cosigner.receipt/1', engagementId: ENG,
+        subject: { statementId: 'att:receipt' }, claim: { receivedAt: '2026-11-05T00:00:00Z', ledgerIndex: LEDGER_INDEX },
+        observedAt: '2026-11-05T00:00:00Z', issuedAt: '2026-11-05T00:00:00Z', nonce: 'me-timeout-receipt',
+        attester: { account: W.cosigner.address, kind: 'COSIGNER' },
+      }, W.cosigner),
+    }
+    const open = await svc.verifyTimeout(ENG, {
+      outcome: 'default.release', tx: exact.proposal!.txJson, builtAtLedger: exact.proposal!.builtAtLedger,
+      statements: svc.statements(ENG), presentedDispute: presented, partyAccount: W.atlas.address,
+    })
+    expect(open).toEqual({ ok: true })
+    source.snap = snap({ closeTime: '2026-11-11T00:00:01Z', balance: '2.50' })
+    source.snap.accounts[eng.address].sequence = 40
+    const swept = await svc.proposeTimeout(ENG, 'default.release')
+    expect(swept.decision).toBe('SIGN')
+    const blocked = await svc.verifyTimeout(ENG, {
+      outcome: 'default.release', tx: swept.proposal!.txJson, builtAtLedger: swept.proposal!.builtAtLedger,
+      statements: svc.statements(ENG), presentedDispute: presented, partyAccount: W.atlas.address,
+    })
+    expect(blocked.ok).toBe(false)
+    if (!blocked.ok) expect(blocked.check).toBe(4)
+  })
+
+  it('does not propose a release while a receipted dispute is bonded', async () => {
+    const { svc, source } = await setup('2026-11-03T00:01:00Z')
+    await svc.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-11-03T00:00:00Z', 'me-bonded-ship'))
+    source.snap = snap({ closeTime: '2026-11-05T00:00:01Z', balance: '2.50', dispute: true })
+    await svc.ingest(ENG, signed(W.dana, 'party.dispute/1', '2026-11-05T00:00:00Z', 'me-bonded-dispute', { reason: 'no' }))
+    source.snap = snap({ closeTime: '2026-11-11T00:00:01Z', balance: '2.50' })
+    source.snap.accounts[eng.address].sequence = 40
+    const proposed = await svc.proposeTimeout(ENG, 'default.release')
+    expect(proposed).toMatchObject({ decision: 'REFUSE', failing: ['NOT_DUE'] })
+    expect(proposed.proposal).toBeUndefined()
+  })
+
+  it('restores a timeout notice and does not log the same fingerprint twice', async () => {
+    const store = new MemoryStateStore()
+    const source = new FixtureLedgerSource(snap({ closeTime: '2026-11-04T00:00:01Z' }))
+    source.snap.accounts[eng.address].sequence = 40
+    const opts = { signer: localSigner(W.cosigner), source, templates: [template], policies: [baseline12, policy], store }
+    const svc = new CosignerService(opts)
+    await svc.register(record(), mandate())
+    const notice = await svc.timeouts(ENG)
+    const restored = await CosignerService.open(opts)
+    expect(restored.latestTimeout(ENG)?.fingerprint).toBe(notice?.fingerprint)
+    expect(restored.decisions(ENG).filter((s) => s.type === 'cosigner.timeout/1')).toHaveLength(1)
+    expect(await restored.timeouts(ENG)).toBeNull()
+    const proposed = await restored.proposeTimeout(ENG, 'default.refund')
+    expect(proposed.decision).toBe('SIGN')
+    source.snap.index = LEDGER_INDEX + 31
+    const expired = await CosignerService.open(opts)
+    await expect(expired.submitTimeoutSignature(ENG, proposed.proposal!.proposedTxHash, '00')).rejects.toThrow(/UNKNOWN_PROPOSAL/)
+    await expired.close()
+    await restored.close()
+  })
+
+  it('the scheduler delivers onTimeout and closes a missing live account after two rounds', async () => {
+    const { svc, source } = await setup('2026-11-04T00:00:01Z')
+    vi.useFakeTimers()
+    const seen: string[] = []
+    const s = startTickScheduler(svc, { intervalMs: 1000, onTimeout: (_id, n) => { seen.push(n.outcome) } })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(seen).toEqual(['default.refund'])
+    source.snap.accounts[eng.address].exists = false
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(svc.openEngagementIds()).toEqual([ENG])
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(svc.openEngagementIds()).toEqual([])
+    await s.stop()
   })
 
   it('logs the overdue line before retrying a failed webhook on a bounded backoff', async () => {

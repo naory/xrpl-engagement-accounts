@@ -2,7 +2,7 @@
 // the tick endpoint. One round also pages overdue() for every open engagement, whether or not a blob is stored.
 // Engagements run one after another, in quiet mode; the next round starts `intervalMs` after the previous one
 // FINISHES (a setTimeout chain), so rounds never overlap.
-import type { CosignerService, RulingOverdue, TickResult } from './service.ts'
+import type { CosignerService, RulingOverdue, TickResult, TimeoutNotice } from './service.ts'
 
 export interface TickSchedulerOptions {
   intervalMs: number
@@ -10,6 +10,8 @@ export interface TickSchedulerOptions {
   onResult?: (engagementId: string, r: TickResult) => Promise<void> | void
   /** Called when overdue() pages a ruling SLA. Independent of stored blobs. A throw is logged and does not stop the round. */
   onAlert?: (engagementId: string, alert: RulingOverdue) => Promise<void> | void
+  /** Called when a live deal's timeout notice is due. A throw is logged and does not stop the round. */
+  onTimeout?: (engagementId: string, notice: TimeoutNotice) => Promise<void> | void
   /** A fatal error that stopped the scheduler (STORE_LOCKED: the store lease is lost). The caller should exit. */
   onError?: (e: Error) => void
   log?: (level: 'warn' | 'error', msg: string, extra?: Record<string, unknown>) => void
@@ -62,7 +64,7 @@ export function startTickScheduler(svc: CosignerService, o: TickSchedulerOptions
 
   async function tickOne(id: string): Promise<void> {
     const results = await svc.tick(id, { quiet: true })
-    if (!results.length && svc.hasPendingDefaults(id)) {
+    if (!results.length && (svc.hasPendingDefaults(id) || svc.isLiveSigning(id))) {
       if (await svc.accountExists(id)) goneRounds.delete(id)
       else {
         const n = (goneRounds.get(id) ?? 0) + 1
@@ -91,6 +93,14 @@ export function startTickScheduler(svc: CosignerService, o: TickSchedulerOptions
     handed.set(id, new Set([...seen].filter((b) => current.has(b))))
   }
 
+  async function timeoutOne(id: string): Promise<void> {
+    const notice = await svc.timeouts(id)
+    if (!notice || !o.onTimeout) return
+    try { await o.onTimeout(id, notice) } catch (e) {
+      log('error', 'onTimeout failed', { engagementId: id, error: String((e as Error).message ?? e) })
+    }
+  }
+
   async function alertOne(id: string): Promise<void> {
     const alert = await svc.overdue(id)
     if (!alert) return
@@ -105,6 +115,14 @@ export function startTickScheduler(svc: CosignerService, o: TickSchedulerOptions
 
   async function runRound(): Promise<void> {
     for (const id of svc.openEngagementIds()) {
+      if (stopped) return
+      try {
+        await timeoutOne(id)
+      } catch (e) {
+        const message = String((e as Error)?.message ?? e)
+        if (message.startsWith('STORE_LOCKED')) return fatal(e as Error)
+        log('error', 'timeout failed', { engagementId: id, error: message })
+      }
       if (stopped) return
       try {
         await alertOne(id)

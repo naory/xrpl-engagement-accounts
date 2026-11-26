@@ -13,7 +13,8 @@ import {
   type Decision, type EngagementRecord, type InflightEntry, type LedgerSnapshot, type PolicyDoc, verifyStatements,
 } from '@eng/policy'
 import type { LedgerSource } from './snapshot.ts'
-import { combine, unsigned } from './xrpl-io.ts'
+import { buildCloseBatch, combine, memo, unsigned } from './xrpl-io.ts'
+import { verifyArbiterTimeout, type ArbiterTimeoutInput, type ArbiterTimeoutResult } from './timeout-arbiter.ts'
 import { MemoryStateStore } from './store/memory.ts'
 import { pinsOf, readDecisionsJsonl, resolvePins } from './store/restore.ts'
 import type { DecideRequest, DecideResponse } from '@eng/ledger/decide'
@@ -77,6 +78,40 @@ interface EngagementState {
   alertRetryAt?: string
   /** Failed webhook deliveries since the last success. Grows the retry backoff. */
   alertFailures?: number
+  /** Last signed timeout notice. Re-sends with the same fingerprint are not logged again. */
+  timeoutNotice?: TimeoutNotice
+  timeoutFingerprint?: string
+  timeoutNotifiedAt?: string
+  /** The one live proposal. Expired or invalidated proposals are deleted, never reused. */
+  timeoutProposal?: TimeoutProposal
+}
+
+/** Facts-only notice that a live timeout is due. It authorizes nothing. */
+export interface TimeoutNotice {
+  engagementId: string
+  outcome: 'default.refund' | 'default.release'
+  timer: string
+  dueAt: string
+  ledger: { index: number; hash: string; closeTime: string }
+  facts: { shipped: boolean; disputeOpen: boolean; balance: string }
+  signerSets: string[][]
+  statement: Statement
+  fingerprint: string
+}
+
+/** One short-lived unsigned close, plus the signatures collected so far. */
+export interface TimeoutProposal {
+  engagementId: string
+  outcome: 'default.refund' | 'default.release'
+  txJson: Json
+  txBlob: string
+  proposedTxHash: string
+  builtAtLedger: number
+  lastLedgerSequence: number
+  sequence: number
+  balance: string
+  partyBlob?: string
+  arbiterBlob?: string
 }
 
 /** Ops page from overdue(). No signature and no blob: the account still exists and the ruling SLA has passed. */
@@ -219,7 +254,19 @@ export class CosignerService {
         alertedAt: snap.meta[alertedAtKey(id)] || undefined,
         alertRetryAt: snap.meta[alertRetryAtKey(id)] || undefined,
         alertFailures: snap.meta[alertFailuresKey(id)] ? Number(snap.meta[alertFailuresKey(id)]) : undefined,
+        timeoutNotice: parseJson<TimeoutNotice>(snap.meta[timeoutNoticeKey(id)]),
+        timeoutFingerprint: snap.meta[timeoutFingerprintKey(id)] || undefined,
+        timeoutNotifiedAt: snap.meta[timeoutNotifiedAtKey(id)] || undefined,
+        timeoutProposal: parseJson<TimeoutProposal>(snap.meta[timeoutProposalKey(id)]),
       })
+    }
+    for (const st of this.engagements.values()) {
+      const proposal = st.timeoutProposal
+      if (!proposal) continue
+      try {
+        const ledger = await this.timeoutLedger(st)
+        if (proposal.lastLedgerSequence <= ledger.index) await this.dropProposal(st)
+      } catch { /* a failed read leaves the proposal; the next signature re-checks it */ }
     }
     this.inflight = snap.inflight
     this.log.push(...snap.decisions.sort((a, b) => a.seq - b.seq).map((d) => d.statement), ...(imported ?? []))
@@ -242,6 +289,11 @@ export class CosignerService {
   /** Whether the engagement has any stored pre-signed default (without one a tick can never complete anything). */
   hasPendingDefaults(engagementId: string): boolean {
     return this.live(engagementId).presigned.size > 0
+  }
+
+  /** A live-signing template. The scheduler uses this so only those deals get an account-gone read. */
+  isLiveSigning(engagementId: string): boolean {
+    return this.live(engagementId).template.signing === 'live'
   }
 
   /** Whether the engagement's account is still on the ledger (a tick returns [] both for "gone" and "nothing due"). */
@@ -821,7 +873,7 @@ export class CosignerService {
    */
   private async tickLocked(engagementId: string, quiet: boolean): Promise<TickResult[]> {
     const st = this.live(engagementId)
-    if (st.closed || !st.presigned.size) return []
+    if (st.template.signing === 'live' || st.closed || !st.presigned.size) return []
     const ledger = await this.o.source.snapshot({
       account: st.record.account, assets: this.assetsOf(st.layers, st.record), accounts: [], credentialSubjects: [], historySecs: this.o.historySecs ?? 90 * DAY,
     })
@@ -1105,6 +1157,226 @@ export class CosignerService {
     }
   }
 
+  /** The latest timeout notice, if this live deal has emitted one. */
+  latestTimeout(engagementId: string): TimeoutNotice | null {
+    return this.engagements.get(engagementId)?.timeoutNotice ?? null
+  }
+
+  /**
+   * Facts-only notice that a live timeout is due. No transaction and no decide().
+   * An identical fingerprint is not written to the decision log again.
+   */
+  async timeouts(engagementId: string): Promise<TimeoutNotice | null> {
+    return this.serialized(engagementId, () => this.timeoutsLocked(engagementId))
+  }
+
+  private async timeoutsLocked(engagementId: string): Promise<TimeoutNotice | null> {
+    const st = this.engagements.get(engagementId)
+    if (!st || st.closed || st.template.signing !== 'live') return null
+    const ledger = await this.timeoutLedger(st)
+    if (ledger.accounts[st.record.account]?.exists !== true) return null
+    const due = this.timeoutDue(st, ledger)
+    if (!due) return null
+    const facts = this.timeoutFacts(st, ledger)
+    const fingerprint = `${due.outcome}|${facts.shipped}|${facts.disputeOpen}|${facts.balance}`
+    const closeMs = Date.parse(ledger.closeTime)
+    const repeatMs = overdueRepeatMs(effectiveParam(st.layers, 'timeoutRepeat'))
+    const prev = st.timeoutNotifiedAt ? Date.parse(st.timeoutNotifiedAt) : Number.NaN
+    const same = st.timeoutFingerprint === fingerprint && st.timeoutNotice
+    if (same && !Number.isNaN(prev) && closeMs < prev + repeatMs) return null
+    const notice: TimeoutNotice = same ? { ...st.timeoutNotice!, ledger: { index: ledger.index, hash: ledger.hash, closeTime: ledger.closeTime }, fingerprint } : await this.signTimeoutNotice(st, due, facts, ledger, fingerprint)
+    await this.store.transaction(async (tx) => {
+      await tx.setMeta(timeoutNoticeKey(engagementId), JSON.stringify(notice))
+      await tx.setMeta(timeoutFingerprintKey(engagementId), fingerprint)
+      await tx.setMeta(timeoutNotifiedAtKey(engagementId), ledger.closeTime)
+      if (!same) await tx.appendDecision(notice.statement)
+    })
+    st.timeoutNotice = notice
+    st.timeoutFingerprint = fingerprint
+    st.timeoutNotifiedAt = ledger.closeTime
+    if (!same) this.log.push(notice.statement)
+    return notice
+  }
+
+  /** Build a fresh live close and run decide(). A refusal is not stored. */
+  async proposeTimeout(engagementId: string, outcome: 'default.refund' | 'default.release'): Promise<{ decision: 'SIGN' | 'REFUSE'; failing: string[]; proposal?: TimeoutProposal }> {
+    return this.serialized(engagementId, () => this.proposeTimeoutLocked(engagementId, outcome))
+  }
+
+  private async proposeTimeoutLocked(engagementId: string, outcome: 'default.refund' | 'default.release'): Promise<{ decision: 'SIGN' | 'REFUSE'; failing: string[]; proposal?: TimeoutProposal }> {
+    const st = this.live(engagementId)
+    if (st.template.signing !== 'live') throw new Error('NOT_LIVE: this template is not signed live')
+    const ledger = await this.timeoutLedger(st)
+    const due = this.timeoutDue(st, ledger)
+    if (!due || due.outcome !== outcome) return { decision: 'REFUSE', failing: ['NOT_DUE'] }
+    const txJson = this.timeoutTx(st, ledger, outcome)
+    const txBlob = xrpl.encode(txJson as never)
+    const proposedTxHash = documentHash(unsigned(xrpl.decode(txBlob) as Json))
+    const verdict = await this.decideLocked({ engagementId, stage: outcome, tx: txJson })
+    if (verdict.decision !== 'SIGN') return { decision: 'REFUSE', failing: verdict.failing }
+    const sequence = Number(ledger.accounts[st.record.account]?.sequence)
+    const proposal: TimeoutProposal = {
+      engagementId, outcome, txJson, txBlob, proposedTxHash,
+      builtAtLedger: ledger.index, lastLedgerSequence: Number(txJson.LastLedgerSequence), sequence,
+      balance: this.timeoutFacts(st, ledger).balance,
+    }
+    await this.store.transaction((tx) => tx.setMeta(timeoutProposalKey(engagementId), JSON.stringify(proposal)))
+    st.timeoutProposal = proposal
+    return { decision: 'SIGN', failing: [], proposal }
+  }
+
+  /**
+   * Accept one signature for a stored proposal. The party must sign before the arbiter.
+   * At quorum the combined blob is submitted. tec/tef/tel/tem kills the proposal.
+   */
+  async submitTimeoutSignature(engagementId: string, proposedTxHash: string, signerBlob: string, submit?: (blob: string) => Promise<{ hash: string; final: string; validated: boolean }>): Promise<{ ok: true; ready: boolean; hash?: string; final?: string }> {
+    return this.serialized(engagementId, () => this.submitTimeoutSignatureLocked(engagementId, proposedTxHash, signerBlob, submit))
+  }
+
+  private async submitTimeoutSignatureLocked(engagementId: string, proposedTxHash: string, signerBlob: string, submit?: (blob: string) => Promise<{ hash: string; final: string; validated: boolean }>): Promise<{ ok: true; ready: boolean; hash?: string; final?: string }> {
+    const st = this.live(engagementId)
+    const proposal = st.timeoutProposal
+    if (!proposal || proposal.proposedTxHash !== proposedTxHash) throw new Error('UNKNOWN_PROPOSAL')
+    const ledger = await this.timeoutLedger(st)
+    if (proposal.lastLedgerSequence <= ledger.index) {
+      await this.dropProposal(st)
+      throw new Error('EXPIRED')
+    }
+    const maxAge = Number(effectiveParam(st.layers, 'proposalMaxAge') ?? 20)
+    const sequence = Number(ledger.accounts[st.record.account]?.sequence)
+    const balance = this.timeoutFacts(st, ledger).balance
+    if (sequence !== proposal.sequence || balance !== proposal.balance || ledger.index - proposal.builtAtLedger > maxAge) {
+      await this.dropProposal(st)
+      throw new Error('STALE')
+    }
+    const decoded = xrpl.decode(signerBlob) as Json
+    const signer = ((decoded.Signers ?? []) as Array<{ Signer?: { Account?: string; SigningPubKey?: string; TxnSignature?: string } }>)[0]?.Signer
+    if (!signer?.Account || !signer.SigningPubKey || !signer.TxnSignature) throw new Error('BAD_SIGNATURE')
+    const tx = unsigned(decoded)
+    if (documentHash(tx) !== proposedTxHash) throw new Error('UNKNOWN_PROPOSAL')
+    if (tx.Account !== st.record.account) throw new Error('WRONG_ACCOUNT')
+    let ok = false
+    try {
+      ok = keypairs.deriveAddress(signer.SigningPubKey) === signer.Account && keypairs.verify(encodeForMultisigning(tx as never, signer.Account), signer.TxnSignature, signer.SigningPubKey)
+    } catch { ok = false }
+    if (!ok) throw new Error(`BAD_SIGNATURE: ${signer.Account} signature does not verify`)
+    const arbiter = st.record.parties.arbiter
+    const party = signer.Account === arbiter ? 'arbiter' : 'party'
+    if (party === 'arbiter' && !proposal.partyBlob) throw new Error('ORDER')
+    if (party === 'party') {
+      const sets = st.template.outcomes[proposal.outcome]?.signers ?? []
+      const role = Object.entries(st.record.parties).find(([, a]) => a === signer.Account)?.[0]
+      if (!role || role === 'arbiter' || !sets.some((set) => set.includes(role))) throw new Error('SIGNERS')
+      proposal.partyBlob = signerBlob
+    } else proposal.arbiterBlob = signerBlob
+    if (!proposal.partyBlob || !proposal.arbiterBlob) {
+      await this.store.transaction((w) => w.setMeta(timeoutProposalKey(engagementId), JSON.stringify(proposal)))
+      st.timeoutProposal = proposal
+      return { ok: true, ready: false }
+    }
+    const combined = combine([proposal.partyBlob, proposal.arbiterBlob])
+    if (!submit) return { ok: true, ready: true }
+    const sent = await submit(combined)
+    await this.dropProposal(st)
+    if (/^(tec|tef|tel|tem)/.test(sent.final)) throw new Error(`DEAD ${sent.final}`)
+    return { ok: true, ready: true, hash: sent.hash, final: sent.final }
+  }
+
+  /** The arbiter's own read plus the nine checks. A receipted dispute also needs the bond on this ledger. */
+  async verifyTimeout(engagementId: string, input: Omit<ArbiterTimeoutInput, 'record' | 'template' | 'layers' | 'ledger'> & { ledger?: LedgerSnapshot }): Promise<ArbiterTimeoutResult> {
+    const st = this.live(engagementId)
+    const ledger = input.ledger ?? await this.timeoutLedger(st)
+    const parties = new Set(Object.values(st.record.parties))
+    const receipted = new Map([...st.attestations.values()].map((a) => [a.statement.id, {
+      receivedAt: String((a.receipt.statement.claim as { receivedAt?: string }).receivedAt ?? ''),
+      attesterIsParty: parties.has(a.statement.attester.account),
+      signerPublicKey: a.statement.proof?.publicKey,
+    }]))
+    return verifyArbiterTimeout({ ...input, record: st.record, template: st.template, layers: st.layers, ledger, receipted })
+  }
+
+  private async dropProposal(st: EngagementState): Promise<void> {
+    st.timeoutProposal = undefined
+    await this.store.transaction((tx) => tx.setMeta(timeoutProposalKey(st.record.engagementId), ''))
+  }
+
+  private async timeoutLedger(st: EngagementState): Promise<LedgerSnapshot> {
+    return this.o.source.snapshot({
+      account: st.record.account, assets: this.assetsOf(st.layers, st.record), accounts: [], credentialSubjects: [st.record.account, st.record.parties.principal ?? ''].filter(Boolean), historySecs: 0,
+    })
+  }
+
+  private timeoutDue(st: EngagementState, ledger: LedgerSnapshot): { outcome: 'default.refund' | 'default.release'; timer: string } | null {
+    const facts = this.timeoutFacts(st, ledger)
+    const closeMs = Date.parse(ledger.closeTime)
+    const ship = Date.parse(st.record.timers?.shipBy ?? '')
+    const inspect = Date.parse(st.record.timers?.inspectBy ?? '')
+    if (!facts.shipped && !Number.isNaN(ship) && closeMs > ship) return { outcome: 'default.refund', timer: 'shipBy' }
+    if (facts.shipped && !facts.disputeOpen && !Number.isNaN(inspect) && closeMs > inspect) return { outcome: 'default.release', timer: 'inspectBy' }
+    return null
+  }
+
+  private timeoutFacts(st: EngagementState, ledger: LedgerSnapshot): { shipped: boolean; disputeOpen: boolean; balance: string } {
+    const carriers = new Set(st.record.attesters?.shipping?.accounts ?? [])
+    const shipped = [...st.attestations.values()].some((a) => a.statement.type === 'shipping.shipped/1' && carriers.has(a.statement.attester.account))
+    const code = st.record.asset ?? st.record.amount?.asset ?? ''
+    const balance = ledger.balances[st.record.account]?.[code] ?? '0'
+    const dispute = [...st.attestations.values()].some((a) => a.statement.type === 'party.dispute/1' && a.statement.attester.account === st.record.parties.principal)
+    const asset = this.assetsOf(st.layers, st.record)[code]
+    let disputeOpen = false
+    if (dispute && asset && typeof st.record.amount?.value === 'string') {
+      try {
+        const bond = effectiveParam(st.layers, 'minDisputeBond')
+        let need = parseAmount(st.record.amount.value, asset)
+        if (typeof bond === 'string') need = need.add(parseAmount(bond, asset))
+        disputeOpen = parseAmount(balance, asset).cmp(need) >= 0
+      } catch { disputeOpen = false }
+    }
+    return { shipped, disputeOpen, balance }
+  }
+
+  private timeoutTx(st: EngagementState, ledger: LedgerSnapshot, outcome: 'default.refund' | 'default.release'): Json {
+    const code = st.record.asset ?? 'RLUSD'
+    const asset = this.assetsOf(st.layers, st.record)[code]
+    if (!asset?.issuer) throw new Error('NO_ASSET')
+    const balance = this.timeoutFacts(st, ledger).balance
+    const price = parseAmount(String(st.record.amount?.value ?? '0'), asset).minor
+    const held = parseAmount(balance, asset).minor
+    const bps = BigInt(Number(st.record.fee?.bps ?? effectiveParam(st.layers, 'serviceFeeBps') ?? 50))
+    const fee = (price * bps) / 10_000n
+    const payouts = outcome === 'default.refund'
+      ? [{ to: st.record.parties.principal!, partial: true as const }]
+      : [
+          { to: st.record.parties.counterparty!, value: formatAmount(new Amount(code, price - fee), asset.decimals) },
+          { to: st.record.fee!.to, value: formatAmount(new Amount(code, fee), asset.decimals) },
+          ...(held > price ? [{ to: st.record.parties.principal!, partial: true as const }] : []),
+        ]
+    const window = Number(effectiveParam(st.layers, 'maxLedgerWindow') ?? 30)
+    const seq = Number(ledger.accounts[st.record.account]?.sequence)
+    const inc = Number(ledger.reserveIncDrops)
+    return buildCloseBatch({
+      eng: st.record.account, currency: asset.currency, issuer: asset.issuer, payouts, deleteTo: st.record.deleteTo ?? st.record.fee!.to,
+      seq, lastLedgerSequence: ledger.index + window, memos: [memo('eng/basis', outcome)],
+      fees: { base: Number(ledger.baseFeeDrops), inc, reserveBase: 0 }, signatures: 2,
+    })
+  }
+
+  private async signTimeoutNotice(st: EngagementState, due: { outcome: 'default.refund' | 'default.release'; timer: string }, facts: { shipped: boolean; disputeOpen: boolean; balance: string }, ledger: LedgerSnapshot, fingerprint: string): Promise<TimeoutNotice> {
+    const dueAt = due.timer === 'shipBy' ? st.record.timers!.shipBy! : st.record.timers!.inspectBy!
+    const statement = await signStatementAsync({
+      v: 'eng.att/1', type: 'cosigner.timeout/1', engagementId: st.record.engagementId,
+      subject: { outcome: due.outcome, timer: due.timer },
+      claim: { dueAt, ledger: { index: ledger.index, hash: ledger.hash, closeTime: ledger.closeTime }, facts, fingerprint },
+      observedAt: ledger.closeTime, issuedAt: ledger.closeTime, nonce: newNonce(),
+      attester: { account: this.address, kind: 'COSIGNER' },
+    }, this.o.signer)
+    return {
+      engagementId: st.record.engagementId, outcome: due.outcome, timer: due.timer, dueAt,
+      ledger: { index: ledger.index, hash: ledger.hash, closeTime: ledger.closeTime },
+      facts, signerSets: st.template.outcomes[due.outcome]?.signers ?? [], statement, fingerprint,
+    }
+  }
+
   /**
    * Ruling-overdue page (spec §4.4). Nothing is signed. Fires once the validated close time is past
    * caseOpenedAt + the escalate timer, then again every params.rulingOverdueRepeat, until the account is gone.
@@ -1302,6 +1574,14 @@ function emptyLedger(account: string): LedgerSnapshot {
 }
 
 const alertedAtKey = (engagementId: string): string => `alertedAt:${engagementId}`
+const timeoutNoticeKey = (engagementId: string): string => `timeoutNotice:${engagementId}`
+const timeoutFingerprintKey = (engagementId: string): string => `timeoutFingerprint:${engagementId}`
+const timeoutNotifiedAtKey = (engagementId: string): string => `timeoutNotifiedAt:${engagementId}`
+const timeoutProposalKey = (engagementId: string): string => `timeoutProposal:${engagementId}`
+function parseJson<T>(raw: string | undefined): T | undefined {
+  if (!raw) return undefined
+  try { return JSON.parse(raw) as T } catch { return undefined }
+}
 const alertRetryAtKey = (engagementId: string): string => `alertRetryAt:${engagementId}`
 const alertFailuresKey = (engagementId: string): string => `alertFailures:${engagementId}`
 const OVERDUE_REPEAT_FALLBACK_MS = 86_400_000

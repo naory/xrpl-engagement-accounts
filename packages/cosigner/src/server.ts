@@ -25,7 +25,7 @@ import path from 'node:path'
 import xrpl from 'xrpl'
 import type { Template } from '@eng/core'
 import { isClassicAddress, PLACEHOLDERS, slotViolations, slotsInLayers, type PolicyDoc } from '@eng/policy'
-import { CosignerService, LedgerUnavailableError, type RulingOverdue } from './service.ts'
+import { CosignerService, LedgerUnavailableError, type RulingOverdue, type TimeoutNotice } from './service.ts'
 import { signerProviderFromEnv, type SignerProvider } from './keys.ts'
 import { XrplLedgerSource } from './snapshot.ts'
 import { MemoryStateStore } from './store/memory.ts'
@@ -56,6 +56,12 @@ export interface ServerOptions {
    * `npm run cosigner` leaves this unset.
    */
   loopbackRequestGuard?: boolean
+  /**
+   * Broadcasts a combined timeout blob once the signature relay has quorum.
+   * The entrypoint passes `submitUntilValidated`. Without it the route still
+   * stores signatures and returns ready, and does not broadcast.
+   */
+  submitTimeout?: (blob: string) => Promise<{ hash: string; final: string; validated: boolean }>
 }
 
 /** Waits between webhook attempts. Short, and capped: a dead endpoint must not block the tick round for long. */
@@ -82,6 +88,26 @@ export async function reportRulingOverdue(
     status = res.status
   }
   throw new Error(`alert webhook ${status}`)
+}
+
+/** One webhook to the platform operator. The notice carries no transaction. */
+export async function reportTimeout(
+  notice: TimeoutNotice,
+  log: (entry: Record<string, unknown>) => void,
+  webhook?: string,
+  fetchImpl: typeof fetch = globalThis.fetch,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<void> {
+  log({ level: 'info', msg: 'timeout due', engagementId: notice.engagementId, outcome: notice.outcome, dueAt: notice.dueAt })
+  if (!webhook) return
+  let status = 0
+  for (let attempt = 0; attempt <= ALERT_WEBHOOK_BACKOFF_MS.length; attempt++) {
+    if (attempt > 0) await sleep(ALERT_WEBHOOK_BACKOFF_MS[attempt - 1])
+    const res = await fetchImpl(webhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(notice) })
+    if (res.ok) return
+    status = res.status
+  }
+  throw new Error(`timeout webhook ${status}`)
 }
 
 const json = (res: http.ServerResponse, code: number, body: unknown, headers: Record<string, string> = {}) => {
@@ -193,6 +219,21 @@ export function createServer(svc: CosignerService, opts: ServerOptions = {}): ht
       }
       if (method === 'POST' && isV1 && parts[1] === 'engagements' && parts[2] && parts[3] === 'tick' && parts.length === 4) {
         return send(200, await svc.tick(decodeURIComponent(parts[2])))
+      }
+      if (isV1 && parts[1] === 'engagements' && parts[2] && parts[3] === 'timeout') {
+        const id = decodeURIComponent(parts[2])
+        if (method === 'GET' && parts.length === 4) {
+          const notice = svc.latestTimeout(id)
+          return notice ? send(200, notice) : send(404, { error: 'not found' })
+        }
+        if (method === 'POST' && parts[4] === 'proposal' && parts.length === 5) {
+          const b = await body(req)
+          return send(200, await svc.proposeTimeout(id, b.outcome as 'default.refund' | 'default.release'))
+        }
+        if (method === 'POST' && parts[4] === 'signatures' && parts.length === 5) {
+          const b = await body(req)
+          return send(200, await svc.submitTimeoutSignature(id, String(b.proposedTxHash), String(b.signerBlob), opts.submitTimeout))
+        }
       }
       if (method === 'GET' && isV1 && parts[1] === 'engagements' && parts[2]) {
         const id = decodeURIComponent(parts[2])
@@ -308,6 +349,18 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
     ...options,
     readiness: () => client.isConnected(),
     log: (e) => console.log(JSON.stringify({ t: new Date().toISOString(), ...e })),
+    submitTimeout: async (blob) => {
+      const hash = xrpl.hashes.hashSignedTx(blob)
+      try {
+        const sent = await submitUntilValidated(
+          { lookup: (h) => lookupTx(client, h), submit: (b) => submit(client, b, { waitLedgers: 4 }) }, blob, hash)
+        return { hash: sent.hash, final: sent.final, validated: true }
+      } catch (e) {
+        const final = /^SUBMIT_NOT_VALIDATED (\S+)/.exec(String((e as Error).message ?? e))?.[1]
+        if (final && /^(tef|tel|tem)/.test(final)) return { hash, final, validated: false }
+        throw e
+      }
+    },
   })
   server.listen(port, host, () =>
     console.log(JSON.stringify({ t: new Date().toISOString(), level: 'info', msg: 'listening', cosigner: signer.address, host, port, key: keys.source, auth: options.token ? 'required' : 'open', rate: options.rateLimit?.max ?? null })),
@@ -318,6 +371,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
     ? startTickScheduler(svc, {
         intervalMs: tickMs,
         onAlert: (_engagementId, alert) => reportRulingOverdue(alert, say, process.env.COSIGNER_ALERT_WEBHOOK),
+        onTimeout: (engagementId, notice) => reportTimeout(notice, say, process.env.COSIGNER_TIMEOUT_WEBHOOK).catch((e) => say({ level: 'error', msg: 'timeout webhook failed', engagementId, error: String((e as Error).message ?? e) })),
         onResult: async (engagementId, r) => {
           if (!r.blob) return
           const hash = xrpl.hashes.hashSignedTx(r.blob)
