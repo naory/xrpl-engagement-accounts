@@ -96,7 +96,11 @@ export function startTickScheduler(svc: CosignerService, o: TickSchedulerOptions
   async function timeoutOne(id: string): Promise<void> {
     const notice = await svc.timeouts(id)
     if (!notice || !o.onTimeout) return
-    try { await o.onTimeout(id, notice) } catch (e) {
+    try {
+      await o.onTimeout(id, notice)
+      await svc.noteTimeoutDelivery(id, true)
+    } catch (e) {
+      try { await svc.noteTimeoutDelivery(id, false) } catch { /* the notice was already stored; the next round retries */ }
       log('error', 'onTimeout failed', { engagementId: id, error: String((e as Error).message ?? e) })
     }
   }

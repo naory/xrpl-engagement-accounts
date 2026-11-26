@@ -82,6 +82,10 @@ interface EngagementState {
   timeoutNotice?: TimeoutNotice
   timeoutFingerprint?: string
   timeoutNotifiedAt?: string
+  /** When a timeout webhook failed, the next attempt is due at this ledger time, sooner than timeoutRepeat. */
+  timeoutRetryAt?: string
+  /** Failed timeout webhook deliveries since the last success. Grows the retry backoff. */
+  timeoutFailures?: number
   /** The one live proposal. Expired or invalidated proposals are deleted, never reused. */
   timeoutProposal?: TimeoutProposal
 }
@@ -257,6 +261,8 @@ export class CosignerService {
         timeoutNotice: parseJson<TimeoutNotice>(snap.meta[timeoutNoticeKey(id)]),
         timeoutFingerprint: snap.meta[timeoutFingerprintKey(id)] || undefined,
         timeoutNotifiedAt: snap.meta[timeoutNotifiedAtKey(id)] || undefined,
+        timeoutRetryAt: snap.meta[timeoutRetryAtKey(id)] || undefined,
+        timeoutFailures: snap.meta[timeoutFailuresKey(id)] ? Number(snap.meta[timeoutFailuresKey(id)]) : undefined,
         timeoutProposal: parseJson<TimeoutProposal>(snap.meta[timeoutProposalKey(id)]),
       })
     }
@@ -1181,19 +1187,25 @@ export class CosignerService {
     const fingerprint = `${due.outcome}|${facts.shipped}|${facts.disputeOpen}|${facts.balance}`
     const closeMs = Date.parse(ledger.closeTime)
     const repeatMs = overdueRepeatMs(effectiveParam(st.layers, 'timeoutRepeat'))
+    const retryAt = st.timeoutRetryAt ? Date.parse(st.timeoutRetryAt) : Number.NaN
     const prev = st.timeoutNotifiedAt ? Date.parse(st.timeoutNotifiedAt) : Number.NaN
-    const same = st.timeoutFingerprint === fingerprint && st.timeoutNotice
-    if (same && !Number.isNaN(prev) && closeMs < prev + repeatMs) return null
-    const notice: TimeoutNotice = same ? { ...st.timeoutNotice!, ledger: { index: ledger.index, hash: ledger.hash, closeTime: ledger.closeTime }, fingerprint } : await this.signTimeoutNotice(st, due, facts, ledger, fingerprint)
+    const same = Boolean(st.timeoutFingerprint === fingerprint && st.timeoutNotice)
+    if (!Number.isNaN(retryAt)) {
+      if (closeMs < retryAt) return null
+    } else if (same && !Number.isNaN(prev) && closeMs < prev + repeatMs) return null
+    // A repeat keeps the signed statement, including claim.ledger. Rewriting notice.ledger alone would disagree with that signature.
+    const notice = same && st.timeoutNotice ? st.timeoutNotice : await this.signTimeoutNotice(st, due, facts, ledger, fingerprint)
     await this.store.transaction(async (tx) => {
       await tx.setMeta(timeoutNoticeKey(engagementId), JSON.stringify(notice))
       await tx.setMeta(timeoutFingerprintKey(engagementId), fingerprint)
       await tx.setMeta(timeoutNotifiedAtKey(engagementId), ledger.closeTime)
+      await tx.setMeta(timeoutRetryAtKey(engagementId), '')
       if (!same) await tx.appendDecision(notice.statement)
     })
     st.timeoutNotice = notice
     st.timeoutFingerprint = fingerprint
     st.timeoutNotifiedAt = ledger.closeTime
+    st.timeoutRetryAt = undefined
     if (!same) this.log.push(notice.statement)
     return notice
   }
@@ -1250,7 +1262,9 @@ export class CosignerService {
       throw new Error('STALE')
     }
     const decoded = xrpl.decode(signerBlob) as Json
-    const signer = ((decoded.Signers ?? []) as Array<{ Signer?: { Account?: string; SigningPubKey?: string; TxnSignature?: string } }>)[0]?.Signer
+    const signers = (decoded.Signers ?? []) as Array<{ Signer?: { Account?: string; SigningPubKey?: string; TxnSignature?: string } }>
+    if (signers.length !== 1) throw new Error('BAD_SIGNATURE')
+    const signer = signers[0]?.Signer
     if (!signer?.Account || !signer.SigningPubKey || !signer.TxnSignature) throw new Error('BAD_SIGNATURE')
     const tx = unsigned(decoded)
     if (documentHash(tx) !== proposedTxHash) throw new Error('UNKNOWN_PROPOSAL')
@@ -1275,14 +1289,22 @@ export class CosignerService {
       return { ok: true, ready: false }
     }
     const combined = combine([proposal.partyBlob, proposal.arbiterBlob])
-    if (!submit) return { ok: true, ready: true }
+    if (!submit) {
+      await this.store.transaction((w) => w.setMeta(timeoutProposalKey(engagementId), JSON.stringify(proposal)))
+      st.timeoutProposal = proposal
+      return { ok: true, ready: true }
+    }
     const sent = await submit(combined)
     await this.dropProposal(st)
     if (/^(tec|tef|tel|tem)/.test(sent.final)) throw new Error(`DEAD ${sent.final}`)
     return { ok: true, ready: true, hash: sent.hash, final: sent.final }
   }
 
-  /** The arbiter's own read plus the nine checks. A receipted dispute also needs the bond on this ledger. */
+  /**
+   * The nine §3.4 checks. A production arbiter passes its own validated `ledger`.
+   * Omitting it falls back to this co-signer's source, which is only for tests and the in-process flow.
+   * A receipted dispute also needs the bond on that ledger.
+   */
   async verifyTimeout(engagementId: string, input: Omit<ArbiterTimeoutInput, 'record' | 'template' | 'layers' | 'ledger'> & { ledger?: LedgerSnapshot }): Promise<ArbiterTimeoutResult> {
     const st = this.live(engagementId)
     const ledger = input.ledger ?? await this.timeoutLedger(st)
@@ -1452,6 +1474,35 @@ export class CosignerService {
       })
     })
   }
+
+  /**
+   * The scheduler reports whether the timeout webhook accepted the notice. A failure pulls the next
+   * attempt forward by the same bounded backoff as a ruling alert, instead of waiting out timeoutRepeat.
+   */
+  async noteTimeoutDelivery(engagementId: string, delivered: boolean): Promise<void> {
+    return this.serialized(engagementId, async () => {
+      const st = this.engagements.get(engagementId)
+      if (!st) return
+      if (delivered) {
+        st.timeoutFailures = 0
+        st.timeoutRetryAt = undefined
+        await this.store.transaction(async (tx) => {
+          await tx.setMeta(timeoutFailuresKey(engagementId), '0')
+          await tx.setMeta(timeoutRetryAtKey(engagementId), '')
+        })
+        return
+      }
+      const failures = (st.timeoutFailures ?? 0) + 1
+      const base = Date.parse(st.timeoutNotifiedAt ?? '')
+      const retryAt = new Date((Number.isNaN(base) ? Date.now() : base) + alertRetryBackoffMs(failures)).toISOString()
+      st.timeoutFailures = failures
+      st.timeoutRetryAt = retryAt
+      await this.store.transaction(async (tx) => {
+        await tx.setMeta(timeoutFailuresKey(engagementId), String(failures))
+        await tx.setMeta(timeoutRetryAtKey(engagementId), retryAt)
+      })
+    })
+  }
 }
 
 /** "default.chargebackStay#2" → ["default.chargebackStay", "2"]; a name without '#' → [name, undefined]. */
@@ -1577,6 +1628,8 @@ const alertedAtKey = (engagementId: string): string => `alertedAt:${engagementId
 const timeoutNoticeKey = (engagementId: string): string => `timeoutNotice:${engagementId}`
 const timeoutFingerprintKey = (engagementId: string): string => `timeoutFingerprint:${engagementId}`
 const timeoutNotifiedAtKey = (engagementId: string): string => `timeoutNotifiedAt:${engagementId}`
+const timeoutRetryAtKey = (engagementId: string): string => `timeoutRetryAt:${engagementId}`
+const timeoutFailuresKey = (engagementId: string): string => `timeoutFailures:${engagementId}`
 const timeoutProposalKey = (engagementId: string): string => `timeoutProposal:${engagementId}`
 function parseJson<T>(raw: string | undefined): T | undefined {
   if (!raw) return undefined

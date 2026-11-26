@@ -67,6 +67,35 @@ function receiptTime(receipt: Statement): number {
   return typeof at === 'string' ? Date.parse(at) : Number.NaN
 }
 
+/** Same rule as the policy pipeline: master key unless it is disabled, otherwise the current RegularKey. */
+function keyAuthorized(ledger: LedgerSnapshot, account: string, signerAddress: string): boolean {
+  const a = ledger.accounts[account]
+  if (!a || !a.exists) return signerAddress === account
+  if (signerAddress === account) return !a.masterDisabled
+  return a.regularKey === signerAddress
+}
+
+/**
+ * A buyer-presented dispute blocks release only when the receipt is the co-signer's receipt of that
+ * exact statement. A self-signed or unbound receipt does not.
+ */
+function receiptedDispute(record: EngagementRecord, ledger: LedgerSnapshot, presented: PresentedReceipt | null | undefined, inspect: number): boolean {
+  if (!presented) return false
+  const dispute = presented.statement
+  const receipt = presented.receipt
+  const principal = record.parties.principal
+  const cosigner = record.parties.cosigner
+  if (!principal || !cosigner) return false
+  if (dispute.type !== 'party.dispute/1' || dispute.engagementId !== record.engagementId || dispute.attester.account !== principal) return false
+  const disputeSigned = verifyStatement(dispute)
+  if (!disputeSigned.ok || disputeSigned.signerAddress !== principal) return false
+  const subjectId = (receipt.subject as { statementId?: unknown } | undefined)?.statementId
+  if (receipt.type !== 'cosigner.receipt/1' || receipt.engagementId !== record.engagementId || receipt.attester.account !== cosigner || subjectId !== dispute.id) return false
+  const receiptSigned = verifyStatement(receipt)
+  if (!receiptSigned.ok || !keyAuthorized(ledger, cosigner, receiptSigned.signerAddress)) return false
+  return receiptTime(receipt) <= inspect
+}
+
 /**
  * The nine checks. A receipted dispute blocks `default.release` only when this ledger also holds
  * at least the price plus the minimum dispute bond.
@@ -90,16 +119,15 @@ export function verifyArbiterTimeout(input: ArbiterTimeoutInput): ArbiterTimeout
   if (outcome === 'default.release') {
     const principal = record.parties.principal
     const inspect = Date.parse(record.timers?.inspectBy ?? '')
-    const onLedger = ledger.credentials.some((c) =>
-      c.type === 'ENG/DISPUTE' && c.accepted && c.subject === account && c.issuer === principal &&
-      typeof c.createdAt === 'string' && Date.parse(c.createdAt) <= inspect)
+    const credentialType = param(layers, 'disputeCredentialType')
+    const disputeType = typeof credentialType === 'string' ? credentialType : 'ENG/DISPUTE'
+    const onLedger = ledger.credentials.some((c) => {
+      if (c.type !== disputeType || c.subject !== account || c.issuer !== principal || typeof c.createdAt !== 'string') return false
+      const created = Date.parse(c.createdAt)
+      return !Number.isNaN(created) && created <= inspect
+    })
     const held = bonded(record, layers, ledger)
-    const presented = input.presentedDispute
-    const presentedOk = Boolean(presented && presented.statement.type === 'party.dispute/1' &&
-      presented.statement.attester.account === principal && verifyStatement(presented.statement).ok &&
-      presented.receipt.type === 'cosigner.receipt/1' && verifyStatement(presented.receipt).ok &&
-      receiptTime(presented.receipt) <= inspect)
-    if ((onLedger && held) || (presentedOk && held)) return refuse(4, 'DISPUTE_OPEN')
+    if ((onLedger && held) || (receiptedDispute(record, ledger, input.presentedDispute, inspect) && held)) return refuse(4, 'DISPUTE_OPEN')
   }
 
   const carriers = new Set(record.attesters?.shipping?.accounts ?? [])

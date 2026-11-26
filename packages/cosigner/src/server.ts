@@ -371,7 +371,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
     ? startTickScheduler(svc, {
         intervalMs: tickMs,
         onAlert: (_engagementId, alert) => reportRulingOverdue(alert, say, process.env.COSIGNER_ALERT_WEBHOOK),
-        onTimeout: (engagementId, notice) => reportTimeout(notice, say, process.env.COSIGNER_TIMEOUT_WEBHOOK).catch((e) => say({ level: 'error', msg: 'timeout webhook failed', engagementId, error: String((e as Error).message ?? e) })),
+        onTimeout: (_engagementId, notice) => reportTimeout(notice, say, process.env.COSIGNER_TIMEOUT_WEBHOOK),
         onResult: async (engagementId, r) => {
           if (!r.blob) return
           const hash = xrpl.hashes.hashSignedTx(r.blob)

@@ -66,6 +66,26 @@ export class XrplLedgerSource implements LedgerSource {
     return out
   }
 
+  /**
+   * Close time of the validated transaction that last wrote this credential (`PreviousTxnID`).
+   * That is the creation time for a credential that was never accepted. Missing or unknown
+   * transactions leave `createdAt` unset, so a timeout arbiter does not treat it as proved.
+   */
+  private async credentialCreatedAt(previousTxnId: unknown): Promise<string | undefined> {
+    if (typeof previousTxnId !== 'string' || previousTxnId.length === 0) return undefined
+    let tx: { date?: number; close_time_iso?: string } | null
+    try {
+      tx = await this.req<{ date?: number; close_time_iso?: string }>({ command: 'tx', transaction: previousTxnId })
+    } catch (e) {
+      const code = String((e as { data?: { error?: string } })?.data?.error ?? (e as Error)?.message)
+      if (/txnNotFound|transactionNotFound/.test(code)) return undefined
+      throw e
+    }
+    if (typeof tx?.close_time_iso === 'string') return tx.close_time_iso
+    if (tx?.date != null && Number.isFinite(Number(tx.date))) return new Date((Number(tx.date) + 946684800) * 1000).toISOString()
+    return undefined
+  }
+
   async snapshot(q: SnapshotRequest): Promise<LedgerSnapshot> {
     const led = await this.req<{ ledger_index: number; ledger_hash: string; ledger: { close_time_iso?: string; close_time?: number } }>({ command: 'ledger', ledger_index: 'validated' })
     const index = led.ledger_index
@@ -149,10 +169,12 @@ export class XrplLedgerSource implements LedgerSource {
       const cs = await this.objects(s, index, 'credential')
       for (const c of cs ?? []) {
         if (c.Subject !== s) continue
+        const createdAt = await this.credentialCreatedAt(c.PreviousTxnID)
         credentials.push({
           issuer: String(c.Issuer), subject: s, type: unhex(c.CredentialType),
           accepted: (Number(c.Flags) & LSF_ACCEPTED) !== 0,
           expiration: c.Expiration != null ? new Date((Number(c.Expiration) + 946684800) * 1000).toISOString() : null,
+          ...(createdAt ? { createdAt } : {}),
         })
       }
     }

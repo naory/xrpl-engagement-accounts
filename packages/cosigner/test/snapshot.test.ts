@@ -8,6 +8,7 @@ const procurementAssets = resolvedAssets([policies.baseline, policies.procuremen
 
 const ENG = W.engB1.address
 const LEDGER = 1000
+const PREV = 'A'.repeat(64)
 const rt = (iso: string) => Date.parse(iso) / 1000 - 946684800
 
 function fakeClient() {
@@ -29,7 +30,7 @@ function fakeClient() {
         if (r.account === ENG && !r.type) return { result: { account_objects: [{ LedgerEntryType: 'RippleState' }, { LedgerEntryType: 'SignerList' }, { LedgerEntryType: 'Ticket', TicketSequence: 12 }, { LedgerEntryType: 'Credential', Subject: ENG }] } }
         if (r.type === 'credential' && r.account === W.vendorA.address) {
           return { result: { account_objects: [
-            { LedgerEntryType: 'Credential', Issuer: W.kybIssuer.address, Subject: W.vendorA.address, CredentialType: hex('KYB_VERIFIED'), Flags: LSF_ACCEPTED, Expiration: rt('2027-01-01T00:00:00Z') },
+            { LedgerEntryType: 'Credential', Issuer: W.kybIssuer.address, Subject: W.vendorA.address, CredentialType: hex('KYB_VERIFIED'), Flags: LSF_ACCEPTED, Expiration: rt('2027-01-01T00:00:00Z'), PreviousTxnID: PREV },
             { LedgerEntryType: 'Credential', Issuer: W.vendorA.address, Subject: W.stranger.address, CredentialType: hex('OTHER'), Flags: 0 }, // vendorA as issuer: ignored
           ] } }
         }
@@ -39,6 +40,9 @@ function fakeClient() {
         if (r.account === W.vendorA.address) return { result: { lines: [{ account: W.issuer.address, currency: RLUSD_HEX, balance: '12.5', limit: '1000' }, { account: W.fakeIssuer.address, currency: RLUSD_HEX, balance: '0', limit: '9' }] } }
         if (r.account === W.vendorB.address) return { result: { lines: [] } }
         return { result: { lines: [{ account: W.issuer.address, currency: RLUSD_HEX, balance: '48800' }, { account: W.fakeIssuer.address, currency: RLUSD_HEX, balance: '5' }] } }
+      case 'tx':
+        if (r.transaction === PREV) return { result: { hash: PREV, date: rt('2026-06-01T00:00:00Z') } }
+        throw new Error(`unexpected tx ${String(r.transaction)}`)
       case 'account_tx': {
         const pay = (seq: number, to: string, value: string, iso: string, result = 'tesSUCCESS', issuer = W.issuer.address) => ({
           tx_json: { TransactionType: 'Payment', Account: ENG, Destination: to, DeliverMax: { currency: RLUSD_HEX, issuer, value }, Sequence: seq },
@@ -72,7 +76,7 @@ describe('XrplLedgerSource', () => {
     expect(snap.accounts[W.treasury.address]).toMatchObject({ exists: true, masterDisabled: false, regularKey: W.agent.address })
     expect(snap.accounts[W.controller.address]).toEqual({ exists: false })
     expect(snap.balances[ENG]).toEqual({ RLUSD: '48800' }) // the fake-issuer line is ignored
-    expect(snap.credentials).toEqual([{ issuer: W.kybIssuer.address, subject: W.vendorA.address, type: 'KYB_VERIFIED', accepted: true, expiration: '2027-01-01T00:00:00.000Z' }])
+    expect(snap.credentials).toEqual([{ issuer: W.kybIssuer.address, subject: W.vendorA.address, type: 'KYB_VERIFIED', accepted: true, expiration: '2027-01-01T00:00:00.000Z', createdAt: '2026-06-01T00:00:00.000Z' }])
     expect(snap.history[ENG].map((h) => [h.sequence, h.payouts[0].value])).toEqual([[24, '700'], [22, '500']])
     expect(calls.filter((c) => c.command === 'ledger').length).toBe(1)
     expect(calls.filter((c) => c.command === 'account_tx').every((c) => c.ledger_index_max === LEDGER)).toBe(true)
