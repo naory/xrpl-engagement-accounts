@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import xrpl from 'xrpl'
 import { localSigner, signStatement, type Statement, type Template } from '@eng/core'
-import { CosignerService, FixtureLedgerSource, LedgerUnavailableError, MemoryStateStore, XrplLedgerSource, hex, multisignBlob, reportRulingOverdue, startTickScheduler, type RulingOverdue } from '@eng/cosigner'
+import { CosignerService, FixtureLedgerSource, LedgerUnavailableError, MemoryStateStore, XrplLedgerSource, hex, multisignBlob, reportRulingOverdue, startTickScheduler, type RulingOverdue, type SnapshotRequest } from '@eng/cosigner'
 import { arbiterAccreditation, closeBatch, fixtureTrust, memo, wallet, LEDGER_INDEX, W } from '../../policy/test/fixtures.ts'
 import type { EngagementRecord, LedgerCredential, LedgerSnapshot, PolicyDoc } from '@eng/policy'
 
@@ -111,7 +111,7 @@ async function disputeCredential(createdAt: string): Promise<LedgerCredential> {
   const read = await new XrplLedgerSource(client as never).snapshot({
     account: eng.address,
     assets: { RLUSD: { code: 'RLUSD', kind: 'IOU', currency: 'RLUSD', issuer: W.issuer.address, decimals: 6 } },
-    accounts: [], credentialSubjects: [eng.address], historySecs: 0,
+    accounts: [], credentialSubjects: [eng.address], disputeCredentialTypes: ['ENG/DISPUTE'], historySecs: 0,
   })
   const cred = read.credentials.find((c) => c.type === 'ENG/DISPUTE')
   if (!cred) throw new Error('snapshot did not return the dispute credential')
@@ -802,6 +802,56 @@ describe('ruling overdue alert', () => {
     const { createdAt: _created, ...undated } = early
     source.snap.credentials.push(undated)
     expect(await verify()).toEqual({ ok: true })
+    source.snap.credentials = source.snap.credentials.filter((c) => c.type !== 'ENG/DISPUTE')
+    source.snap.credentials.push({ ...early, expiration: '2026-11-10T00:00:00.000Z' })
+    expect(await verify()).toEqual({ ok: true })
+    source.snap.credentials = source.snap.credentials.filter((c) => c.type !== 'ENG/DISPUTE')
+    source.snap.credentials.push({ ...early, expiration: '2026-12-01T00:00:00.000Z' })
+    const still = await verify()
+    expect(still.ok).toBe(false)
+    if (!still.ok) expect(still.check).toBe(4)
+  })
+
+  it('accepts a buyer RegularKey on a receipted dispute and rejects the disabled master key', async () => {
+    const { svc, source } = await setup('2026-11-03T00:01:00Z')
+    await svc.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-11-03T00:00:00Z', 'me-reg-ship'))
+    source.snap = snap({ closeTime: '2026-11-11T00:00:01Z', balance: '2.50' })
+    source.snap.accounts[eng.address].sequence = 40
+    source.snap.accounts[W.dana.address] = { exists: true, masterDisabled: true, regularKey: rotated.address }
+    source.snap.accounts[W.cosigner.address] = { exists: true, masterDisabled: false, regularKey: null }
+    const proposed = await svc.proposeTimeout(ENG, 'default.release')
+    expect(proposed.decision).toBe('SIGN')
+    const tx = proposed.proposal!.txJson
+    const builtAtLedger = proposed.proposal!.builtAtLedger
+    const body = {
+      v: 'eng.att/1' as const, type: 'party.dispute/1', engagementId: ENG,
+      subject: { item: 'sku-1' }, claim: { reason: 'no' },
+      observedAt: '2026-11-05T00:00:00Z', issuedAt: '2026-11-05T00:00:00Z',
+      attester: { account: W.dana.address, kind: 'PARTY' },
+    }
+    const check = (statement: Statement) => svc.verifyTimeout(ENG, {
+      outcome: 'default.release', tx, builtAtLedger, statements: svc.statements(ENG),
+      presentedDispute: { statement, receipt: receiptFor(statement) }, partyAccount: W.atlas.address,
+    })
+    const byRegular = signStatement({ ...body, nonce: 'me-reg-dispute' }, rotated)
+    const blocked = await check(byRegular)
+    expect(blocked.ok).toBe(false)
+    if (!blocked.ok) expect(blocked.check).toBe(4)
+    const byMaster = signStatement({ ...body, nonce: 'me-master-dispute' }, W.dana)
+    expect(await check(byMaster)).toEqual({ ok: true })
+  })
+
+  it('asks the timeout snapshot for the buyer and co-signer accounts', async () => {
+    const inner = new FixtureLedgerSource(snap({ closeTime: '2026-11-04T00:00:01Z' }))
+    inner.snap.accounts[eng.address].sequence = 40
+    const seen: SnapshotRequest[] = []
+    const source = { snapshot: async (req: SnapshotRequest) => { seen.push(req); return inner.snapshot() } }
+    const svc = new CosignerService({ signer: localSigner(W.cosigner), source, templates: [template], policies: [baseline12, policy] })
+    await svc.register(record(), mandate())
+    seen.length = 0
+    expect((await svc.timeouts(ENG))?.outcome).toBe('default.refund')
+    expect(seen.at(-1)?.accounts).toEqual(expect.arrayContaining([W.dana.address, W.cosigner.address]))
+    expect(seen.at(-1)?.disputeCredentialTypes).toEqual(['ENG/DISPUTE'])
   })
 
   it('does not propose a release while a receipted dispute is bonded', async () => {

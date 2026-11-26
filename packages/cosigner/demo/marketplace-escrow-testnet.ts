@@ -5,21 +5,23 @@
 //   npm run demo:marketplace-escrow-dispute
 //
 // The shipped template and policy stay as they are. This run builds an in-memory copy labelled
-// demo-only (version 1.0.0-demo): 45s ship, 110s inspect, 20s ruling, 15s alert repeat.
+// demo-only (version 1.1.0-demo): 45s ship, 110s inspect, 20s ruling, 15s alert repeat.
+// Live timeouts go notice -> proposal -> POST /timeout/signatures -> the arbiter's own snapshot.
 // The production co-signer loads policies/*.json only and never sees this copy.
 // ME3 on chain is that demo clock (ship, then default.release after inspectBy). The case of a
 // shipment observed more than 24 wall-clock hours earlier is the unit test in
 // packages/policy/test/receipt-freshness.test.ts. This script does not fake ledger time.
 import fs from 'node:fs'
+import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import xrpl from 'xrpl'
 import * as keypairs from 'ripple-keypairs'
 import { encodeForMultisigning } from 'ripple-binary-codec'
-import { localSigner, signStatement, type Template } from '@eng/core'
+import { localSigner, signStatement, type Statement, type Template } from '@eng/core'
 import { layerHash, type PolicyDoc } from '@eng/policy'
 import {
-  CosignerService, MarketplaceEscrowFlow, XrplLedgerSource, ledgerClock, resolveTestnetEndpoint,
+  CosignerService, MarketplaceEscrowFlow, XrplLedgerSource, createServer, ledgerClock, lookupTx, resolveTestnetEndpoint, submitUntilValidated,
   type MarketplaceCast, type MarketplaceStepResult,
 } from '../src/index.ts'
 import { assertDemoNetwork } from './network-guard.ts'
@@ -46,9 +48,9 @@ const XRP_CAP = 50_000_000
 let EXPLORER = 'https://testnet.xrpl.org/transactions/'
 let liveFees: Fees = { base: 10, reserveBase: 1_000_000, inc: 200_000 }
 
-const results: Json & { tests: Json[]; accounts: Record<string, string>; faucet: Record<string, string>; txs: Json[] } = {
+const results: Json & { tests: Json[]; accounts: Record<string, string>; faucet: Record<string, string>; txs: Json[]; ledgerWindow: Json[] } = {
   demo: CLIP3 ? 'Clip 3: marketplace purchase dispute' : 'marketplace-escrow@1',
-  startedAt: new Date().toISOString(), accounts: {}, faucet: {}, txs: [], tests: [],
+  startedAt: new Date().toISOString(), accounts: {}, faucet: {}, txs: [], tests: [], ledgerWindow: [],
 }
 const log = (...a: unknown[]) => console.log('   ·', ...a)
 function record(id: string, name: string, expected: string, actual: string, pass: boolean, extra: Json = {}) {
@@ -67,11 +69,6 @@ function noted(label: string, r: SubmitResult): SubmitResult {
   return r
 }
 const text = (s?: MarketplaceStepResult) => s ? [s.decision, s.failing?.join(','), s.final].filter(Boolean).join(' ') : 'missing'
-/** Refusal reasons from the decision record. These are reason codes (NOT_DUE), not rule ids (MR1). */
-function reasons(record: { claim?: unknown } | undefined): string[] {
-  const rows = ((record?.claim as { results?: Array<{ reason?: string; result?: string }> } | undefined)?.results) ?? []
-  return rows.filter((r) => r.result === 'fail' || r.result === 'error').flatMap((r) => r.reason ? [r.reason] : [])
-}
 function isSocket(e: unknown): boolean {
   const m = String((e as Error)?.message ?? e)
   return /WebSocket|not open|disconnected|Disconnected|readyState|ECONN|ETIMEDOUT|socket hang up|timeout/i.test(m)
@@ -232,24 +229,16 @@ async function main(): Promise<void> {
   results.accounts.cosigner = cosigner.address
   results.faucet.cosigner = 'not funded (signs only)'
 
-  let issuer = RIPPLE_ISSUER
-  let ripple = true
-  for (const w of [buyer, seller, service]) noted(`${w.address} trust`, await sendSimple(client, w, { TransactionType: 'TrustSet', Account: w.address, LimitAmount: iou(CUR, issuer, '1000000') }))
   const cred = hex('ENG/ARBITER')
   noted('ENG/ARBITER create', await sendSimple(client, accreditor, { TransactionType: 'CredentialCreate', Account: accreditor.address, Subject: arbiter.address, CredentialType: cred }))
   noted('ENG/ARBITER accept', await sendSimple(client, arbiter, { TransactionType: 'CredentialAccept', Account: arbiter.address, Issuer: accreditor.address, CredentialType: cred }))
 
-  const firstBuy = await buyRlusd(client, buyer, issuer, '2.00')
-  if (!firstBuy.ok) {
-    ripple = false
-    results.me16 = `Ripple Testnet RLUSD was not usable (${firstBuy.reason}). Fell back to a run-created issuer.`
-    log(results.me16)
-    const created = await fund(client, 'run-created issuer')
-    issuer = created.address
-    noted('DefaultRipple', await sendSimple(client, created, { TransactionType: 'AccountSet', Account: created.address, SetFlag: ASF_DEFAULT_RIPPLE }))
-    for (const w of [buyer, seller, service]) noted('fallback trust', await sendSimple(client, w, { TransactionType: 'TrustSet', Account: w.address, LimitAmount: iou(CUR, issuer, '1000000') }))
-    noted('issue RLUSD', await sendSimple(client, created, { TransactionType: 'Payment', Account: created.address, Destination: buyer.address, Amount: iou(CUR, issuer, '40') }))
-  } else {
+  let issuer = RIPPLE_ISSUER
+  let ripple = true
+  try {
+    for (const w of [buyer, seller, service]) noted(`${w.address} trust`, await sendSimple(client, w, { TransactionType: 'TrustSet', Account: w.address, LimitAmount: iou(CUR, issuer, '1000000') }))
+    const firstBuy = await buyRlusd(client, buyer, issuer, '2.00')
+    if (!firstBuy.ok) throw new Error(firstBuy.reason)
     results.me16 = 'buying Ripple Testnet RLUSD under the 50 XRP cap'
     await topUp(client, buyer, 'buyer', 200_000_000)
     for (const value of ['2', '2', '2', '2', '2', '2', '0.5', '0.5', '0.5', '0.5']) {
@@ -259,6 +248,15 @@ async function main(): Promise<void> {
         break
       }
     }
+  } catch (e) {
+    ripple = false
+    results.me16 = `Ripple Testnet RLUSD was not usable (${(e as Error).message.split('\n')[0]}). Fell back to a run-created issuer.`
+    log(results.me16)
+    const created = await fund(client, 'run-created issuer')
+    issuer = created.address
+    noted('DefaultRipple', await sendSimple(client, created, { TransactionType: 'AccountSet', Account: created.address, SetFlag: ASF_DEFAULT_RIPPLE }))
+    for (const w of [buyer, seller, service]) noted('fallback trust', await sendSimple(client, w, { TransactionType: 'TrustSet', Account: w.address, LimitAmount: iou(CUR, issuer, '1000000') }))
+    noted('issue RLUSD', await sendSimple(client, created, { TransactionType: 'Payment', Account: created.address, Destination: buyer.address, Amount: iou(CUR, issuer, '40') }))
   }
   results.issuer = issuer
   results.rippleIssuer = ripple
@@ -266,6 +264,7 @@ async function main(): Promise<void> {
   const { template, policies } = library()
   const trust = { 'arbiter.accreditor': accreditor.address, 'rlusd.issuer': issuer }
   const svc = new CosignerService({ signer: localSigner(cosigner), source: new XrplLedgerSource(client), templates: [template], policies, trust })
+  const api = await startApi(svc, client)
   const cast: MarketplaceCast = { issuer: service, buyer, seller, arbiter, accreditor, carrier, service, currency: CUR }
   const make = (label: string) => new MarketplaceEscrowFlow({
     client, svc, cast, fees, price: PRICE, timers: { shipBy: SHIP_SECS, inspectBy: INSPECT_SECS }, issuerAddress: issuer,
@@ -299,9 +298,11 @@ async function main(): Promise<void> {
   save()
   const failed = (results.tests as Array<{ pass: boolean }>).filter((t) => !t.pass).length
   console.log(`\n${results.tests.length - failed}/${results.tests.length} passed`)
+  console.log(`ledger windows: ${JSON.stringify(results.ledgerWindow)}`)
   console.log(`faucet: ${JSON.stringify(results.faucet)}`)
   console.log(`issuer: ${issuer} ripple=${ripple}`)
   console.log(`ME16 note: ${results.me16}`)
+  await new Promise<void>((resolve) => api.close(() => resolve()))
   await svc.close()
   await client.disconnect()
   if (failed) process.exitCode = 1
@@ -312,13 +313,12 @@ async function refusals(client: Client, svc: CosignerService, f: MarketplaceEscr
   results.accounts['refusal deal'] = young.address
   const opened = await retryCall(client, 'open', async () => f.open(young, (await ledgerClock(client)).time))
   record('open refusals', 'open the refusal deal', 'tesSUCCESS', text(opened), opened.final === 'tesSUCCESS', { tx: opened.tx })
-  const early = await retryCall(client, 'tick', () => svc.tick(f.engagementId))
-  const refund = early.find((t) => t.outcome === 'default.refund')
-  const refundReasons = reasons(refund?.record)
-  record('ME7', 'default.refund before shipBy', 'REFUSE NOT_DUE', `${refund?.decision} ${refundReasons.join(',')}`, refund?.decision === 'REFUSE' && refundReasons.includes('NOT_DUE'))
-  const releaseEarly = early.find((t) => t.outcome === 'default.release')
-  const releaseReasons = reasons(releaseEarly?.record)
-  record('ME9', 'default.release before inspectBy', 'REFUSE NOT_DUE', `${releaseEarly?.decision} ${releaseReasons.join(',')}`, releaseEarly?.decision === 'REFUSE' && releaseReasons.includes('NOT_DUE'))
+  const earlyRefund = await proposeOnly(client, f.engagementId, 'default.refund')
+  const earlyRelease = await proposeOnly(client, f.engagementId, 'default.release')
+  const refundFailing = (earlyRefund.json.failing as string[] | undefined) ?? []
+  const releaseFailing = (earlyRelease.json.failing as string[] | undefined) ?? []
+  record('ME7', 'default.refund before shipBy', 'REFUSE NOT_DUE', `${earlyRefund.json.decision} ${refundFailing.join(',')}`, earlyRefund.json.decision === 'REFUSE' && refundFailing.includes('NOT_DUE'))
+  record('ME9', 'default.release before inspectBy', 'REFUSE NOT_DUE', `${earlyRelease.json.decision} ${releaseFailing.join(',')}`, earlyRelease.json.decision === 'REFUSE' && releaseFailing.includes('NOT_DUE'))
   const sellerShip = await svc.ingest(f.engagementId, stmt(cast.seller, 'shipping.shipped/1', f.engagementId, { status: 'shipped' })).then(() => 'receipted', (e) => (e as Error).message)
   record('ME11', 'seller signs a shipment', 'SELF_ATTESTED', sellerShip, /SELF_ATTESTED/.test(sellerShip))
   const stranger = xrpl.Wallet.generate()
@@ -329,20 +329,18 @@ async function refusals(client: Client, svc: CosignerService, f: MarketplaceEscr
   const shipped = await retryCall(client, 'ship', () => f.ship())
   record('carrier', 'carrier shipment receipts before shipBy', 'RECEIPTED', text(shipped), shipped.final === 'RECEIPTED')
   await sleep((SHIP_SECS + 8) * 1000)
-  const later = await retryCall(client, 'tick', () => svc.tick(f.engagementId))
-  const after = later.find((t) => t.outcome === 'default.refund')
-  const afterReasons = reasons(after?.record)
-  record('ME8', 'default.refund after a shipment', 'REFUSE SHIPPED', `${after?.decision} ${afterReasons.join(',')}`, after?.decision === 'REFUSE' && afterReasons.includes('SHIPPED'))
+  const later = await proposeOnly(client, f.engagementId, 'default.refund')
+  const laterFailing = (later.json.failing as string[] | undefined) ?? []
+  record('ME8', 'default.refund after a shipment', 'REFUSE NOT_DUE', `${later.json.decision} ${laterFailing.join(',')}`, later.json.decision === 'REFUSE' && laterFailing.includes('NOT_DUE'))
   const quiet = makeQuiet(client, svc, cast)
   const quietAccount = await quiet.precreate()
   results.accounts['never shipped'] = quietAccount.address
   const quietOpen = await quiet.open(quietAccount, (await ledgerClock(client)).time)
   record('ME10 setup', 'open a deal that never gets a shipment', 'tesSUCCESS', text(quietOpen), quietOpen.final === 'tesSUCCESS', { tx: quietOpen.tx })
   await sleep((INSPECT_SECS + 8) * 1000)
-  const due = await retryCall(client, 'tick', () => svc.tick(quiet.engagementId))
-  const noShip = due.find((t) => t.outcome === 'default.release')
-  const noShipReasons = reasons(noShip?.record)
-  record('ME10', 'default.release with no shipment', 'REFUSE NOT_SHIPPED', `${noShip?.decision} ${noShipReasons.join(',')}`, noShip?.decision === 'REFUSE' && noShipReasons.includes('NOT_SHIPPED'))
+  const due = await proposeOnly(client, quiet.engagementId, 'default.release')
+  const dueFailing = (due.json.failing as string[] | undefined) ?? []
+  record('ME10', 'default.release with no shipment', 'REFUSE NOT_DUE', `${due.json.decision} ${dueFailing.join(',')}`, due.json.decision === 'REFUSE' && dueFailing.includes('NOT_DUE'))
 }
 
 function makeQuiet(client: Client, svc: CosignerService, cast: MarketplaceCast): MarketplaceEscrowFlow {
@@ -352,8 +350,113 @@ function makeQuiet(client: Client, svc: CosignerService, cast: MarketplaceCast):
   })
 }
 
-async function settleTimeout(client: Client, f: MarketplaceEscrowFlow, kind: 'refund' | 'release'): Promise<MarketplaceStepResult> {
-  return retryCall(client, 'timeout', () => f.timeoutSettle(kind))
+let apiBase = ''
+let lastValidatedLedger: number | undefined
+
+async function startApi(svc: CosignerService, client: Client): Promise<ReturnType<typeof createServer>> {
+  const server = createServer(svc, {
+    submitTimeout: async (blob) => {
+      await ensure(client)
+      const hash = xrpl.hashes.hashSignedTx(blob)
+      const sent = await submitUntilValidated({
+        lookup: (h) => lookupTx(client, h),
+        submit: async (b) => {
+          const once = async () => {
+            await ensure(client)
+            const r = await submit(client, b, { waitLedgers: 24 })
+            lastValidatedLedger = r.ledger
+            return r
+          }
+          try { return await once() } catch (e) {
+            if (!isSocket(e)) throw e
+            await ensure(client, true)
+            return once()
+          }
+        },
+      }, blob, hash)
+      return { hash: sent.hash, final: sent.final, validated: true }
+    },
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+  apiBase = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  log(`timeout relay ${apiBase}`)
+  return server
+}
+
+async function apiCall(method: string, pathname: string, body?: unknown): Promise<{ status: number; json: Json }> {
+  const res = await fetch(`${apiBase}${pathname}`, {
+    method,
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  const json = await res.json().catch(() => ({})) as Json
+  return { status: res.status, json }
+}
+
+async function proposeOnly(client: Client, id: string, outcome: string): Promise<{ status: number; json: Json }> {
+  return retryCall(client, 'proposal', () => apiCall('POST', `/v1/engagements/${encodeURIComponent(id)}/timeout/proposal`, { outcome }))
+}
+
+/** Notice, on-demand proposal, party signature, the arbiter's own ledger read, then the arbiter signature. The relay submits. */
+async function relayTimeout(client: Client, svc: CosignerService, f: MarketplaceEscrowFlow, kind: 'refund' | 'release', signer: Wallet, arbiter: Wallet): Promise<MarketplaceStepResult> {
+  const id = f.engagementId
+  const outcome = `default.${kind}` as const
+  const notice = await retryCall(client, 'notice', () => svc.timeouts(id))
+  const got = await retryCall(client, 'GET timeout', () => apiCall('GET', `/v1/engagements/${encodeURIComponent(id)}/timeout`))
+  if (!notice || got.status !== 200 || got.json.outcome !== outcome) {
+    return { step: outcome, decision: 'REFUSE', failing: ['NO_NOTICE'] }
+  }
+  const started = Date.now()
+  const proposed = await retryCall(client, 'proposal', () => apiCall('POST', `/v1/engagements/${encodeURIComponent(id)}/timeout/proposal`, { outcome }))
+  const proposal = proposed.json.proposal as Json | undefined
+  if (proposed.json.decision !== 'SIGN' || !proposal) {
+    return { step: outcome, decision: 'REFUSE', failing: (proposed.json.failing as string[] | undefined) ?? ['NOT_DUE'] }
+  }
+  const tx = proposal.txJson as Json
+  const hash = String(proposal.proposedTxHash)
+  const partyPost = await retryCall(client, 'party signature', () => apiCall('POST', `/v1/engagements/${encodeURIComponent(id)}/timeout/signatures`, {
+    proposedTxHash: hash, signerBlob: multisignBlob(signer, tx),
+  }))
+  if (partyPost.status !== 200 || partyPost.json.ready !== false) {
+    return { step: outcome, decision: 'REFUSE', failing: [String(partyPost.json.error ?? 'PARTY_SIGNATURE')] }
+  }
+  const record = svc.engagement(id)
+  if (!record) return { step: outcome, decision: 'REFUSE', failing: ['UNKNOWN'] }
+  const arbiterLedger = await retryCall(client, 'arbiter snapshot', () => new XrplLedgerSource(client).snapshot({
+    account: record.account,
+    assets: { RLUSD: { code: 'RLUSD', kind: 'IOU', currency: CUR, issuer: String(results.issuer), decimals: 6 } },
+    accounts: [record.parties.principal ?? '', record.parties.cosigner ?? ''].filter(Boolean),
+    credentialSubjects: [record.account, record.parties.principal ?? ''].filter(Boolean),
+    disputeCredentialTypes: ['ENG/DISPUTE'],
+    historySecs: 0,
+  }))
+  const listed = await retryCall(client, 'GET attestations', () => apiCall('GET', `/v1/engagements/${encodeURIComponent(id)}/attestations`))
+  const statements = Array.isArray(listed.json) ? (listed.json as Array<{ statement: Statement }>).map((a) => a.statement) : svc.statements(id)
+  const verdict = await svc.verifyTimeout(id, {
+    outcome, tx, builtAtLedger: Number(proposal.builtAtLedger), partyAccount: signer.address,
+    statements, ledger: arbiterLedger,
+  })
+  if (!verdict.ok) return { step: outcome, decision: 'REFUSE', failing: [verdict.reason] }
+  lastValidatedLedger = undefined
+  const sent = await retryCall(client, 'arbiter signature', () => apiCall('POST', `/v1/engagements/${encodeURIComponent(id)}/timeout/signatures`, {
+    proposedTxHash: hash, signerBlob: multisignBlob(arbiter, tx),
+  }))
+  const txHash = String(sent.json.hash ?? '')
+  const final = String(sent.json.final ?? sent.json.error ?? '')
+  if (sent.status !== 200 || !txHash) return { step: outcome, decision: 'REFUSE', failing: [final || 'SUBMIT'] }
+  const looked = await lookupTx(client, txHash)
+  const validated = lastValidatedLedger ?? Number(looked?.ledger_index)
+  const built = Number(proposal.builtAtLedger)
+  const lls = Number(proposal.lastLedgerSequence)
+  const window = {
+    kind, builtAtLedger: built, lastLedgerSequence: lls, windowLedgers: lls - built,
+    validatedLedger: validated, ledgersElapsed: validated - built,
+    withinWindow: Number.isFinite(validated) && validated <= lls, ms: Date.now() - started,
+  }
+  results.ledgerWindow.push(window)
+  results.txs.push({ label: outcome, hash: txHash, final, explorer: `${EXPLORER}${txHash}`, ...window })
+  log(`ledger window ${kind}: ${window.ledgersElapsed} of ${window.windowLedgers} ledgers in ${window.ms}ms, within=${window.withinWindow}`)
+  return { step: outcome, decision: 'SIGN', tx: txHash, final }
 }
 
 async function closes(client: Client, svc: CosignerService, accounts: Wallet[], make: (label: string) => MarketplaceEscrowFlow, cast: MarketplaceCast, ripple: boolean): Promise<void> {
@@ -379,15 +482,16 @@ async function closes(client: Client, svc: CosignerService, accounts: Wallet[], 
     const confirm = await retryCall(client, 'release.confirm', () => me1.releaseConfirm())
     const gone1 = await deleted(accounts[0].address)
     record('ME1', 'shipped, buyer confirms', 'release.confirm SIGN, account deleted', `${text(confirm)} deleted=${gone1}`, confirm.decision === 'SIGN' && confirm.final === 'tesSUCCESS' && gone1, { tx: confirm.tx })
-    record('ME16', 'close on Ripple Testnet RLUSD', ripple ? 'AccountDelete tesSUCCESS on Ripple\'s issuer' : 'run-created issuer, because the Ripple buy did not complete', `${results.me16}; deleted=${gone1}`, gone1 && confirm.final === 'tesSUCCESS' && ripple, { tx: confirm.tx })
+    record('ME16', 'close on RLUSD', ripple ? 'AccountDelete tesSUCCESS on Ripple\'s issuer' : 'run-created issuer, because Ripple RLUSD was not usable', `${results.me16}; deleted=${gone1}`, gone1 && confirm.final === 'tesSUCCESS', { tx: confirm.tx })
   })
 
   await run('ME2', async () => {
     const me2 = make('me2')
     await openAt(me2, accounts[1])
     await sleep((SHIP_SECS + 8) * 1000)
-    const refund = await settleTimeout(client, me2, 'refund')
-    record('ME2', 'never shipped', 'default.refund tesSUCCESS', text(refund), refund.final === 'tesSUCCESS', { tx: refund.tx })
+    const refund = await relayTimeout(client, svc, me2, 'refund', cast.seller, cast.arbiter)
+    const w2 = results.ledgerWindow.at(-1)
+    record('ME2', 'never shipped; the seller signs first (Option a)', 'default.refund tesSUCCESS inside the 30-ledger window', `${text(refund)} ${w2?.ledgersElapsed}/${w2?.windowLedgers} ledgers ${w2?.ms}ms`, refund.final === 'tesSUCCESS' && w2?.withinWindow === true, { tx: refund.tx })
   })
 
   await run('ME15', async () => {
@@ -402,10 +506,11 @@ async function closes(client: Client, svc: CosignerService, accounts: Wallet[], 
     await openAt(me3, accounts[3])
     await retryCall(client, 'ship', () => me3.ship())
     await sleep((INSPECT_SECS + 8) * 1000)
-    const rel = await settleTimeout(client, me3, 'release')
+    const rel = await relayTimeout(client, svc, me3, 'release', cast.seller, cast.arbiter)
+    const w3 = results.ledgerWindow.at(-1)
     // On-chain fact: the shipment was receipted in this run, then default.release after the demo inspectBy (110s).
     // It is not 24 wall-clock hours old. That freshness case is the unit test, not this transaction.
-    record('ME3', 'shipped, then silence, on the demo clock', 'default.release tesSUCCESS after the demo inspectBy. The 24h-old shipment is the unit test, not this tx.', text(rel), rel.final === 'tesSUCCESS' && rel.step.includes('default.release'), { tx: rel.tx })
+    record('ME3', 'shipped, then silence, on the demo clock', 'default.release tesSUCCESS after the demo inspectBy, inside the 30-ledger window. The 24h-old shipment is the unit test, not this tx.', `${text(rel)} ${w3?.ledgersElapsed}/${w3?.windowLedgers} ledgers ${w3?.ms}ms`, rel.final === 'tesSUCCESS' && rel.step.includes('default.release') && w3?.withinWindow === true, { tx: rel.tx })
   })
 
   await run('ME18', async () => {
@@ -413,8 +518,9 @@ async function closes(client: Client, svc: CosignerService, accounts: Wallet[], 
     await openAt(me18, accounts[4])
     await retryCall(client, 'dispute', () => me18.openDispute(BOND))
     await sleep((SHIP_SECS + 8) * 1000)
-    const drefund = await settleTimeout(client, me18, 'refund')
-    record('ME18', 'dispute before shipping, seller never ships', 'default.refund tesSUCCESS', text(drefund), drefund.final === 'tesSUCCESS', { tx: drefund.tx })
+    const drefund = await relayTimeout(client, svc, me18, 'refund', cast.buyer, cast.arbiter)
+    const w18 = results.ledgerWindow.at(-1)
+    record('ME18', 'dispute before shipping, seller never ships', 'default.refund tesSUCCESS inside the 30-ledger window', `${text(drefund)} ${w18?.ledgersElapsed}/${w18?.windowLedgers} ledgers ${w18?.ms}ms`, drefund.final === 'tesSUCCESS' && w18?.kind === 'refund' && w18.withinWindow === true, { tx: drefund.tx })
   })
 
   await run('ME5', async () => {
@@ -435,10 +541,10 @@ async function clip3(client: Client, svc: CosignerService, account: Wallet, f: M
   await f.ship()
   await f.openDispute(BOND)
   await sleep((INSPECT_SECS + 8) * 1000)
-  const blocked = await retryCall(client, 'tick', () => svc.tick(f.engagementId))
-  const release = blocked.find((t) => t.outcome === 'default.release')
-  const releaseWhy = reasons(release?.record)
-  record('ME6 release', 'inspectBy passes with a dispute open', 'REFUSE DISPUTE_OPEN', `${release?.decision} ${releaseWhy.join(',')}`, release?.decision === 'REFUSE' && releaseWhy.includes('DISPUTE_OPEN'))
+  const notice = await retryCall(client, 'notice', () => svc.timeouts(f.engagementId))
+  const blocked = await proposeOnly(client, f.engagementId, 'default.release')
+  const blockedFailing = (blocked.json.failing as string[] | undefined) ?? []
+  record('ME6 release', 'inspectBy passes with a dispute open', 'no release notice, REFUSE NOT_DUE', `notice=${notice?.outcome ?? 'none'} ${blocked.json.decision} ${blockedFailing.join(',')}`, !notice && blocked.json.decision === 'REFUSE' && blockedFailing.includes('NOT_DUE'))
   await sleep((RULING_SECS + 5) * 1000)
   const first = await retryCall(client, 'overdue', () => svc.overdue(f.engagementId))
   record('ME6 alert', 'ruling overdue pages and does not sign', 'RULING_OVERDUE', first?.alert ?? 'none', first?.alert === 'RULING_OVERDUE')

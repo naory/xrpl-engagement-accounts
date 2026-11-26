@@ -88,7 +88,7 @@ function receiptedDispute(record: EngagementRecord, ledger: LedgerSnapshot, pres
   if (!principal || !cosigner) return false
   if (dispute.type !== 'party.dispute/1' || dispute.engagementId !== record.engagementId || dispute.attester.account !== principal) return false
   const disputeSigned = verifyStatement(dispute)
-  if (!disputeSigned.ok || disputeSigned.signerAddress !== principal) return false
+  if (!disputeSigned.ok || !keyAuthorized(ledger, principal, disputeSigned.signerAddress)) return false
   const subjectId = (receipt.subject as { statementId?: unknown } | undefined)?.statementId
   if (receipt.type !== 'cosigner.receipt/1' || receipt.engagementId !== record.engagementId || receipt.attester.account !== cosigner || subjectId !== dispute.id) return false
   const receiptSigned = verifyStatement(receipt)
@@ -124,7 +124,10 @@ export function verifyArbiterTimeout(input: ArbiterTimeoutInput): ArbiterTimeout
     const onLedger = ledger.credentials.some((c) => {
       if (c.type !== disputeType || c.subject !== account || c.issuer !== principal || typeof c.createdAt !== 'string') return false
       const created = Date.parse(c.createdAt)
-      return !Number.isNaN(created) && created <= inspect
+      if (Number.isNaN(created) || created > inspect) return false
+      // Same expiry rule as credentialExists: a past Expiration does not count.
+      if (c.expiration != null && Date.parse(c.expiration) <= Date.parse(ledger.closeTime)) return false
+      return true
     })
     const held = bonded(record, layers, ledger)
     if ((onLedger && held) || (receiptedDispute(record, ledger, input.presentedDispute, inspect) && held)) return refuse(4, 'DISPUTE_OPEN')
