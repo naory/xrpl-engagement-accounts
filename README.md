@@ -10,6 +10,8 @@ What's built and what isn't: [docs/SCOPE.md](docs/SCOPE.md).
 
 What the ledger enforces vs the co-signer: [Trust model](docs/trust-model.md).
 
+Why an engagement account, and when not to use one: [Why engagement accounts](docs/why-engagement-accounts.md).
+
 ---
 
 ## TL;DR
@@ -265,6 +267,7 @@ xrpl-engagement-accounts/
 ├── norms/               # hotel@1.json (pre-booking norms profile)
 ├── vectors/             # conformance vectors (counts in vectors/README.md)
 ├── docs/
+│   ├── why-engagement-accounts.md  # recourse, costs, and six use cases
 │   ├── SCOPE.md         # supported use cases by tier, component status
 │   ├── costs.md         # per-deal tickets, reserve, and fees (npm run costs)
 │   ├── pool.md
