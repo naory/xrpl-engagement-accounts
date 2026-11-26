@@ -79,5 +79,8 @@ describe('demo scenario list', () => {
     expect(hotel.indexOf('assertHotelDemoEnabled()')).toBeLessThan(hotel.indexOf('URL_ = await resolveTestnetEndpoint()'))
     expect(dispute.indexOf('assertHotelDemoEnabled()')).toBeGreaterThan(-1)
     expect(dispute.indexOf('assertHotelDemoEnabled()')).toBeLessThan(dispute.indexOf('const { discovery, token, endpoint } = loadDiscovery()'))
+    expect(hotel).toContain('assertDemoNetwork(client)')
+    expect(dispute).toContain('assertDemoNetwork(client)')
+    expect(read('packages/cosigner/demo/b1-testnet.ts')).toContain('assertDemoNetwork(client)')
   })
 })

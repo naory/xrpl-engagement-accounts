@@ -156,8 +156,8 @@ async function buyRlusd(client: Client, buyer: Wallet, issuer: string, value: st
 
 function library(): { template: Template; policies: PolicyDoc[] } {
   const read = <T>(f: string) => JSON.parse(fs.readFileSync(path.join(root, f), 'utf8')) as T
-  const policy = read<PolicyDoc>('policies/marketplace-escrow@1.0.0.json')
-  policy.version = '1.0.0-demo'
+  const policy = read<PolicyDoc>('policies/marketplace-escrow@1.1.0.json')
+  policy.version = '1.1.0-demo'
   // DEMO ONLY. Built in memory for this script. Not written to policies/ and not loaded by server.ts or local.ts.
   ;(policy as { description?: string }).description = 'DEMO ONLY. Shorter floors so a Testnet run can finish. The production co-signer never loads this copy.'
   policy.params!.minShipWindow = '30s'
@@ -352,15 +352,8 @@ function makeQuiet(client: Client, svc: CosignerService, cast: MarketplaceCast):
   })
 }
 
-async function tickSubmit(client: Client, f: MarketplaceEscrowFlow): Promise<MarketplaceStepResult[]> {
-  for (let i = 0; i < 4; i++) {
-    const steps = await retryCall(client, 'tick', () => f.tickAndSubmit())
-    const dropped = steps.some((s) => (s.failing ?? []).includes('TICK_ERROR') || isSocket(s.final))
-    if (!dropped) return steps
-    log('tick hit a transport error; reconnect and retry')
-    await ensure(client, true)
-  }
-  return retryCall(client, 'tick', () => f.tickAndSubmit())
+async function settleTimeout(client: Client, f: MarketplaceEscrowFlow, kind: 'refund' | 'release'): Promise<MarketplaceStepResult> {
+  return retryCall(client, 'timeout', () => f.timeoutSettle(kind))
 }
 
 async function closes(client: Client, svc: CosignerService, accounts: Wallet[], make: (label: string) => MarketplaceEscrowFlow, cast: MarketplaceCast, ripple: boolean): Promise<void> {
@@ -393,9 +386,8 @@ async function closes(client: Client, svc: CosignerService, accounts: Wallet[], 
     const me2 = make('me2')
     await openAt(me2, accounts[1])
     await sleep((SHIP_SECS + 8) * 1000)
-    const ticks2 = await tickSubmit(client, me2)
-    const refund = ticks2.find((s) => s.step.includes('default.refund'))
-    record('ME2', 'never shipped', 'default.refund SIGN', text(refund), refund?.decision === 'SIGN' && refund.final === 'tesSUCCESS', { tx: refund?.tx })
+    const refund = await settleTimeout(client, me2, 'refund')
+    record('ME2', 'never shipped', 'default.refund tesSUCCESS', text(refund), refund.final === 'tesSUCCESS', { tx: refund.tx })
   })
 
   await run('ME15', async () => {
@@ -410,11 +402,10 @@ async function closes(client: Client, svc: CosignerService, accounts: Wallet[], 
     await openAt(me3, accounts[3])
     await retryCall(client, 'ship', () => me3.ship())
     await sleep((INSPECT_SECS + 8) * 1000)
-    const ticks3 = await tickSubmit(client, me3)
-    const rel = ticks3.find((s) => s.decision === 'SIGN' && (s.step ?? '').includes('default.release'))
+    const rel = await settleTimeout(client, me3, 'release')
     // On-chain fact: the shipment was receipted in this run, then default.release after the demo inspectBy (110s).
     // It is not 24 wall-clock hours old. That freshness case is the unit test, not this transaction.
-    record('ME3', 'shipped, then silence, on the demo clock', 'default.release SIGN after the demo inspectBy. The 24h-old shipment is the unit test, not this tx.', text(rel), rel?.decision === 'SIGN' && (rel.step ?? '').includes('default.release'), { tx: rel?.tx })
+    record('ME3', 'shipped, then silence, on the demo clock', 'default.release tesSUCCESS after the demo inspectBy. The 24h-old shipment is the unit test, not this tx.', text(rel), rel.final === 'tesSUCCESS' && rel.step.includes('default.release'), { tx: rel.tx })
   })
 
   await run('ME18', async () => {
@@ -422,9 +413,8 @@ async function closes(client: Client, svc: CosignerService, accounts: Wallet[], 
     await openAt(me18, accounts[4])
     await retryCall(client, 'dispute', () => me18.openDispute(BOND))
     await sleep((SHIP_SECS + 8) * 1000)
-    const ticks18 = await tickSubmit(client, me18)
-    const drefund = ticks18.find((s) => s.step.includes('default.refund'))
-    record('ME18', 'dispute before shipping, seller never ships', 'default.refund SIGN', text(drefund), drefund?.decision === 'SIGN' && drefund.final === 'tesSUCCESS', { tx: drefund?.tx })
+    const drefund = await settleTimeout(client, me18, 'refund')
+    record('ME18', 'dispute before shipping, seller never ships', 'default.refund tesSUCCESS', text(drefund), drefund.final === 'tesSUCCESS', { tx: drefund.tx })
   })
 
   await run('ME5', async () => {

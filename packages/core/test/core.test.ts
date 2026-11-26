@@ -188,14 +188,15 @@ describe('template validator', () => {
   })
 
   const marketplace = () => structuredClone(load('marketplace-escrow@1.json'))
-  it('accepts marketplace-escrow@1: hotel@2 winning sets, 15 Tickets, 4.4 XRP, only the V10 disclosure', () => {
+  it('accepts marketplace-escrow@1: hotel@2 winning sets, 0 Tickets, 1.4 XRP, only the V10 disclosure', () => {
     const t = marketplace()
     const r = validateTemplate(t)
     expect(r.errors).toEqual([])
     expect(r.ok).toBe(true)
     expect(r.minimalWinningSets).toEqual([['counterparty', 'arbiter'], ['principal', 'arbiter'], ['principal', 'counterparty', 'cosigner']])
-    expect(r.ticketsNeeded).toBe(15)
-    expect(r.reserveDrops).toBe(4_400_000n)
+    expect(r.ticketsNeeded).toBe(0)
+    expect(r.reserveDrops).toBe(1_400_000n)
+    expect(t.signing).toBe('live')
     expect(r.disclosures).toEqual([{ id: 'V10', message: '{counterparty, arbiter} can move funds without the principal' }])
     expect(r.warnings).toEqual([])
     expect(t.timers!.rulingDueBy.onExpire).toBe('escalate')
@@ -344,7 +345,6 @@ describe('template validator', () => {
     const shipped: Array<[string, number]> = [
       ['hotel@1.json', 9],
       ['hotel@2.json', 109],
-      ['marketplace-escrow@1.json', 15],
       ['procurement@1.json', 0],
       ['shopping@1.json', 0],
     ]

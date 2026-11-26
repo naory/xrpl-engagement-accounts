@@ -1348,6 +1348,7 @@ function marketplaceEscrowTermsFindings(record: EngagementRecord, mandate: State
   if (mandate.engagementId !== record.engagementId) return 'the mandate is for a different engagement'
   const signed = verifyStatement(mandate)
   if (!signed.ok) return 'the mandate signature is invalid'
+  if (mandate.attester?.account !== record.parties.principal) return 'the mandate attester must be the principal'
   const payee = mandatePayee(mandate.claim)
   if (payee !== record.parties.counterparty) return 'the seller is not the mandate payee'
   const assets = resolvedAssets(layers, record.trust)
