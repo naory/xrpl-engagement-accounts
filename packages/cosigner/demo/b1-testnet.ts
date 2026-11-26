@@ -14,6 +14,7 @@ import xrpl from 'xrpl'
 import { localSigner, parseAmount, signStatement, signVendorInvoice, newNonce, type Statement, type StatementBody, type Template } from '@eng/core'
 import { intentHashOf, layerHash, type EngagementRecord, type PolicyDoc } from '@eng/policy'
 import { CosignerService, XrplLedgerSource, resolveTestnetEndpoint, type DecideResponse } from '../src/index.ts'
+import { assertDemoNetwork } from './network-guard.ts'
 import {
   ASF_DEFAULT_RIPPLE, ASF_DISABLE_MASTER, LSF_DISABLE_MASTER, TF_SET_NO_RIPPLE,
   accountInfo, addBatchSigner, buildCloseBatch, buildOpenBatch, combine, currencyHex, currentLedger, hex, inner, iou, iouBalance,
@@ -79,7 +80,15 @@ async function main() {
   results.url = URL_
   const client = new xrpl.Client(URL_)
   await client.connect()
-  console.log(`Connected to ${URL_}\n`)
+  let networkId: 1 | 2
+  try {
+    networkId = await assertDemoNetwork(client)
+  } catch (e) {
+    await client.disconnect().catch(() => undefined)
+    throw e
+  }
+  EXPLORER = networkId === 2 ? 'https://devnet.xrpl.org/transactions/' : 'https://testnet.xrpl.org/transactions/'
+  console.log(`Connected to ${URL_} network_id=${networkId}\n`)
   const fees = await serverFees(client)
   results.fees = fees
 

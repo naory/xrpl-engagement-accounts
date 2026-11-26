@@ -1,6 +1,6 @@
-// MarketplaceEscrowFlow: one marketplace-escrow@1 deal on a live XRPL network (spec §6–§7).
-// Ticket plan is flat: default.refund 4, default.release 5, default.releaseSweep 6. Pre-create funding
-// is the reserve plus 1 XRP, the same pattern as hotel. No Testnet script lives here; that is the demo.
+// MarketplaceEscrowFlow: one marketplace-escrow@1 deal on a live XRPL network.
+// Nothing is pre-signed and the open Batch books no Tickets. Missed deadlines are signed live
+// on the account Sequence by the arbiter and either party. Pre-create funding is the reserve plus 1 XRP.
 import xrpl from 'xrpl'
 import { Amount, formatAmount, newNonce, parseAmount, signStatement, type AssetDef, type Statement, type StatementBody } from '@eng/core'
 import type { EngagementRecord } from '@eng/policy'
@@ -19,24 +19,6 @@ type Payout = { to: string; value?: string; partial?: boolean }
 
 const TEMPLATE = 'settlement-vault/marketplace-escrow@1'
 const FEE_BPS = 50
-
-export interface MarketplaceTicketPlan {
-  slices: Record<string, readonly [number, number]>
-  count: number
-}
-
-/** 15 Tickets: refund 4, exact release 5, release-with-sweep 6. */
-export function marketplaceTickets(): MarketplaceTicketPlan {
-  const sizes: Array<[string, number]> = [
-    ['default.refund', 4],
-    ['default.release', 5],
-    ['default.releaseSweep', 6],
-  ]
-  const slices: Record<string, readonly [number, number]> = {}
-  let at = 0
-  for (const [outcome, n] of sizes) { slices[outcome] = [at, at + n]; at += n }
-  return { slices, count: at }
-}
 
 /**
  * Release settlement. The seller receives price − fee plus the bond, and the fee account receives the bps.
@@ -113,8 +95,6 @@ export class MarketplaceEscrowFlow {
   private eng = ''
   private record: EngagementRecord | null = null
   private mandate: Statement | null = null
-  private tickets: number[] = []
-  private readonly plan = marketplaceTickets()
   private readonly asset: AssetDef
   private readonly price: string
 
@@ -139,9 +119,9 @@ export class MarketplaceEscrowFlow {
   get engagementId(): string { return this.id }
   get account(): string { return this.eng }
 
-  /** XRP a pre-created account needs: base reserve, trust line + SignerList, 15 Tickets, 1 XRP for fees. */
+  /** XRP a pre-created account needs: base reserve, trust line + SignerList, and 1 XRP for fees. No Tickets. */
   static precreateDrops(fees: Fees): number {
-    return fees.reserveBase + fees.inc * (2 + marketplaceTickets().count) + 1_000_000
+    return fees.reserveBase + fees.inc * 2 + 1_000_000
   }
 
   /** Fund one engagement account, set the RLUSD trust line, point RegularKey at the service, and disable master. */
@@ -161,7 +141,7 @@ export class MarketplaceEscrowFlow {
   }
 
   /**
-   * Register, open the account (SignerList, Tickets, funding, RegularKey removed), and pre-sign the three defaults.
+   * Register and open the account (SignerList, funding, RegularKey removed). No TicketCreate and nothing pre-signed.
    * `t0` is the open ledger's close time in ms.
    */
   async open(eng: Wallet, t0: number): Promise<MarketplaceStepResult> {
@@ -181,19 +161,14 @@ export class MarketplaceEscrowFlow {
       const built = buildOpenBatch({
         eng: eng.address, funder: cast.buyer.address, currency: cast.currency, issuer: this.issuerAddress, amount: this.price,
         signerEntries: [[cast.buyer.address, 3], [cast.seller.address, 3], [cast.arbiter.address, 4], [svc.address, 2]],
-        quorum: 7, seq, funderSeq, ticketCount: this.plan.count, memos: [memo('eng/open', `${this.id}|template=${TEMPLATE}`)], fees,
+        quorum: 7, seq, funderSeq, ticketCount: 0, memos: [memo('eng/open', `${this.id}|template=${TEMPLATE}`)], fees,
       })
-      this.tickets = built.tickets
       addBatchSigner(cast.buyer, built.tx)
       return { r: await submit(client, cast.service.sign(built.tx as never).tx_blob), tx: built.tx }
     })
     const final = await this.batchFinal(opened.r, opened.tx)
     if (final !== 'tesSUCCESS') return { step: 'open', tx: opened.r.hash, final }
-    const release = marketplaceReleasePayouts(this.price, FEE_BPS, cast.seller.address, cast.service.address)
-    await this.presign('default.refund', [{ to: cast.buyer.address, partial: true }])
-    await this.presign('default.release', release)
-    await this.presign('default.releaseSweep', [...release, { to: cast.buyer.address, partial: true }])
-    this.o.log?.(`${this.id}: opened ${eng.address} with ${this.plan.count} Tickets`)
+    this.o.log?.(`${this.id}: opened ${eng.address}; nothing pre-signed`)
     return { step: 'open', tx: opened.r.hash, final }
   }
 
@@ -259,25 +234,34 @@ export class MarketplaceEscrowFlow {
     return { step: `dispute.${kind}`, ...(await this.closeResult(r, tx)) }
   }
 
+  /**
+   * A missed deadline, signed live on the account Sequence. The refund is one sweep to the buyer.
+   * The release pays the seller the price less the fee, and sweeps any surplus to the buyer.
+   * The arbiter signs with either party (Option a). `signer` defaults to the winning party.
+   * No co-signer signature: enforcement is advisory.
+   */
+  async timeoutSettle(kind: 'refund' | 'release', signer?: Wallet): Promise<MarketplaceStepResult> {
+    const { cast } = this.o
+    const balance = await this.balance()
+    const held = parseAmount(balance, this.asset).minor
+    const price = parseAmount(this.price, this.asset).minor
+    const payouts: Payout[] = kind === 'refund'
+      ? [{ to: cast.buyer.address, partial: true }]
+      : [
+          ...marketplaceReleasePayouts(this.price, FEE_BPS, cast.seller.address, cast.service.address),
+          ...(held > price ? [{ to: cast.buyer.address, partial: true }] : []),
+        ]
+    const tx = await this.liveClose(payouts, `default.${kind}`, 2)
+    const party = signer ?? (kind === 'refund' ? cast.buyer : cast.seller)
+    const r = await submit(this.o.client, combine([multisignBlob(cast.arbiter, tx), multisignBlob(party, tx)]))
+    return { step: `default.${kind}`, ...(await this.closeResult(r, tx)) }
+  }
+
   /** Mutual cancel: the whole balance back to the buyer. Buyer, seller, and the co-signer. */
   async refundAgreed(): Promise<MarketplaceStepResult> {
     const { cast } = this.o
     const tx = await this.liveClose([{ to: cast.buyer.address, value: await this.balance() }], 'refund.agreed', 3)
     return this.cosigned('refund.agreed', tx, [cast.buyer, cast.seller])
-  }
-
-  /** tick() the co-signer and submit every completed default. */
-  async tickAndSubmit(): Promise<MarketplaceStepResult[]> {
-    const out: MarketplaceStepResult[] = []
-    for (const t of await this.o.svc.tick(this.id)) {
-      const res: MarketplaceStepResult = { step: `tick ${t.outcome}`, stage: t.stage, decision: t.decision, failing: t.failing }
-      if (t.decision === 'SIGN' && t.blob) {
-        const r = await submit(this.o.client, t.blob)
-        Object.assign(res, await this.closeResult(r, xrpl.decode(t.blob) as Json))
-      }
-      out.push(res)
-    }
-    return out
   }
 
   private mandateFor(): Statement {
@@ -303,17 +287,6 @@ export class MarketplaceEscrowFlow {
       state: 'OPEN', consumed: [], mandateId: this.mandate!.id,
       trust: { 'arbiter.accreditor': cast.accreditor.address, 'rlusd.issuer': this.issuerAddress },
     }
-  }
-
-  private async presign(outcome: string, payouts: Payout[]): Promise<void> {
-    const { cast, fees, svc } = this.o
-    const range = this.plan.slices[outcome]
-    if (!range) throw new Error(`no Ticket slot for ${outcome}`)
-    const tx = buildCloseBatch({
-      eng: this.eng, currency: cast.currency, issuer: this.issuerAddress, payouts, deleteTo: cast.service.address,
-      tickets: this.tickets.slice(range[0], range[1]), memos: [memo('eng/basis', outcome)], fees, signatures: 3,
-    })
-    await svc.storePresigned(this.id, outcome, combine([multisignBlob(cast.buyer, tx), multisignBlob(cast.seller, tx)]))
   }
 
   private async liveClose(payouts: Payout[], basis: string, signatures: number): Promise<Json> {

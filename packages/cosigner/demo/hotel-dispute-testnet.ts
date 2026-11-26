@@ -29,6 +29,7 @@ import {
 } from '../src/xrpl-io.ts'
 import { assertKnownTestnetEndpoint } from '../src/testnet-endpoint.ts'
 import { assertHotelDemoEnabled } from '../../web/src/demo-scenarios.ts'
+import { assertDemoNetwork } from './network-guard.ts'
 
 type Wallet = InstanceType<typeof xrpl.Wallet>
 type Client = InstanceType<typeof xrpl.Client>
@@ -238,6 +239,12 @@ async function main(): Promise<void> {
   say(`   · endpoint ${endpoint}`)
   const client = new xrpl.Client(endpoint, { timeout: 60_000 })
   await client.connect()
+  try {
+    await assertDemoNetwork(client)
+  } catch (e) {
+    await client.disconnect().catch(() => undefined)
+    throw e
+  }
   results.endpoint = endpoint
   results.cosigner = discovery.address
   const fees: Fees = await serverFees(client)

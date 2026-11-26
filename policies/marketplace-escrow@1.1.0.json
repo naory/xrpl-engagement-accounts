@@ -1,6 +1,6 @@
 {
   "policyId": "pol_marketplace-escrow",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "layer": "template",
   "baselineRef": "pol_baseline@1.2.0",
   "appliesTo": [
@@ -31,6 +31,10 @@
     "minShipWindow": "86400s",
     "minInspectGap": "604800s",
     "rulingOverdueRepeat": "86400s",
+    "maxLedgerWindow": 30,
+    "timeoutRepeat": "86400s",
+    "proposalMaxAge": 20,
+    "timeoutUnsettledAfter": "604800s",
     "arbiterCredentialType": "ENG/ARBITER",
     "disputeCredentialType": "ENG/DISPUTE",
     "arbiterIssuers": [
@@ -50,8 +54,22 @@
   },
   "stages": {
     "default.refund": {
-      "enforcement": "final-signature",
+      "enforcement": "advisory",
       "rules": [
+        {
+          "id": "MR0",
+          "title": "Signed live, expires soon",
+          "reason": "NOT_LIVE",
+          "check": "!tx.usesTicket && tx.hasLastLedgerSequence && tx.lastLedgerSequence > ledgerIndex && tx.lastLedgerSequence <= ledgerIndex + params.maxLedgerWindow",
+          "message": "A timeout settlement is signed live after the deadline: it uses the account Sequence (no Ticket), has not expired, and expires within a few ledgers. The account Sequence itself is checked by the co-signer when it builds the proposal and by the arbiter before it signs."
+        },
+        {
+          "id": "MR5",
+          "title": "Labelled for this outcome",
+          "reason": "WRONG_BASIS",
+          "check": "tx.memo('eng/basis') == 'default.refund'",
+          "message": "The transaction names this outcome (automatic refund) in its eng/basis memo, so a signature for one outcome can never be replayed as another."
+        },
         {
           "id": "MR1",
           "title": "Refund is due",
@@ -77,14 +95,28 @@
           "id": "MR4",
           "title": "Everything goes back to the buyer",
           "reason": "PAYOUT_MISMATCH",
-          "check": "def.toBuyer == def.balance",
-          "message": "The buyer gets back every last cent in the account, with no fee."
+          "check": "def.toBuyer == def.balance && tx.payouts.count() == 1 && tx.payouts.hasResidual()",
+          "message": "The buyer gets back every last cent in the account, with no fee, as one sweep of the whole balance (never a fixed amount). RLUSD that arrived late, such as a bond or a stray payment, is included, and whoever builds the refund gets the same transaction."
         }
       ]
     },
     "default.release": {
-      "enforcement": "final-signature",
+      "enforcement": "advisory",
       "rules": [
+        {
+          "id": "ML0",
+          "title": "Signed live, expires soon",
+          "reason": "NOT_LIVE",
+          "check": "!tx.usesTicket && tx.hasLastLedgerSequence && tx.lastLedgerSequence > ledgerIndex && tx.lastLedgerSequence <= ledgerIndex + params.maxLedgerWindow",
+          "message": "A timeout settlement is signed live after the deadline: it uses the account Sequence (no Ticket), has not expired, and expires within a few ledgers. The account Sequence itself is checked by the co-signer when it builds the proposal and by the arbiter before it signs."
+        },
+        {
+          "id": "ML7",
+          "title": "Labelled for this outcome",
+          "reason": "WRONG_BASIS",
+          "check": "tx.memo('eng/basis') == 'default.release'",
+          "message": "The transaction names this outcome (automatic release) in its eng/basis memo, so a signature for one outcome can never be replayed as another."
+        },
         {
           "id": "ML1",
           "title": "Release is due",
@@ -117,15 +149,15 @@
           "id": "ML5",
           "title": "Valid release",
           "reason": "TX_SHAPE",
-          "check": "tx.matchesBlueprint('close.releaseAll') || tx.matchesBlueprint('close.releaseWithSweep')",
-          "message": "The release pays the seller (less the fee), returns anything extra to the buyer, and closes the account."
+          "check": "tx.matchesBlueprint('close.split')",
+          "message": "The release pays the seller (less the fee), returns anything extra to the buyer, and closes the account, in one transaction built live at the deadline."
         },
         {
           "id": "ML6",
           "title": "Seller gets the price, the buyer gets any extra",
           "reason": "PAYOUT_MISMATCH",
           "check": "def.toSeller + def.toFee == def.price && def.toFee == bps(def.toSeller + def.toFee, params.serviceFeeBps) && def.toBuyer + def.price == def.balance && tx.payouts.hasResidual() == (def.balance > def.price)",
-          "message": "The seller is paid exactly the price, less the fee. Anything else in the account goes back to the buyer. Of the two releases signed in advance, only the one that fits the balance can be used."
+          "message": "The seller is paid exactly the price, less the fee. Anything else in the account goes back to the buyer as a sweep of the remainder, never a fixed amount, so the transaction built at the deadline is the same whoever builds it."
         }
       ]
     },

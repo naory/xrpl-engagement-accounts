@@ -11,7 +11,7 @@ const root = new URL('../../../', import.meta.url)
 const readJson = <T>(p: string): T => JSON.parse(fs.readFileSync(new URL(p, root), 'utf8')) as T
 
 const template = readJson<Template>('templates/marketplace-escrow@1.json')
-const policy = readJson<PolicyDoc>('policies/marketplace-escrow@1.0.0.json')
+const policy = readJson<PolicyDoc>('policies/marketplace-escrow@1.1.0.json')
 const baseline12 = readJson<PolicyDoc>('policies/baseline@1.2.0.json')
 /** hotel@1 / hotel@2 / baseline@1.1.0 hashes at the time baseline@1.2.0 was added. These files stay byte-identical. */
 const HOTEL1_TEMPLATE_HASH = 'att:CC728BCD9853CF75FFC3CEAB7704E6496FC95AF32E7E18177B1E52B9A05648BC'
@@ -96,21 +96,25 @@ function dispute(): Statement {
 
 const basis = (stage: string) => [memo('eng/basis', stage)]
 
-function refundTx(value: string, stage: string, tickets = true) {
-  return closeBatch([{ to: W.dana.address, value }], { account: eng.address, tickets, memos: basis(stage) })
+function refundSweep(stage = 'default.refund') {
+  return closeBatch([{ to: W.dana.address, value: '0', partial: true }], { account: eng.address, memos: basis(stage) })
+}
+
+function refundExact(value: string, stage = 'default.refund') {
+  return closeBatch([{ to: W.dana.address, value }], { account: eng.address, memos: basis(stage) })
 }
 
 function releaseExact() {
   return closeBatch(
     [{ to: W.atlas.address, value: '1.99' }, { to: W.service.address, value: '0.01' }],
-    { account: eng.address, tickets: true, memos: basis('default.release') },
+    { account: eng.address, memos: basis('default.release') },
   )
 }
 
 function releaseSweep() {
   return closeBatch(
     [{ to: W.atlas.address, value: '1.99' }, { to: W.service.address, value: '0.01' }, { to: W.dana.address, value: '0', partial: true }],
-    { account: eng.address, tickets: true, memos: basis('default.release') },
+    { account: eng.address, memos: basis('default.release') },
   )
 }
 
@@ -121,7 +125,7 @@ function confirmTx(payouts: Array<{ to: string; value: string }>) {
 function input(over: Partial<DecideInput> = {}): DecideInput {
   return {
     stage: 'default.refund',
-    proposedTx: refundTx('2.00', 'default.refund'),
+    proposedTx: refundSweep(),
     engagement: engagement(),
     template,
     layers: [baseline12, policy],
@@ -150,6 +154,8 @@ describe('marketplace-escrow@1 policy', () => {
   })
 
   it('minShipWindow is 24h and minInspectGap is 7d, and those params are the only floors', () => {
+    expect(policy.version).toBe('1.1.0')
+    expect(policy.params!.maxLedgerWindow).toBe(30)
     expect(policy.params!.minShipWindow).toBe('86400s')
     expect(policy.params!.minInspectGap).toBe('604800s')
     expect(celDurationMs(String(policy.params!.minShipWindow))).toBe(86_400 * 1000)
@@ -193,7 +199,7 @@ describe('marketplace-escrow@1 policy', () => {
     expect(reasons(shipped)).not.toContain('NOT_DUE')
 
     const disputed = decide(input({
-      proposedTx: refundTx('2.50', 'default.refund'),
+      proposedTx: refundSweep(),
       statements: [dispute()],
       ledger: ledger(AFTER_SHIP, '2.50'),
     }))
@@ -294,7 +300,7 @@ describe('marketplace-escrow@1 policy', () => {
 
     const agreed = decide(input({
       stage: 'refund.agreed',
-      proposedTx: refundTx('2.00', 'refund.agreed', false),
+      proposedTx: refundExact('2.00', 'refund.agreed'),
       ledger: ledger(OPEN, '2.00'),
     }))
     expect(failing(agreed)).toEqual([])
@@ -317,7 +323,35 @@ describe('marketplace-escrow@1 policy', () => {
     expect(hotel2.baselineRef).toBeUndefined()
   })
 
-  it('baseline B11 refuses a pre-signed release the ledger would not accept, and B2 refuses SetRegularKey', () => {
+  it('a timeout refund is a live sweep: an exact amount and a Ticket are refused', () => {
+    const exact = decide(input({ proposedTx: refundExact('2.00'), ledger: ledger(AFTER_SHIP, '2.30') }))
+    expect(exact.decision).toBe('REFUSE')
+    expect(reasons(exact)).toEqual(expect.arrayContaining(['UNCLEAN_CLOSE', 'WOULD_FAIL', 'PAYOUT_MISMATCH']))
+
+    const matched = decide(input({ proposedTx: refundExact('2.00') }))
+    expect(matched.decision).toBe('REFUSE')
+    expect(reasons(matched)).toContain('PAYOUT_MISMATCH')
+
+    const ticketed = closeBatch(
+      [{ to: W.dana.address, value: '0', partial: true }],
+      { account: eng.address, tickets: true, memos: basis('default.refund') },
+    )
+    const live = decide(input({ proposedTx: ticketed }))
+    expect(live.decision).toBe('REFUSE')
+    expect(reasons(live)).toContain('NOT_LIVE')
+
+    const far = closeBatch(
+      [{ to: W.dana.address, value: '0', partial: true }],
+      { account: eng.address, lls: LEDGER_INDEX + 500, memos: basis('default.refund') },
+    )
+    expect(reasons(decide(input({ proposedTx: far })))).toContain('NOT_LIVE')
+
+    const wrong = decide(input({ proposedTx: refundSweep('dispute.refund') }))
+    expect(wrong.decision).toBe('REFUSE')
+    expect(reasons(wrong)).toContain('WRONG_BASIS')
+  })
+
+  it('baseline B11 refuses a live release the ledger would not accept, and B2 refuses SetRegularKey', () => {
     const young = decide(input({
       stage: 'default.release',
       proposedTx: releaseExact(),
@@ -332,7 +366,7 @@ describe('marketplace-escrow@1 policy', () => {
     raw.splice(raw.length - 1, 0, {
       RawTransaction: {
         TransactionType: 'SetRegularKey', Account: eng.address, RegularKey: W.atlas.address,
-        Fee: '0', Sequence: 0, TicketSequence: 110, SigningPubKey: '',
+        Fee: '0', Sequence: 34, SigningPubKey: '',
       },
     })
     const keyed = decide(input({

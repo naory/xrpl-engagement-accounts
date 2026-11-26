@@ -39,7 +39,7 @@ Owner-wallet rows are every `owner-wallet` template in the validate-templates ou
 | --- | --- | --- | --- |
 | settlement-vault/hotel@1 | `templates/hotel@1.json` | 9 | 3.2 XRP |
 | settlement-vault/hotel@2 | `templates/hotel@2.json` | 109 | 23.2 XRP |
-| settlement-vault/marketplace-escrow@1 | `templates/marketplace-escrow@1.json` | 15 | 4.4 XRP |
+| settlement-vault/marketplace-escrow@1 | `templates/marketplace-escrow@1.json` | 0 | 1.4 XRP |
 | owner-wallet/procurement@1 | `templates/procurement@1.json` | 0 | 1.4 XRP |
 | owner-wallet/shopping@1 | `templates/shopping@1.json` | 0 | 1.4 XRP |
 
@@ -84,10 +84,8 @@ Schedule: base fee 10 drops (snapshot fallback when the ledger fee object has ne
 | settlement-vault/hotel@2 close.releaseWithDeposit, 3 pay steps | 3 | 1.5 | 5 | 200135 | 0.200135 |
 | settlement-vault/marketplace-escrow@1 close.split, 3 pay steps | 2 | 1.5 | 5 | 200120 | 0.20012 |
 | settlement-vault/marketplace-escrow@1 close.split, 3 pay steps | 3 | 1.5 | 5 | 200135 | 0.200135 |
-| settlement-vault/marketplace-escrow@1 close.releaseAll, 2 pay steps | 3 | 1.5 | 4 | 200120 | 0.20012 |
 | settlement-vault/marketplace-escrow@1 close.refundAll, 1 pay step | 2 | 1.5 | 3 | 200090 | 0.20009 |
 | settlement-vault/marketplace-escrow@1 close.refundAll, 1 pay step | 3 | 1.5 | 3 | 200105 | 0.200105 |
-| settlement-vault/marketplace-escrow@1 close.releaseWithSweep, 3 pay steps | 3 | 1.5 | 5 | 200135 | 0.200135 |
 | owner-wallet/procurement@1 close.sweep, 1 pay step | 1 | 1.5 | 3 | 200075 | 0.200075 |
 | owner-wallet/shopping@1 close.sweep, 1 pay step | 1 | 1.5 | 3 | 200075 | 0.200075 |
 
@@ -122,7 +120,7 @@ The template check allows preCreateFundingDrops of 25.0 XRP. A stay of 14 nights
 
 `batchFee` charges one reserve increment per inner `AccountDelete`, plus the base fee times `(2 + the other inner transactions + signatures) × headroom` (`batchFee` (`packages/ledger/src/xrpl-io.ts:43`)). `buildOpenBatch` asks for one signature and headroom 2 (`buildOpenBatch` (`packages/ledger/src/xrpl-io.ts:54`)). It adds a `TicketCreate` inner only when `ticketCount` is greater than zero (`ticketCount` (`packages/ledger/src/xrpl-io.ts:61`)).
 
-A pre-signed hotel close passes `signatures` 3 and leaves headroom at the default (`signatures` (`packages/cosigner/src/hotel/flow.ts:648`), `headroom` (`packages/ledger/src/xrpl-io.ts:46`)). An agreed live close uses 3 signatures (`liveClose` (`packages/cosigner/src/hotel/flow.ts:425`)). A ruling close uses 2 (`liveClose` (`packages/cosigner/src/hotel/flow.ts:438`)). The procurement owner's close uses 1 (`signatures` (`packages/cosigner/demo/b1-testnet.ts:284`)).
+A pre-signed hotel close passes `signatures` 3 and leaves headroom at the default (`signatures` (`packages/cosigner/src/hotel/flow.ts:648`), `headroom` (`packages/ledger/src/xrpl-io.ts:46`)). An agreed live close uses 3 signatures (`liveClose` (`packages/cosigner/src/hotel/flow.ts:425`)). A ruling close uses 2 (`liveClose` (`packages/cosigner/src/hotel/flow.ts:438`)). The procurement owner's close uses 1 (`signatures` (`packages/cosigner/demo/b1-testnet.ts:293`)).
 
 Generated fee figures use the 10-drop fallback written in `baseFeeDrops`, the value used when the ledger fee object has neither `BaseFeeDrops` nor `BaseFee` (`baseFeeDrops` (`packages/cosigner/src/snapshot.ts:75`)), and the validator default reserve increment (`reserveIncDrops` (`packages/core/src/template.ts:256`)). The AccountDelete special fee shown there is that increment once per delete (`deletes` (`packages/ledger/src/xrpl-io.ts:44`)).
 
@@ -138,4 +136,4 @@ Generated fee figures use the 10-drop fallback written in `baseFeeDrops`, the va
 
 `validate-templates` passes `preCreateFundingDrops` into the validator (`preCreateFundingDrops` (`packages/core/src/cli.ts:28`)). V9 compares the reserve plus `feeHeadroomDrops` with that funding (`feeHeadroomDrops` (`packages/core/src/template.ts:260`)). The generated block records both amounts.
 
-`precreateDrops` funds the base reserve, one increment for the trust line and the signer list, one increment per Ticket from `hotelTickets`, and a flat drops literal on that same line (`precreateDrops` (`packages/cosigner/src/hotel/flow.ts:177`)). The pool CLI's unset `ENG_CREATE_DROPS` falls back to the `createAmountDrops` literal (`createAmountDrops` (`packages/cosigner/src/pool-cli.ts:88`)). The procurement demo pays the new account `xrpToDrops` of a whole-XRP literal (`xrpToDrops` (`packages/cosigner/demo/b1-testnet.ts:112`)).
+`precreateDrops` funds the base reserve, one increment for the trust line and the signer list, one increment per Ticket from `hotelTickets`, and a flat drops literal on that same line (`precreateDrops` (`packages/cosigner/src/hotel/flow.ts:177`)). The pool CLI's unset `ENG_CREATE_DROPS` falls back to the `createAmountDrops` literal (`createAmountDrops` (`packages/cosigner/src/pool-cli.ts:88`)). The procurement demo pays the new account `xrpToDrops` of a whole-XRP literal (`xrpToDrops` (`packages/cosigner/demo/b1-testnet.ts:121`)).

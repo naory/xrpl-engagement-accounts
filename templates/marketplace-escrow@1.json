@@ -1,7 +1,7 @@
 {
   "templateId": "settlement-vault/marketplace-escrow@1",
   "class": "escrow",
-  "description": "Marketplace escrow: an agent buys from a seller. Refund if no carrier-attested shipment by shipBy; release after inspectBy if shipped and undisputed; disputes ruled live (full refund or full release) by an accredited arbiter, bond to the winner. No arbiter-silent defaults; the ruling deadline only raises an ops alert, which repeats until the account closes.",
+  "description": "Marketplace escrow: an agent buys from a seller. Every outcome is signed live: no pre-signed transactions and no Tickets. The policy co-signer keeps the shipBy and inspectBy timers; when one expires it emits a signed timeout notice, and the arbiter signs the default live with the winning party (refund if no carrier-attested shipment by shipBy; release after inspectBy if shipped and undisputed). Disputes are ruled live (full refund or full release) by an accredited arbiter, bond to the winner. No arbiter-silent defaults; the ruling deadline only raises an ops alert, which repeats until the account closes.",
   "asset": {
     "code": "RLUSD"
   },
@@ -83,66 +83,52 @@
       "requires": "ruling"
     },
     "default.refund": {
-      "description": "The seller never recorded a shipment by shipBy: everything goes back to the buyer automatically.",
-      "presigned": true,
-      "finalSigner": "cosigner",
+      "description": "The seller never recorded a shipment by shipBy. The co-signer emits a signed timeout notice; on request it builds a short-lived proposal that the buyer signs first, then the arbiter verifies independently, signs and submits: the whole balance (a sweep) goes back to the buyer. Option (a): either party can be the second signer.",
       "signers": [
         [
-          "principal",
-          "counterparty",
-          "cosigner"
+          "arbiter",
+          "principal"
+        ],
+        [
+          "arbiter",
+          "counterparty"
         ]
       ],
       "blueprint": "close.refundAll",
       "policyStage": "default.refund",
-      "enforcement": "final-signature"
+      "enforcement": "advisory",
+      "requires": "timeout"
     },
     "default.release": {
-      "description": "Shipped, and nobody disputed by inspectBy: the seller is paid the price less the fee automatically (account holds exactly the price).",
-      "presigned": true,
-      "finalSigner": "cosigner",
+      "description": "Shipped, and nobody disputed by inspectBy. The co-signer emits a signed timeout notice; on request it builds a short-lived proposal that the seller signs first, then the arbiter verifies independently, signs and submits: the seller is paid the price less the fee, and anything extra is swept back to the buyer. Option (a): either party can be the second signer.",
       "signers": [
         [
-          "principal",
-          "counterparty",
-          "cosigner"
-        ]
-      ],
-      "blueprint": "close.releaseAll",
-      "policyStage": "default.release",
-      "enforcement": "final-signature"
-    },
-    "default.releaseSweep": {
-      "description": "The same release, signed a second time for when the account holds more than the price: the extra goes back to the buyer. The co-signer completes whichever version fits the balance.",
-      "presigned": true,
-      "finalSigner": "cosigner",
-      "signers": [
+          "arbiter",
+          "principal"
+        ],
         [
-          "principal",
-          "counterparty",
-          "cosigner"
+          "arbiter",
+          "counterparty"
         ]
       ],
-      "blueprint": "close.releaseWithSweep",
+      "blueprint": "close.split",
       "policyStage": "default.release",
-      "enforcement": "final-signature"
+      "enforcement": "advisory",
+      "requires": "timeout"
     }
   },
   "timers": {
     "shipBy": {
-      "description": "Fixed at open: the named carrier attester must record the shipment (shipping.shipped/1) by this time.",
+      "description": "Fixed at open and kept by the co-signer: the named carrier attester must record the shipment (shipping.shipped/1) by this time. At expiry with no shipment, the co-signer emits a signed timeout notice for default.refund (signed live by the arbiter and the buyer).",
       "from": "open",
       "durationSecs": 259200,
       "onExpire": "default.refund"
     },
     "inspectBy": {
-      "description": "Fixed at open: the buyer must dispute by this time; after it, a recorded shipment with no open dispute releases to the seller.",
+      "description": "Fixed at open and kept by the co-signer: the buyer must dispute by this time. At expiry, a recorded shipment with no open dispute makes the co-signer emit a signed timeout notice for default.release (signed live by the arbiter and the seller). An open dispute blocks it.",
       "from": "open",
       "durationSecs": 864000,
-      "onExpire": [
-        "default.release",
-        "default.releaseSweep"
-      ]
+      "onExpire": "default.release"
     },
     "rulingDueBy": {
       "description": "Arbiter SLA for ruling on an open dispute. Expiry raises a RULING_OVERDUE ops alert that repeats until the account is deleted; it moves no money, and a later ruling is still accepted (dispute.lateRuling = accept).",
@@ -177,27 +163,8 @@
       ],
       "closes": true
     },
-    "close.releaseAll": {
-      "steps": [
-        "pay.counterparty",
-        "pay.serviceFee",
-        "trustline.remove",
-        "account.delete"
-      ],
-      "closes": true
-    },
     "close.refundAll": {
       "steps": [
-        "pay.principal",
-        "trustline.remove",
-        "account.delete"
-      ],
-      "closes": true
-    },
-    "close.releaseWithSweep": {
-      "steps": [
-        "pay.counterparty",
-        "pay.serviceFee",
         "pay.principal",
         "trustline.remove",
         "account.delete"
@@ -213,6 +180,7 @@
     "serviceFeeBps": 50,
     "paidBy": "counterparty"
   },
-  "policyRef": "pol_marketplace-escrow@1.0.0",
-  "baselineRef": "pol_baseline@1.2.0"
+  "policyRef": "pol_marketplace-escrow@1.1.0",
+  "baselineRef": "pol_baseline@1.2.0",
+  "signing": "live"
 }

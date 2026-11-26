@@ -3,14 +3,14 @@
 import fs from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { localSigner, signStatement, type Statement, type Template } from '@eng/core'
-import { CosignerService, FixtureLedgerSource, MemoryStateStore, reportRulingOverdue, startTickScheduler, type RulingOverdue } from '@eng/cosigner'
+import { CosignerService, FixtureLedgerSource, LedgerUnavailableError, MemoryStateStore, reportRulingOverdue, startTickScheduler, type RulingOverdue } from '@eng/cosigner'
 import { arbiterAccreditation, closeBatch, fixtureTrust, memo, wallet, LEDGER_INDEX, W } from '../../policy/test/fixtures.ts'
 import type { EngagementRecord, LedgerSnapshot, PolicyDoc } from '@eng/policy'
 
 const root = new URL('../../../', import.meta.url)
 const readJson = <T>(rel: string): T => JSON.parse(fs.readFileSync(new URL(rel, root), 'utf8')) as T
 const template = readJson<Template>('templates/marketplace-escrow@1.json')
-const policy = readJson<PolicyDoc>('policies/marketplace-escrow@1.0.0.json')
+const policy = readJson<PolicyDoc>('policies/marketplace-escrow@1.1.0.json')
 const baseline12 = readJson<PolicyDoc>('policies/baseline@1.2.0.json')
 
 const carrier = wallet('marketplace-escrow-carrier')
@@ -102,11 +102,11 @@ async function setup(closeTime: string, balance?: string, dispute = false, timer
 
 const releaseExact = () => closeBatch(
   [{ to: W.atlas.address, value: '1.99' }, { to: W.service.address, value: '0.01' }],
-  { account: eng.address, tickets: true, memos: [memo('eng/basis', 'default.release')] },
+  { account: eng.address, memos: [memo('eng/basis', 'default.release')] },
 )
-const refundAll = (value: string) => closeBatch(
-  [{ to: W.dana.address, value }],
-  { account: eng.address, tickets: true, memos: [memo('eng/basis', 'default.refund')] },
+const refundAll = () => closeBatch(
+  [{ to: W.dana.address, value: '0', partial: true }],
+  { account: eng.address, memos: [memo('eng/basis', 'default.refund')] },
 )
 
 describe('marketplace-escrow intake and disputes', () => {
@@ -135,7 +135,7 @@ describe('marketplace-escrow intake and disputes', () => {
   it('a shipment posted after shipBy is LATE, and default.refund then signs', async () => {
     const { svc } = await setup('2026-11-04T00:00:01Z')
     await expect(svc.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-11-04T00:00:00Z', 'me-ship-after'))).rejects.toThrow(/LATE/)
-    const d = await svc.decide({ engagementId: ENG, stage: 'default.refund', tx: refundAll('2.00') })
+    const d = await svc.decide({ engagementId: ENG, stage: 'default.refund', tx: refundAll() })
     expect(d.decision).toBe('SIGN')
     expect(d.failing).toEqual([])
   })
@@ -215,7 +215,7 @@ describe('marketplace-escrow register terms', () => {
       observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate-seller',
       attester: { account: W.atlas.address, kind: 'COUNTERPARTY' },
     }, W.atlas)
-    await expect((await bare()).register(record(), seller)).rejects.toThrow(/INVALID_TERMS: the mandate must be signed by the principal$/)
+    await expect((await bare()).register(record(), seller)).rejects.toThrow(/INVALID_TERMS: the mandate attester must be the principal/)
 
     const wrongType = signStatement({
       v: 'eng.att/1', type: 'party.review/1', engagementId: ENG,
@@ -259,6 +259,26 @@ describe('marketplace-escrow register terms', () => {
       attester: { account: W.dana.address, kind: 'PRINCIPAL' },
     }, W.dana)
     await expect((await bare()).register(record(), objectMax)).resolves.toMatchObject({ ok: true })
+  })
+
+  it('refuses a mandate whose attester account is not the principal, even when the principal key signed it', async () => {
+    const mismatched = signStatement({
+      v: 'eng.att/1', type: 'party.mandate/1', engagementId: ENG,
+      subject: { mandateId: 'mnd_attester' }, claim: { maximum: '2.00', payee: W.atlas.address },
+      observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate-attester',
+      attester: { account: W.atlas.address, kind: 'PRINCIPAL' },
+    }, W.dana)
+    await expect((await bare()).register(record(), mismatched)).rejects.toThrow(/INVALID_TERMS: the mandate attester must be the principal/)
+  })
+
+  it('register stores nothing when the ledger cannot be read', async () => {
+    const svc = new CosignerService({
+      signer: localSigner(W.cosigner),
+      source: { snapshot: async () => { throw new Error('socket down') } },
+      templates: [template], policies: [baseline12, policy],
+    })
+    await expect(svc.register(record(), mandate())).rejects.toBeInstanceOf(LedgerUnavailableError)
+    await expect(svc.decide({ engagementId: ENG, stage: 'release.confirm', tx: {} })).rejects.toThrow(/unknown engagement/)
   })
 
   it('accepts a mandate signed by the principal RegularKey when the master key is disabled', async () => {
@@ -411,10 +431,10 @@ describe('attester type allowlist', () => {
       observedAt: '2026-11-02T11:59:00Z', issuedAt: '2026-11-02T11:59:00Z', nonce: 'me-review-decide',
       attester: { account: carrier.address, kind: 'SHIPPING' },
     }, carrier)
-    const blocked = await svc.decide({ engagementId: ENG, stage: 'default.refund', tx: refundAll('2.00'), statements: [passed] })
+    const blocked = await svc.decide({ engagementId: ENG, stage: 'default.refund', tx: refundAll(), statements: [passed] })
     expect(blocked.statementsRejected.map((r) => r.code)).toContain('TYPE_NOT_ALLOWED')
 
-    const opened = await allow.decide({ engagementId: rec.engagementId, stage: 'default.refund', tx: refundAll('2.00'), statements: [review] })
+    const opened = await allow.decide({ engagementId: rec.engagementId, stage: 'default.refund', tx: refundAll(), statements: [review] })
     expect(opened.statementsRejected.map((r) => r.code)).not.toContain('TYPE_NOT_ALLOWED')
   })
 })
