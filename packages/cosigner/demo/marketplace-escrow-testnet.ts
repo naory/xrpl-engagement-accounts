@@ -491,7 +491,7 @@ async function closes(client: Client, svc: CosignerService, accounts: Wallet[], 
     await sleep((SHIP_SECS + 8) * 1000)
     const refund = await relayTimeout(client, svc, me2, 'refund', cast.seller, cast.arbiter)
     const w2 = results.ledgerWindow.at(-1)
-    record('ME2', 'never shipped; the seller signs first (Option a)', 'default.refund tesSUCCESS inside the 30-ledger window', `${text(refund)} ${w2?.ledgersElapsed}/${w2?.windowLedgers} ledgers ${w2?.ms}ms`, refund.final === 'tesSUCCESS' && w2?.withinWindow === true, { tx: refund.tx })
+    record('ME2', 'never shipped; arbiter and either party sign live, and the payout stays with the winner', 'default.refund tesSUCCESS inside the 30-ledger window', `${text(refund)} ${w2?.ledgersElapsed}/${w2?.windowLedgers} ledgers ${w2?.ms}ms`, refund.final === 'tesSUCCESS' && w2?.withinWindow === true, { tx: refund.tx })
   })
 
   await run('ME15', async () => {

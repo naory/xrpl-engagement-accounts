@@ -1,6 +1,6 @@
 # Clip 3: marketplace purchase dispute
 
-Script text only. No recording. The banner is `Clip 3: marketplace purchase dispute`. "Purchase" is the deal, not an identifier. There is no hotel default in this clip.
+Script text for the run. The silent-cut shot list is [n2a-storyboard.md](n2a-storyboard.md). The banner is `Clip 3: marketplace purchase dispute`. "Purchase" is the deal, not an identifier. There is no hotel default in this clip.
 
 The run is `npm run demo:marketplace-escrow-dispute` on XRPL Testnet. The co-signer is the local process. The item is about 2 RLUSD and the bond about 0.50 RLUSD, bought from Ripple's Testnet RLUSD issuer under a 50 XRP cap when that path is available.
 
