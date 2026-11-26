@@ -45,6 +45,16 @@ Product build-out already queued:
 - **Windows pack-smoke.** `scripts/pack-smoke.ts` spawns `npx`. A Windows CI job has to spawn `npx.cmd` instead. There is no Windows CI job today.
 - **Demo IOU currency code.** `eng open` labels its minted demo token `RLUSD`. Follow-up: use a distinct code such as `DMO` so the demo issuer cannot be read as RLUSD.
 
+## Marketplace escrow follow-ups
+
+Not in v4.1.1. `marketplace-escrow@1` ships Option (a), policy `pol_marketplace-escrow@1.1.0`, zero Tickets, and live timeout signing. Spec: [docs/specs/marketplace-escrow-at-1.md](docs/specs/marketplace-escrow-at-1.md).
+
+- **`terms.mandator`.** v1 reads `claim.payee` and `claim.maximum`, and the mandate signer must be `parties.principal`. A mandator who is not the principal would need a typed term, a neutrality check, and `attester == mandator`.
+- **`baseline@1.3.0`.** Rename `presignedStages` and move the live-expiry check into baseline. Today MR0 and ML0 live on `pol_marketplace-escrow@1.1.0` because baseline `1.2.0` exempts `presignedStages` from the expiry check.
+- **Dust griefing, `DepositAuth`, and buyer preauthorization.** A release built when the balance equals the price has no sweep leg. RLUSD that arrives before submit can make `AccountDelete` fail. The relay and the arbiter re-check the balance. A later step is `DepositAuth` on the engagement account, with preauthorization for the buyer only, so stray RLUSD cannot arrive. The buyer preauthorization covers the bond and later top-ups.
+- **Multi-party timeout notice delivery.** v1 has one bearer token and one webhook to the platform operator. Per-party credentials and direct delivery of `cosigner.timeout/1` to the buyer, the seller, and the arbiter are not built.
+- **Cure window.** An optional `cureWindow` fixed at open, `0` meaning strict. At expiry the co-signer would send `cosigner.cure/1`, and the timeout notice would follow only if that side did not act. No field, param, or code in v1.
+
 ## Trust-model follow-ups
 
 Described in [docs/trust-model.md](docs/trust-model.md). Not implemented.
@@ -73,7 +83,7 @@ Research applies to: hotel (hotel@2, catalog R1).
 
 **Hotel is frozen.** `settlement-vault/hotel@2` and the Hotel stay scenario in the web demo (`packages/web`) are Research. The stay was designed and run on Testnet (Done, below, records 17/17). **Process rule: no new hotel features are merged.**
 
-- **Hotel (hotel@2) — to be fixed.** hotel@2 is frozen as experimental/legacy because it still contains arbiter-silent defaults (`default.chargebackEntry` at `templates/hotel@2.json:21`, `default.chargebackClaim` at `templates/hotel@2.json:22`, `default.chargebackStay` at `templates/hotel@2.json:23`, and L5 inside `default.release` — rule `L5` at `policies/hotel@2.0.0.json:307`, on the outcome at `templates/hotel@2.json:20`). The fix is to remove them, following the stance that arbiter silence is an operational incident handled by paging and an SLA, with no fallback. Not scheduled before purchase@1.
+- **Hotel (hotel@2) — to be fixed.** hotel@2 is frozen as experimental/legacy because it still contains arbiter-silent defaults (`default.chargebackEntry` at `templates/hotel@2.json:21`, `default.chargebackClaim` at `templates/hotel@2.json:22`, `default.chargebackStay` at `templates/hotel@2.json:23`, and L5 inside `default.release` — rule `L5` at `policies/hotel@2.0.0.json:307`, on the outcome at `templates/hotel@2.json:20`). The fix is to remove them, following the stance that arbiter silence is an operational incident handled by paging and an SLA, with no fallback. Not scheduled before marketplace-escrow@1.
 
 Known research issue — reserve at the 14-night cap. `npm run validate-templates` reports `tickets needed: 109, reserve: 23.2 XRP` for `settlement-vault/hotel@2`. The validator counts every pre-signed outcome, including 13 stay-chargeback variants (`templates/hotel@2.json` sets `default.chargebackStay.variants.max` to 13). A one-night stay books 31 Tickets and a 14-night stay books 109 (`packages/cosigner/test/hotel-flow.test.ts`). Reserve is 1 XRP plus 0.2 XRP for the trust line, the signer list and each Ticket (`packages/core/src/template.ts`), which is 23.2 XRP at 109 Tickets. The template check allows 25 XRP of pre-create funding for that reserve plus fee headroom (`packages/core/src/cli.ts`). The generated sheet is [docs/costs.md](docs/costs.md).
 

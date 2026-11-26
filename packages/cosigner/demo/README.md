@@ -11,8 +11,8 @@ npm run probe:x402     # probe a hosted facilitator for engagement-account suppo
 ```
 
 ```bash
-DEMO_ENABLE_HOTEL=1 npm run demo:hotel          # hotel@2 stay escrow, every path (H1–H17), ~25 min including the AccountDelete wait
-DEMO_ENABLE_HOTEL=1 npm run demo:hotel-dispute  # Clip 3: H5 ruling, then H2 refund when the hotel never confirms. Needs cosigner:local.
+npm run demo:hotel          # hotel stay escrow, every path (H1–H17), when that scenario is enabled. ~25 min including the AccountDelete wait
+npm run demo:hotel-dispute  # hotel Clip 3: H5 ruling, then H2 refund when the hotel never confirms. Needs cosigner:local.
 ```
 
 With no `XRPL_URL`, the demo and probe scripts use `resolveTestnetEndpoint` (`@eng/cosigner`): `wss://testnet.xrpl-labs.com`, then `wss://s.altnet.rippletest.net:51233` if that connect fails or times out. Set `XRPL_URL` to pin an endpoint, including Devnet (`XRPL_URL=wss://s.devnet.rippletest.net:51233`).
