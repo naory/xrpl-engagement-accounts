@@ -77,6 +77,35 @@ describe('co-signer HTTP hardening', () => {
     expect((await fetch(`${base}/v1/engagements/eng1`)).status).toBe(200)
   })
 
+  it('relays a timeout signature through the injected submitter', async () => {
+    const blobs: string[] = []
+    const svc = {
+      ...stub(),
+      latestTimeout: (id: string) => (id === 'eng1' ? { engagementId: id, outcome: 'default.refund' } : undefined),
+      submitTimeoutSignature: async (_id: string, hash: string, blob: string, submit?: (b: string) => Promise<{ hash: string; final: string; validated: boolean }>) => {
+        const sent = await submit?.(blob)
+        return { ok: true, ready: true, ...sent, proposedTxHash: hash }
+      },
+    } as unknown as CosignerService
+    const server = createServer(svc, {
+      submitTimeout: async (blob) => { blobs.push(blob); return { hash: 'AB', final: 'tesSUCCESS', validated: true } },
+    }).listen(0, '127.0.0.1')
+    servers.push(server)
+    await new Promise((r) => server.once('listening', r))
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    const missing = await fetch(`${base}/v1/engagements/missing/timeout`)
+    expect(missing.status).toBe(404)
+    const notice = await fetch(`${base}/v1/engagements/eng1/timeout`)
+    expect(notice.status).toBe(200)
+    const posted = await fetch(`${base}/v1/engagements/eng1/timeout/signatures`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ proposedTxHash: 'HASH', signerBlob: 'BLOB' }),
+    })
+    expect(posted.status).toBe(200)
+    expect(await posted.json()).toMatchObject({ ok: true, ready: true, hash: 'AB', final: 'tesSUCCESS' })
+    expect(blobs).toEqual(['BLOB'])
+  })
+
   it('rejects bodies over the 1MB cap with 413', async () => {
     const base = await serve()
     const big = 'x'.repeat(1_000_001)

@@ -2,10 +2,11 @@
 // Hotel's own suites cover the unchanged hotel path, including a late ruling staying LATE.
 import fs from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import xrpl from 'xrpl'
 import { localSigner, signStatement, type Statement, type Template } from '@eng/core'
-import { CosignerService, FixtureLedgerSource, LedgerUnavailableError, MemoryStateStore, reportRulingOverdue, startTickScheduler, type RulingOverdue } from '@eng/cosigner'
+import { CosignerService, FixtureLedgerSource, LedgerUnavailableError, MemoryStateStore, XrplLedgerSource, hex, multisignBlob, reportRulingOverdue, startTickScheduler, type RulingOverdue } from '@eng/cosigner'
 import { arbiterAccreditation, closeBatch, fixtureTrust, memo, wallet, LEDGER_INDEX, W } from '../../policy/test/fixtures.ts'
-import type { EngagementRecord, LedgerSnapshot, PolicyDoc } from '@eng/policy'
+import type { EngagementRecord, LedgerCredential, LedgerSnapshot, PolicyDoc } from '@eng/policy'
 
 const root = new URL('../../../', import.meta.url)
 const readJson = <T>(rel: string): T => JSON.parse(fs.readFileSync(new URL(rel, root), 'utf8')) as T
@@ -77,6 +78,44 @@ function mandate(over: { maximum?: string; payee?: string } = {}): Statement {
     observedAt: OPEN, issuedAt: OPEN, nonce: 'me-mandate',
     attester: { account: W.dana.address, kind: 'PRINCIPAL' },
   }, W.dana)
+}
+
+function receiptFor(statement: Statement, over: { statementId?: string; engagementId?: string; signer?: { address: string; publicKey: string; privateKey: string }; attester?: string } = {}): Statement {
+  const signer = over.signer ?? W.cosigner
+  return signStatement({
+    v: 'eng.att/1', type: 'cosigner.receipt/1', engagementId: over.engagementId ?? statement.engagementId ?? ENG,
+    subject: { statementId: over.statementId ?? statement.id, statementType: statement.type },
+    claim: { receivedAt: '2026-11-05T00:00:00Z', ledgerIndex: LEDGER_INDEX },
+    observedAt: '2026-11-05T00:00:00Z', issuedAt: '2026-11-05T00:00:00Z', nonce: `me-timeout-receipt-${statement.nonce}`,
+    attester: { account: over.attester ?? W.cosigner.address, kind: 'COSIGNER' },
+  }, signer as never)
+}
+
+/** An unaccepted ENG/DISPUTE credential as XrplLedgerSource emits it, including createdAt from PreviousTxnID. */
+async function disputeCredential(createdAt: string): Promise<LedgerCredential> {
+  const prev = 'D'.repeat(64)
+  const client = { request: async (r: Record<string, unknown>) => {
+    switch (r.command) {
+      case 'ledger': return { result: { ledger_index: LEDGER_INDEX, ledger_hash: 'C'.repeat(64), ledger: { close_time_iso: '2026-11-11T00:00:01Z' } } }
+      case 'ledger_entry': return { result: { node: { BaseFeeDrops: '10', ReserveIncrementDrops: '200000' } } }
+      case 'account_info': return { result: { account_data: { Sequence: 40, Flags: 0, Balance: '10000000' } } }
+      case 'account_objects':
+        if (r.type === 'credential') return { result: { account_objects: [{ LedgerEntryType: 'Credential', Issuer: W.dana.address, Subject: eng.address, CredentialType: hex('ENG/DISPUTE'), Flags: 0, PreviousTxnID: prev }] } }
+        return { result: { account_objects: [] } }
+      case 'account_lines': return { result: { lines: [] } }
+      case 'account_tx': return { result: { transactions: [] } }
+      case 'tx': return { result: { hash: prev, date: Date.parse(createdAt) / 1000 - 946684800 } }
+      default: throw new Error(String(r.command))
+    }
+  } }
+  const read = await new XrplLedgerSource(client as never).snapshot({
+    account: eng.address,
+    assets: { RLUSD: { code: 'RLUSD', kind: 'IOU', currency: 'RLUSD', issuer: W.issuer.address, decimals: 6 } },
+    accounts: [], credentialSubjects: [eng.address], historySecs: 0,
+  })
+  const cred = read.credentials.find((c) => c.type === 'ENG/DISPUTE')
+  if (!cred) throw new Error('snapshot did not return the dispute credential')
+  return cred
 }
 
 function signed(signer: { address: string; publicKey: string; privateKey: string }, type: string, at: string, nonce: string, claim: Record<string, unknown> = {}): Statement {
@@ -578,6 +617,239 @@ describe('ruling overdue alert', () => {
     await reportRulingOverdue(alert, (e) => lines.push(e), 'https://alerts.example/hook', fetchImpl)
     expect(lines[0]).toMatchObject({ level: 'error', msg: 'ruling overdue', engagementId: ENG, rulingReceipted: false })
     expect(JSON.parse(posted).alert).toBe('RULING_OVERDUE')
+  })
+
+  it('a due live deal notices once, proposes a sweep, and drops a tec proposal', async () => {
+    const early = await setup('2026-11-02T00:00:00Z')
+    expect(await early.svc.timeouts(ENG)).toBeNull()
+    expect((await early.svc.proposeTimeout(ENG, 'default.refund')).failing).toContain('NOT_DUE')
+    await expect(early.svc.storePresigned(ENG, 'default.refund', '00')).rejects.toThrow(/NOT_PRESIGNED/)
+    expect(await early.svc.tick(ENG)).toEqual([])
+
+    const { svc, source } = await setup('2026-11-04T00:00:01Z')
+    source.snap.accounts[eng.address].sequence = 40
+    const notice = await svc.timeouts(ENG)
+    expect(notice?.outcome).toBe('default.refund')
+    expect(svc.decisions(ENG).filter((s) => s.type === 'cosigner.timeout/1')).toHaveLength(1)
+    expect(await svc.timeouts(ENG)).toBeNull()
+
+    const proposed = await svc.proposeTimeout(ENG, 'default.refund')
+    expect(proposed.decision).toBe('SIGN')
+    expect(proposed.proposal?.txJson.TicketSequence).toBeUndefined()
+    expect(proposed.proposal?.lastLedgerSequence).toBe(LEDGER_INDEX + 30)
+    const tx = proposed.proposal!.txJson
+    const hash = proposed.proposal!.proposedTxHash
+    await expect(svc.submitTimeoutSignature(ENG, hash, multisignBlob(W.arbiter, tx))).rejects.toThrow(/ORDER/)
+    expect((await svc.submitTimeoutSignature(ENG, hash, multisignBlob(W.dana, tx))).ready).toBe(false)
+    expect((await svc.verifyTimeout(ENG, { outcome: 'default.refund', tx, builtAtLedger: proposed.proposal!.builtAtLedger, partyAccount: W.dana.address, statements: [] })).ok).toBe(true)
+    await expect(svc.submitTimeoutSignature(ENG, hash, multisignBlob(W.arbiter, tx), async () => ({ hash: 'AB', final: 'tecPATH_DRY', validated: true }))).rejects.toThrow(/DEAD tecPATH_DRY/)
+    await expect(svc.submitTimeoutSignature(ENG, hash, multisignBlob(W.dana, tx))).rejects.toThrow(/UNKNOWN_PROPOSAL/)
+  })
+
+  it('refuses a stale, expired, unsigned, or extra-signed timeout blob, and keeps the proposal unless it is dead', async () => {
+    const { svc, source } = await setup('2026-11-04T00:00:01Z')
+    source.snap.accounts[eng.address].sequence = 40
+    const propose = async () => {
+      const proposed = await svc.proposeTimeout(ENG, 'default.refund')
+      expect(proposed.decision).toBe('SIGN')
+      return proposed.proposal!
+    }
+    const first = await propose()
+    source.snap.accounts[eng.address].sequence = 41
+    await expect(svc.submitTimeoutSignature(ENG, first.proposedTxHash, multisignBlob(W.dana, first.txJson))).rejects.toThrow(/STALE/)
+    await expect(svc.submitTimeoutSignature(ENG, first.proposedTxHash, multisignBlob(W.dana, first.txJson))).rejects.toThrow(/UNKNOWN_PROPOSAL/)
+
+    source.snap.accounts[eng.address].sequence = 40
+    const second = await propose()
+    source.snap.index = second.lastLedgerSequence
+    await expect(svc.submitTimeoutSignature(ENG, second.proposedTxHash, multisignBlob(W.dana, second.txJson))).rejects.toThrow(/EXPIRED/)
+    await expect(svc.submitTimeoutSignature(ENG, second.proposedTxHash, multisignBlob(W.dana, second.txJson))).rejects.toThrow(/UNKNOWN_PROPOSAL/)
+
+    source.snap.index = LEDGER_INDEX
+    const third = await propose()
+    await expect(svc.submitTimeoutSignature(ENG, third.proposedTxHash, multisignBlob(stranger, third.txJson))).rejects.toThrow(/SIGNERS/)
+    const doubled = xrpl.decode(multisignBlob(W.dana, third.txJson)) as { Signers: unknown[] }
+    doubled.Signers.push(structuredClone(doubled.Signers[0]))
+    await expect(svc.submitTimeoutSignature(ENG, third.proposedTxHash, xrpl.encode(doubled as never))).rejects.toThrow(/BAD_SIGNATURE/)
+    expect((await svc.submitTimeoutSignature(ENG, third.proposedTxHash, multisignBlob(W.dana, third.txJson))).ready).toBe(false)
+  })
+
+  it('lets the seller sign a refund first while the sweep still pays the buyer', async () => {
+    const { svc, source } = await setup('2026-11-04T00:00:01Z')
+    source.snap.accounts[eng.address].sequence = 40
+    const proposed = await svc.proposeTimeout(ENG, 'default.refund')
+    expect(proposed.decision).toBe('SIGN')
+    const tx = proposed.proposal!.txJson
+    const payments = ((tx.RawTransactions ?? []) as Array<{ RawTransaction?: { TransactionType?: string; Destination?: string } }>).map((r) => r.RawTransaction).filter((t) => t?.TransactionType === 'Payment')
+    expect(payments.map((p) => p?.Destination)).toEqual([W.dana.address])
+    expect((await svc.submitTimeoutSignature(ENG, proposed.proposal!.proposedTxHash, multisignBlob(W.atlas, tx))).ready).toBe(false)
+    expect(await svc.verifyTimeout(ENG, {
+      outcome: 'default.refund', tx, builtAtLedger: proposed.proposal!.builtAtLedger, partyAccount: W.atlas.address, statements: [],
+    })).toEqual({ ok: true })
+  })
+
+  it('persists the arbiter signature when nothing is submitted yet', async () => {
+    const store = new MemoryStateStore()
+    const source = new FixtureLedgerSource(snap({ closeTime: '2026-11-04T00:00:01Z' }))
+    source.snap.accounts[eng.address].sequence = 40
+    const svc = new CosignerService({ signer: localSigner(W.cosigner), source, templates: [template], policies: [baseline12, policy], store })
+    await svc.register(record(), mandate())
+    const proposed = await svc.proposeTimeout(ENG, 'default.refund')
+    expect(proposed.decision).toBe('SIGN')
+    const tx = proposed.proposal!.txJson
+    const hash = proposed.proposal!.proposedTxHash
+    const partyBlob = multisignBlob(W.dana, tx)
+    const arbiterBlob = multisignBlob(W.arbiter, tx)
+    expect((await svc.submitTimeoutSignature(ENG, hash, partyBlob)).ready).toBe(false)
+    expect(await svc.submitTimeoutSignature(ENG, hash, arbiterBlob)).toEqual({ ok: true, ready: true })
+    const saved = JSON.parse((await store.loadAll()).meta[`timeoutProposal:${ENG}`] ?? '{}') as { partyBlob?: string; arbiterBlob?: string }
+    expect(saved.partyBlob).toBe(partyBlob)
+    expect(saved.arbiterBlob).toBe(arbiterBlob)
+    await svc.close()
+  })
+
+  it('retries a failed timeout webhook before the daily repeat, and a repeat keeps the signed ledger', async () => {
+    const { svc, source } = await setup('2026-11-04T00:00:01Z')
+    source.snap.accounts[eng.address].sequence = 40
+    const notice = await svc.timeouts(ENG)
+    expect(notice?.ledger.closeTime).toBe('2026-11-04T00:00:01Z')
+    await svc.noteTimeoutDelivery(ENG, false)
+    source.snap = snap({ closeTime: '2026-11-04T00:00:31Z' })
+    source.snap.accounts[eng.address].sequence = 40
+    expect(await svc.timeouts(ENG)).toBeNull()
+    source.snap = snap({ closeTime: '2026-11-04T00:01:01Z' })
+    source.snap.accounts[eng.address].sequence = 40
+    const retried = await svc.timeouts(ENG)
+    expect(retried?.fingerprint).toBe(notice?.fingerprint)
+    expect(retried?.ledger).toEqual((retried?.statement.claim as { ledger?: unknown }).ledger)
+    expect(retried?.ledger.closeTime).toBe('2026-11-04T00:00:01Z')
+    expect(svc.decisions(ENG).filter((s) => s.type === 'cosigner.timeout/1')).toHaveLength(1)
+    await svc.noteTimeoutDelivery(ENG, true)
+    source.snap = snap({ closeTime: '2026-11-05T00:01:02Z' })
+    source.snap.accounts[eng.address].sequence = 40
+    const again = await svc.timeouts(ENG)
+    expect(again?.ledger).toEqual((again?.statement.claim as { ledger?: unknown }).ledger)
+    expect(svc.decisions(ENG).filter((s) => s.type === 'cosigner.timeout/1')).toHaveLength(1)
+  })
+
+  it('a receipted dispute blocks release only when the arbiter ledger also holds the bond', async () => {
+    const { svc, source } = await setup('2026-11-03T00:01:00Z')
+    await svc.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-11-03T00:00:00Z', 'me-timeout-ship'))
+    source.snap = snap({ closeTime: '2026-11-11T00:00:01Z', balance: '2.00' })
+    source.snap.accounts[eng.address].sequence = 40
+    const exact = await svc.proposeTimeout(ENG, 'default.release')
+    expect(exact.decision).toBe('SIGN')
+    const dispute = signed(W.dana, 'party.dispute/1', '2026-11-05T00:00:00Z', 'me-timeout-dispute', { reason: 'no' })
+    const presented = { statement: dispute, receipt: receiptFor(dispute) }
+    const open = await svc.verifyTimeout(ENG, {
+      outcome: 'default.release', tx: exact.proposal!.txJson, builtAtLedger: exact.proposal!.builtAtLedger,
+      statements: svc.statements(ENG), presentedDispute: presented, partyAccount: W.atlas.address,
+    })
+    expect(open).toEqual({ ok: true })
+    source.snap = snap({ closeTime: '2026-11-11T00:00:01Z', balance: '2.50' })
+    source.snap.accounts[eng.address].sequence = 40
+    const swept = await svc.proposeTimeout(ENG, 'default.release')
+    expect(swept.decision).toBe('SIGN')
+    const blocked = await svc.verifyTimeout(ENG, {
+      outcome: 'default.release', tx: swept.proposal!.txJson, builtAtLedger: swept.proposal!.builtAtLedger,
+      statements: svc.statements(ENG), presentedDispute: presented, partyAccount: W.atlas.address,
+    })
+    expect(blocked.ok).toBe(false)
+    if (!blocked.ok) expect(blocked.check).toBe(4)
+  })
+
+  it('rejects a forged or unbound dispute receipt', async () => {
+    const { svc, source } = await setup('2026-11-03T00:01:00Z')
+    await svc.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-11-03T00:00:00Z', 'me-forge-ship'))
+    source.snap = snap({ closeTime: '2026-11-11T00:00:01Z', balance: '2.50' })
+    source.snap.accounts[eng.address].sequence = 40
+    const proposed = await svc.proposeTimeout(ENG, 'default.release')
+    expect(proposed.decision).toBe('SIGN')
+    const tx = proposed.proposal!.txJson
+    const builtAtLedger = proposed.proposal!.builtAtLedger
+    const dispute = signed(W.dana, 'party.dispute/1', '2026-11-05T00:00:00Z', 'me-forge-dispute', { reason: 'no' })
+    const check = (presented: { statement: Statement; receipt: Statement }) => svc.verifyTimeout(ENG, {
+      outcome: 'default.release', tx, builtAtLedger, statements: svc.statements(ENG), presentedDispute: presented, partyAccount: W.atlas.address,
+    })
+    expect(await check({ statement: dispute, receipt: receiptFor(dispute, { signer: W.dana, attester: W.cosigner.address }) })).toEqual({ ok: true })
+    expect(await check({ statement: dispute, receipt: receiptFor(dispute, { statementId: 'att:receipt' }) })).toEqual({ ok: true })
+    const seller = signed(W.atlas, 'party.dispute/1', '2026-11-05T00:00:00Z', 'me-forge-seller', { reason: 'no' })
+    expect(await check({ statement: seller, receipt: receiptFor(seller) })).toEqual({ ok: true })
+  })
+
+  it('blocks release on an unaccepted dispute credential the snapshot dates to inspectBy or earlier', async () => {
+    const { svc, source } = await setup('2026-11-03T00:01:00Z')
+    await svc.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-11-03T00:00:00Z', 'me-cred-ship'))
+    source.snap = snap({ closeTime: '2026-11-11T00:00:01Z', balance: '2.50' })
+    source.snap.accounts[eng.address].sequence = 40
+    const proposed = await svc.proposeTimeout(ENG, 'default.release')
+    expect(proposed.decision).toBe('SIGN')
+    const tx = proposed.proposal!.txJson
+    const builtAtLedger = proposed.proposal!.builtAtLedger
+    const verify = () => svc.verifyTimeout(ENG, {
+      outcome: 'default.release', tx, builtAtLedger, statements: svc.statements(ENG), partyAccount: W.atlas.address,
+    })
+    const early = await disputeCredential('2026-11-05T00:00:00.000Z')
+    expect(early).toMatchObject({ accepted: false, type: 'ENG/DISPUTE', issuer: W.dana.address, subject: eng.address, createdAt: '2026-11-05T00:00:00.000Z' })
+    source.snap.credentials.push(early)
+    const blocked = await verify()
+    expect(blocked.ok).toBe(false)
+    if (!blocked.ok) expect(blocked.check).toBe(4)
+    source.snap.credentials = source.snap.credentials.filter((c) => c !== early)
+    source.snap.credentials.push(await disputeCredential('2026-11-12T00:00:00.000Z'))
+    expect(await verify()).toEqual({ ok: true })
+    source.snap.credentials = source.snap.credentials.filter((c) => c.type !== 'ENG/DISPUTE')
+    const { createdAt: _created, ...undated } = early
+    source.snap.credentials.push(undated)
+    expect(await verify()).toEqual({ ok: true })
+  })
+
+  it('does not propose a release while a receipted dispute is bonded', async () => {
+    const { svc, source } = await setup('2026-11-03T00:01:00Z')
+    await svc.ingest(ENG, signed(carrier, 'shipping.shipped/1', '2026-11-03T00:00:00Z', 'me-bonded-ship'))
+    source.snap = snap({ closeTime: '2026-11-05T00:00:01Z', balance: '2.50', dispute: true })
+    await svc.ingest(ENG, signed(W.dana, 'party.dispute/1', '2026-11-05T00:00:00Z', 'me-bonded-dispute', { reason: 'no' }))
+    source.snap = snap({ closeTime: '2026-11-11T00:00:01Z', balance: '2.50' })
+    source.snap.accounts[eng.address].sequence = 40
+    const proposed = await svc.proposeTimeout(ENG, 'default.release')
+    expect(proposed).toMatchObject({ decision: 'REFUSE', failing: ['NOT_DUE'] })
+    expect(proposed.proposal).toBeUndefined()
+  })
+
+  it('restores a timeout notice and does not log the same fingerprint twice', async () => {
+    const store = new MemoryStateStore()
+    const source = new FixtureLedgerSource(snap({ closeTime: '2026-11-04T00:00:01Z' }))
+    source.snap.accounts[eng.address].sequence = 40
+    const opts = { signer: localSigner(W.cosigner), source, templates: [template], policies: [baseline12, policy], store }
+    const svc = new CosignerService(opts)
+    await svc.register(record(), mandate())
+    const notice = await svc.timeouts(ENG)
+    const restored = await CosignerService.open(opts)
+    expect(restored.latestTimeout(ENG)?.fingerprint).toBe(notice?.fingerprint)
+    expect(restored.decisions(ENG).filter((s) => s.type === 'cosigner.timeout/1')).toHaveLength(1)
+    expect(await restored.timeouts(ENG)).toBeNull()
+    const proposed = await restored.proposeTimeout(ENG, 'default.refund')
+    expect(proposed.decision).toBe('SIGN')
+    source.snap.index = LEDGER_INDEX + 31
+    const expired = await CosignerService.open(opts)
+    await expect(expired.submitTimeoutSignature(ENG, proposed.proposal!.proposedTxHash, '00')).rejects.toThrow(/UNKNOWN_PROPOSAL/)
+    await expired.close()
+    await restored.close()
+  })
+
+  it('the scheduler delivers onTimeout and closes a missing live account after two rounds', async () => {
+    const { svc, source } = await setup('2026-11-04T00:00:01Z')
+    vi.useFakeTimers()
+    const seen: string[] = []
+    const s = startTickScheduler(svc, { intervalMs: 1000, onTimeout: (_id, n) => { seen.push(n.outcome) } })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(seen).toEqual(['default.refund'])
+    source.snap.accounts[eng.address].exists = false
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(svc.openEngagementIds()).toEqual([ENG])
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(svc.openEngagementIds()).toEqual([])
+    await s.stop()
   })
 
   it('logs the overdue line before retrying a failed webhook on a bounded backoff', async () => {

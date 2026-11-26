@@ -102,6 +102,8 @@ export interface LedgerCredential {
   type: string
   accepted: boolean
   expiration?: string | null
+  /** When the credential was created, if the snapshot read it. A timeout arbiter uses this for an on-ledger dispute. */
+  createdAt?: string
 }
 
 export interface HistoryEntry {
