@@ -21,6 +21,11 @@ export interface SnapshotRequest {
   payees?: string[]
   /** How far back to read validated payments for stateful counters. */
   historySecs: number
+  /**
+   * Credential types whose creating transaction is looked up for `createdAt`.
+   * Other credentials skip that `tx` call, so a hotel or procurement snapshot does not pay it.
+   */
+  disputeCredentialTypes?: string[]
 }
 
 export interface LedgerSource {
@@ -77,9 +82,9 @@ export class XrplLedgerSource implements LedgerSource {
     try {
       tx = await this.req<{ date?: number; close_time_iso?: string }>({ command: 'tx', transaction: previousTxnId })
     } catch (e) {
-      const code = String((e as { data?: { error?: string } })?.data?.error ?? (e as Error)?.message)
-      if (/txnNotFound|transactionNotFound/.test(code)) return undefined
-      throw e
+      // A missing tx, or a blip talking to the server, leaves the credential undated. The snapshot still returns.
+      console.warn(`credential PreviousTxnID ${previousTxnId} was not read: ${String((e as Error)?.message ?? e)}`)
+      return undefined
     }
     if (typeof tx?.close_time_iso === 'string') return tx.close_time_iso
     if (tx?.date != null && Number.isFinite(Number(tx.date))) return new Date((Number(tx.date) + 946684800) * 1000).toISOString()
@@ -165,13 +170,15 @@ export class XrplLedgerSource implements LedgerSource {
 
     // Credentials held by the subjects we care about
     const credentials: LedgerCredential[] = []
+    const dated = new Set(q.disputeCredentialTypes ?? [])
     for (const s of new Set([q.account, ...q.credentialSubjects])) {
       const cs = await this.objects(s, index, 'credential')
       for (const c of cs ?? []) {
         if (c.Subject !== s) continue
-        const createdAt = await this.credentialCreatedAt(c.PreviousTxnID)
+        const type = unhex(c.CredentialType)
+        const createdAt = dated.has(type) ? await this.credentialCreatedAt(c.PreviousTxnID) : undefined
         credentials.push({
-          issuer: String(c.Issuer), subject: s, type: unhex(c.CredentialType),
+          issuer: String(c.Issuer), subject: s, type,
           accepted: (Number(c.Flags) & LSF_ACCEPTED) !== 0,
           expiration: c.Expiration != null ? new Date((Number(c.Expiration) + 946684800) * 1000).toISOString() : null,
           ...(createdAt ? { createdAt } : {}),

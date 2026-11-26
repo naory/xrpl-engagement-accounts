@@ -76,7 +76,8 @@ describe('XrplLedgerSource', () => {
     expect(snap.accounts[W.treasury.address]).toMatchObject({ exists: true, masterDisabled: false, regularKey: W.agent.address })
     expect(snap.accounts[W.controller.address]).toEqual({ exists: false })
     expect(snap.balances[ENG]).toEqual({ RLUSD: '48800' }) // the fake-issuer line is ignored
-    expect(snap.credentials).toEqual([{ issuer: W.kybIssuer.address, subject: W.vendorA.address, type: 'KYB_VERIFIED', accepted: true, expiration: '2027-01-01T00:00:00.000Z', createdAt: '2026-06-01T00:00:00.000Z' }])
+    expect(snap.credentials).toEqual([{ issuer: W.kybIssuer.address, subject: W.vendorA.address, type: 'KYB_VERIFIED', accepted: true, expiration: '2027-01-01T00:00:00.000Z' }])
+    expect(calls.filter((c) => c.command === 'tx')).toEqual([])
     expect(snap.history[ENG].map((h) => [h.sequence, h.payouts[0].value])).toEqual([[24, '700'], [22, '500']])
     expect(calls.filter((c) => c.command === 'ledger').length).toBe(1)
     expect(calls.filter((c) => c.command === 'account_tx').every((c) => c.ledger_index_max === LEDGER)).toBe(true)
@@ -92,5 +93,29 @@ describe('XrplLedgerSource', () => {
     expect(snap.accounts[W.vendorB.address]).toMatchObject({ exists: true, receive: { depositAuth: true, lines: {} } })
     expect(snap.accounts[W.controller.address]).toEqual({ exists: false })
     expect(calls.filter((c) => c.command === 'account_lines' && c.account === W.vendorA.address).every((c) => c.ledger_index === LEDGER)).toBe(true)
+  })
+
+  it('dates only the credential types it was asked about, and a failed lookup leaves the credential undated', async () => {
+    const dated = fakeClient()
+    const snap = await new XrplLedgerSource(dated.client).snapshot({
+      account: ENG, assets: procurementAssets, accounts: [], credentialSubjects: [W.vendorA.address],
+      disputeCredentialTypes: ['KYB_VERIFIED'], historySecs: 0,
+    })
+    expect(snap.credentials[0]?.createdAt).toBe('2026-06-01T00:00:00.000Z')
+    expect(dated.calls.filter((c) => c.command === 'tx')).toHaveLength(1)
+
+    const down = fakeClient()
+    const raw = down.client as unknown as { request: (r: Record<string, unknown>) => Promise<unknown> }
+    const request = raw.request
+    raw.request = async (r) => {
+      if (r.command === 'tx') throw new Error('socket down')
+      return request(r)
+    }
+    const undated = await new XrplLedgerSource(down.client).snapshot({
+      account: ENG, assets: procurementAssets, accounts: [], credentialSubjects: [W.vendorA.address],
+      disputeCredentialTypes: ['KYB_VERIFIED'], historySecs: 0,
+    })
+    expect(undated.credentials[0]).toMatchObject({ type: 'KYB_VERIFIED', accepted: true })
+    expect(undated.credentials[0]?.createdAt).toBeUndefined()
   })
 })

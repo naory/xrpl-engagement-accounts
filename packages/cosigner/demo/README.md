@@ -79,7 +79,14 @@ Results go to `demo/results/hotel-run-*.json`: every transaction hash, each path
 
 ## `marketplace-escrow-testnet.ts`
 
-`npm run demo:marketplace-escrow` runs ME1–ME11 and ME15–ME20 on XRPL Testnet. The co-signer is in that process. `npm run demo:marketplace-escrow-dispute` runs the Clip 3 path only (ME6 then ME4). Walkthrough: [`docs/demo/marketplace-escrow-dispute.md`](../../../docs/demo/marketplace-escrow-dispute.md). The run buys about 2 RLUSD, and a 0.50 bond, from Ripple's Testnet issuer under a 50 XRP cap. If that buy cannot be done, the script creates an issuer and says so. Timers in the run are a copy (45s ship, 110s inspect, 20s ruling, 15s alert). The shipped template and policy are unchanged.
+`npm run demo:marketplace-escrow` runs ME1–ME11 and ME15–ME20 on XRPL Testnet. The co-signer is in that process and exposes the v1 timeout routes on loopback. `npm run demo:marketplace-escrow-dispute` runs the Clip 3 path only (ME6 then ME4). Walkthrough: [`docs/demo/marketplace-escrow-dispute.md`](../../../docs/demo/marketplace-escrow-dispute.md).
+
+v4 live signing: the template books zero Tickets and stores zero pre-signed transactions, and the reserve is 1.4 XRP. The buyer (`parties.principal`) signs `party.mandate/1`. A missed deadline publishes a facts-only `cosigner.timeout/1` notice. The party pulls a one-shot proposal, signs first, and posts it to `POST /v1/engagements/:id/timeout/signatures`. The arbiter reads its own validated ledger, checks the nine conditions, signs, and the relay submits. Option (a): either party may be that first signature; ME2 uses the seller on a refund, and the sweep still pays the buyer. The proposal's last ledger is 30 ledgers out. The run records how many ledgers and how much wall time that window used.
+
+A release is not proposed while a bonded dispute is open (`NOT_DUE`). Before the deadline, and a refund after a shipment, are the same refusal. Clip 3's ME6 is that dispute case. ME4 is still the arbiter's `dispute.refund`, not a timeout.
+
+The run buys about 2 RLUSD, and a 0.50 bond, from Ripple's Testnet issuer under a 50 XRP cap. If that buy cannot be done, the script creates an issuer and says so. Timers in the run are a copy (45s ship, 110s inspect, 20s ruling, 15s alert). The shipped template and policy are unchanged.
+
 
 ## `x402/b1-x402-testnet.ts`: what it checks
 

@@ -1323,8 +1323,13 @@ export class CosignerService {
   }
 
   private async timeoutLedger(st: EngagementState): Promise<LedgerSnapshot> {
+    const parties = st.record.parties
+    const accounts = [parties.principal, parties.cosigner].filter((a): a is string => typeof a === 'string')
     return this.o.source.snapshot({
-      account: st.record.account, assets: this.assetsOf(st.layers, st.record), accounts: [], credentialSubjects: [st.record.account, st.record.parties.principal ?? ''].filter(Boolean), historySecs: 0,
+      account: st.record.account, assets: this.assetsOf(st.layers, st.record), accounts,
+      credentialSubjects: [st.record.account, parties.principal ?? ''].filter(Boolean),
+      disputeCredentialTypes: [disputeCredentialType(st.layers)],
+      historySecs: 0,
     })
   }
 
