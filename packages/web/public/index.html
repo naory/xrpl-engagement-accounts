@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>Engagement Accounts</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -52,8 +53,9 @@
   .brand b{font-weight:700;font-size:17px;letter-spacing:-.01em}
   .brand span{color:var(--faint);font-size:12.5px;display:block;margin-top:1px}
   .top-right{display:flex;align-items:center;gap:8px}
-  .doclink{font-size:12.5px;color:var(--faint);text-decoration:none;white-space:nowrap}
-  .doclink:hover{color:var(--accent)}
+  html{scroll-behavior:smooth}
+  .why-jump{display:inline-flex;margin-top:12px;font-weight:600;font-size:14.5px;text-decoration:none}
+  .why-jump:hover{text-decoration:underline}
   .badge{font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
     padding:5px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);
     display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
@@ -296,14 +298,73 @@
   footer{color:var(--faint);font-size:12.5px;line-height:1.6;border-top:1px solid var(--line);padding-top:16px}
   footer code{font-family:var(--mono);color:var(--muted)}
 
+  .why{display:flex;flex-direction:column;gap:16px;scroll-margin-top:18px}
+  .why-intro h2{font-size:clamp(22px,3vw,28px);letter-spacing:-.02em}
+  .why-kicker{margin:8px 0 0;color:var(--muted);font-weight:600}
+  .why-intro p{margin:10px 0 0;max-width:74ch;color:var(--muted)}
+  .why-intro strong,.why-prose strong,.trust strong,.why-case strong{color:var(--fg)}
+  .why-tabbar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  .why-tab{font-family:var(--sans);font-size:13px;font-weight:600;color:var(--muted);background:var(--panel-2);
+    border:1px solid var(--line);border-radius:999px;padding:7px 12px;cursor:pointer}
+  .why-tab:hover{color:var(--fg);border-color:var(--accent)}
+  .why-tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#04111f}
+  .why-tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cmp .col{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
+  .cmp .col.ea{border-color:color-mix(in srgb,var(--accent) 55%,var(--line));background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
+  .cmp h3{margin:0 0 10px;font-size:14px}
+  .cmp dl{margin:0;display:flex;flex-direction:column;gap:9px}
+  .cmp dt{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  .cmp dd{margin:1px 0 0;font-size:13.5px;color:var(--fg)}
+  .why-prose{margin:12px 0 0;color:var(--muted);font-size:14px;max-width:78ch}
+  .econ{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .econ .fig{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px 12px 11px;min-width:0}
+  .econ .amt{font-family:var(--mono);font-size:clamp(16px,2vw,20px);font-weight:600;letter-spacing:-.02em}
+  .econ .lbl{margin-top:4px;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+  .econ .note{margin-top:6px;font-size:12.5px;color:var(--muted);line-height:1.4}
+  .why-note{margin:12px 0 0;font-size:13px;color:var(--muted);max-width:78ch}
+  .trust{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+  .trust h3{margin:0;font-size:15px}
+  .trust p,.trust li{color:var(--muted);font-size:14px}
+  .trust ul{margin:0;padding-left:18px}
+  .trust li{margin:5px 0}
+  .paths{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+  .paths div{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;font-size:13px}
+  .paths b{font-weight:600}
+  .paths .mono{color:var(--fg);white-space:nowrap}
+  .why-cases{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .why-case{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
+  .why-case.flagship{grid-column:1 / -1;border-color:color-mix(in srgb,var(--accent) 55%,var(--line));background:color-mix(in srgb,var(--accent) 8%,var(--panel))}
+  .why-case h3{margin:8px 0 6px;font-size:15.5px}
+  .why-case p{margin:0 0 8px;color:var(--muted);font-size:13.5px}
+  .why-case p:last-child{margin-bottom:0}
+  .why-case .id{font-family:var(--mono);font-size:12px;color:var(--accent)}
+  .ystat{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:999px}
+  .ystat.live{color:var(--good);background:color-mix(in srgb,var(--good) 16%,transparent)}
+  .ystat.road{color:var(--muted);background:var(--panel);border:1px solid var(--line)}
+  .why-not{border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line));background:color-mix(in srgb,var(--warn) 10%,var(--panel));border-radius:12px;padding:14px 16px}
+  .why-not h3{margin:0 0 8px;font-size:15px}
+  .why-not ul{margin:0;padding-left:18px}
+  .why-not li{margin:6px 0;color:var(--muted);font-size:14px}
+  .why-not b{color:var(--fg)}
+  .why-doc{margin:0;font-size:13px;color:var(--faint)}
+  .why-doc a{color:var(--muted);font-weight:600;text-decoration:none}
+  .why-doc a:hover{color:var(--accent);text-decoration:underline}
+
   @media (max-width:760px){
     .grid2{grid-template-columns:1fr}
     .stepper{flex-direction:column}
     .actions{grid-template-columns:1fr}
     .flow{grid-template-columns:1fr}
     .arrow{transform:rotate(90deg)}
+    .cmp,.econ,.why-cases{grid-template-columns:1fr}
+    .why-case.flagship{grid-column:auto}
+    .paths div{flex-direction:column;gap:2px}
   }
-  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    html{scroll-behavior:auto}
+  }
 </style>
 
 <div class="wrap">
@@ -320,7 +381,6 @@
       </div>
     </div>
     <div class="top-right">
-      <a class="doclink" href="https://github.com/naory/xrpl-engagement-accounts/blob/main/docs/why-engagement-accounts.md" target="_blank" rel="noopener">Why these accounts</a>
       <span class="badge" id="mode"><span class="dot"></span><span id="modeLabel">Simulated</span></span>
       <button class="iconbtn" id="theme" title="Toggle theme" aria-label="Toggle light/dark">◐</button>
     </div>
@@ -371,6 +431,182 @@
       </table>
     </div>
     <div id="tab-events" hidden><div class="events" id="events"><div class="ev"><span class="msg" style="color:var(--faint)">Events appear here as you provision and drive the account.</span></div></div></div>
+  </section>
+
+  <section class="why" id="why" aria-labelledby="why-title">
+    <div class="why-intro">
+      <h2 id="why-title">Why Engagement Accounts</h2>
+      <p class="why-kicker">Recourse and policy-enforced escrow for AI agent payments on XRPL. Testnet reference implementation. Not for mainnet funds.</p>
+      <p>Agent payments work well when fulfillment is instant: an agent calls an API, pays per request over x402, and the exchange is finished. The model breaks once fulfillment is delayed, as with goods that ship, a job that must be delivered and checked, or a supplier that must clear customs. A push payment is final when it settles, so the buyer’s agent either pays up front and hopes, or doesn’t pay. There is no refund, no partial outcome, no delivery check, and no one to appeal to.</p>
+      <p>An <strong>engagement account</strong> is an ordinary XRPL account created for <strong>one deal</strong> and deleted when it ends. Its <strong>master key is disabled</strong>. Only a <strong>SignerList</strong> of buyer, seller, an always-on arbiter, and a policy co-signer controls it. The co-signer signs only when the deal’s policy passes, fed by signed facts from neutral attesters such as a carrier, a test suite, or a registrar. Every payout needs a quorum that <strong>the XRP Ledger enforces, not our servers</strong>. Close is one atomic Batch: it pays the parties, removes the trust line, and runs AccountDelete, returning the reserve. Nobody custodies the funds, and no single party can move them.</p>
+    </div>
+
+    <div class="panel">
+      <div class="ptitle"><span class="n">01</span> Compared with other ways to hold a payment</div>
+      <div class="why-tabbar" role="tablist" aria-label="Compare an alternative with an engagement account">
+        <button type="button" class="why-tab" role="tab" id="why-tab-x402" data-why-tab="x402" aria-controls="why-panel-x402" aria-selected="true">Plain x402</button>
+        <button type="button" class="why-tab" role="tab" id="why-tab-native" data-why-tab="native" aria-controls="why-panel-native" aria-selected="false" tabindex="-1">Native XRPL Escrow</button>
+        <button type="button" class="why-tab" role="tab" id="why-tab-custodial" data-why-tab="custodial" aria-controls="why-panel-custodial" aria-selected="false" tabindex="-1">Custodial</button>
+        <button type="button" class="why-tab" role="tab" id="why-tab-evm" data-why-tab="evm" aria-controls="why-panel-evm" aria-selected="false" tabindex="-1">EVM Escrow</button>
+        <button type="button" class="why-tab" role="tab" id="why-tab-card" data-why-tab="card" aria-controls="why-panel-card" aria-selected="false" tabindex="-1">Card Rails</button>
+      </div>
+      <div class="cmp">
+        <div class="why-alts">
+          <div class="col" id="why-panel-x402" role="tabpanel" aria-labelledby="why-tab-x402" data-why-panel="x402">
+            <h3>Plain x402 / direct transfer</h3>
+            <dl>
+              <div><dt>Non-custodial isolation</dt><dd>Yes, but funds leave immediately</dd></div>
+              <div><dt>Policy gate before release</dt><dd>None</dd></div>
+              <div><dt>Dispute recourse</dt><dd>None: settlement is final</dd></div>
+              <div><dt>Custom smart-contract risk</dt><dd>None</dd></div>
+              <div><dt>Variable / delayed settlement</dt><dd>No</dd></div>
+              <div><dt>Setup / reserve overhead</dt><dd>Lowest</dd></div>
+            </dl>
+          </div>
+          <div class="col" id="why-panel-native" role="tabpanel" aria-labelledby="why-tab-native" data-why-panel="native" hidden>
+            <h3>Native XRPL Escrow alone</h3>
+            <dl>
+              <div><dt>Non-custodial isolation</dt><dd>Yes</dd></div>
+              <div><dt>Policy gate before release</dt><dd>None: release rests on a time or crypto-condition</dd></div>
+              <div><dt>Dispute recourse</dt><dd>None: no judged outcome</dd></div>
+              <div><dt>Custom smart-contract risk</dt><dd>None</dd></div>
+              <div><dt>Variable / delayed settlement</dt><dd>All-or-nothing to one destination</dd></div>
+              <div><dt>Setup / reserve overhead</dt><dd>Low</dd></div>
+            </dl>
+          </div>
+          <div class="col" id="why-panel-custodial" role="tabpanel" aria-labelledby="why-tab-custodial" data-why-panel="custodial" hidden>
+            <h3>Custodial platform escrow</h3>
+            <dl>
+              <div><dt>Non-custodial isolation</dt><dd>No: the platform holds pooled funds</dd></div>
+              <div><dt>Policy gate before release</dt><dd>The platform’s rules, kept off the ledger</dd></div>
+              <div><dt>Dispute recourse</dt><dd>The platform decides</dd></div>
+              <div><dt>Custom smart-contract risk</dt><dd>None on-chain. Operational and custody risk instead</dd></div>
+              <div><dt>Variable / delayed settlement</dt><dd>Yes</dd></div>
+              <div><dt>Setup / reserve overhead</dt><dd>Platform overhead plus compliance</dd></div>
+            </dl>
+          </div>
+          <div class="col" id="why-panel-evm" role="tabpanel" aria-labelledby="why-tab-evm" data-why-panel="evm" hidden>
+            <h3>EVM smart-contract escrow</h3>
+            <dl>
+              <div><dt>Non-custodial isolation</dt><dd>Yes, per contract</dd></div>
+              <div><dt>Policy gate before release</dt><dd>Whatever the contract code checks</dd></div>
+              <div><dt>Dispute recourse</dt><dd>Only if it was coded in</dd></div>
+              <div><dt>Custom smart-contract risk</dt><dd>High: custom code to write, audit, and upgrade</dd></div>
+              <div><dt>Variable / delayed settlement</dt><dd>Yes, if coded</dd></div>
+              <div><dt>Setup / reserve overhead</dt><dd>Gas plus audit cost per deal shape</dd></div>
+            </dl>
+          </div>
+          <div class="col" id="why-panel-card" role="tabpanel" aria-labelledby="why-tab-card" data-why-panel="card" hidden>
+            <h3>Card rails and chargebacks</h3>
+            <dl>
+              <div><dt>Non-custodial isolation</dt><dd>No: card networks and banks are the intermediaries</dd></div>
+              <div><dt>Policy gate before release</dt><dd>Issuer risk rules, not agent mandates</dd></div>
+              <div><dt>Dispute recourse</dt><dd>Yes, through slow consumer chargeback cycles</dd></div>
+              <div><dt>Custom smart-contract risk</dt><dd>None</dd></div>
+              <div><dt>Variable / delayed settlement</dt><dd>Holds and partial captures, built for card payments</dd></div>
+              <div><dt>Setup / reserve overhead</dt><dd>Card network and acquirer fees</dd></div>
+            </dl>
+          </div>
+        </div>
+        <div class="col ea">
+          <h3>Engagement Account</h3>
+          <dl>
+            <div><dt>Non-custodial isolation</dt><dd>Yes: one account per deal, master key disabled</dd></div>
+            <div><dt>Policy gate before release</dt><dd>The co-signer checks a versioned policy before it signs</dd></div>
+            <div><dt>Dispute recourse</dt><dd>A bonded dispute, ruled by an accredited arbiter</dd></div>
+            <div><dt>Custom smart-contract risk</dt><dd>None: native XRPL features only</dd></div>
+            <div><dt>Variable / delayed settlement</dt><dd>Yes: the exact split is built live at close, and surplus is swept back</dd></div>
+            <div><dt>Setup / reserve overhead</dt><dd>1.4 XRP refundable reserve, about 0.2 XRP burned at close</dd></div>
+          </dl>
+        </div>
+      </div>
+      <p class="why-prose" data-why-prose="x402">The right tool for instant micro-payments, and this demo keeps using it there. It settles with finality: no delivery check, no refund, no dispute. If fulfillment can fail after payment, the buyer carries all the risk.</p>
+      <p class="why-prose" data-why-prose="native" hidden>A low-reserve, strong primitive, but all-or-nothing to one destination, and a refund waits for <span class="mono">CancelAfter</span>. There is no co-signer policy check before release, and a single finish or cancel condition can’t express “buyer, seller, and policy agree, or an arbiter rules” without handing one holder unilateral control.</p>
+      <p class="why-prose" data-why-prose="custodial" hidden>Holding user funds brings custody, commingling, and the regulatory exposure that comes with them. Engagement accounts isolate each deal in its own ledger account, and the template validator rejects any template where a service-run signer reaches quorum alone. Neither the platform nor any single party can move the money.</p>
+      <p class="why-prose" data-why-prose="evm" hidden>Each new deal shape means custom code to write, audit, deploy, and upgrade, and every line is attack surface. Engagement accounts use only native XRPL features — SignerList multisig, master-key disable, Batch, Credentials, and AccountDelete — with no custom on-chain code. Deal logic lives in declarative templates and versioned policies the co-signer evaluates.</p>
+      <p class="why-prose" data-why-prose="card" hidden>Card disputes give real recourse, but they were built for human consumers: slow cycles, friendly fraud, no programmable agent mandate (“this agent may pay this seller at most this amount”), and no instant stablecoin settlement. Engagement accounts keep the useful part, a neutral party who can reverse a bad outcome, and make it programmable for agents.</p>
+    </div>
+
+    <div class="panel">
+      <div class="ptitle"><span class="n">02</span> Zero-Ticket economics</div>
+      <p class="why-note" style="margin-top:0">Nothing is pre-signed, and no Tickets are used. Every outcome is signed live against the account’s current state, including a deadline default, so the reserve does not grow with the length of the deal or with the number of payout shapes.</p>
+      <div class="econ" style="margin-top:12px">
+        <div class="fig"><div class="amt">1.4 XRP</div><div class="lbl">Refundable reserve</div><p class="note">Flat. Base reserve, trust line, and SignerList. AccountDelete returns it at close.</p></div>
+        <div class="fig"><div class="amt">0</div><div class="lbl">Tickets</div><p class="note">No pre-signed outcomes. Deadline defaults are signed live.</p></div>
+        <div class="fig"><div class="amt">120 drops</div><div class="lbl">Open</div><p class="note">One Batch funds the deal, sets the SignerList, and removes the regular key.</p></div>
+        <div class="fig"><div class="amt">~0.2 XRP</div><div class="lbl">Close</div><p class="note">One Batch. Almost all of the burn is the network’s AccountDelete fee.</p></div>
+      </div>
+      <p class="why-note">Each account is pre-funded with 2.4 XRP: the reserve plus 1 XRP of headroom. Figures assume today’s network reserves (1 XRP base, 0.2 XRP per owned object), which the network sets and can change. Accounts are pre-created, so the ledger’s 256-ledger deletion wait never holds up a short deal.</p>
+      <div class="trust">
+        <h3>Trust model</h3>
+        <p>Signer weights for this shape: buyer 3, seller 3, arbiter 4, co-signer 2, quorum 7.</p>
+        <div class="paths">
+          <div><b>Normal close</b><span>buyer + seller + co-signer <span class="mono">weight 8</span></span></div>
+          <div><b>Dispute ruling</b><span>arbiter + the party the ruling favors <span class="mono">weight 7</span></span></div>
+          <div><b>Missed deadline</b><span>arbiter + either party, paid only to the winner <span class="mono">weight 7</span></span></div>
+          <div><b>Short of quorum</b><span>co-signer alone, arbiter + co-signer, or any single party <span class="mono">≤ 6</span></span></div>
+        </div>
+        <ul>
+          <li><strong>The co-signer is the policy gate.</strong> On a normal close it signs only when the policy passes: payees, amounts, fee, and a clean close. It also keeps the deal’s timers and issues a signed notice when a default outcome falls due.</li>
+          <li><strong>The arbiter handles exceptions.</strong> It rules on disputes and signs missed-deadline defaults live, after checking the facts on its own validated-ledger read. Arbiter plus one party can move funds without the other party or the co-signer. That is the same kind of trust as a card network’s dispute arbiter, stated in the open. An arbiter must hold an accreditation credential and cannot be a party to the deal.</li>
+          <li><strong>Liveness is disclosed.</strong> The arbiter is on the critical path for any timed-out deal, and a default also needs one party online to sign. The buyer can confirm receipt and close early at any time.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="ptitle"><span class="n">03</span> Six use cases, one engine</div>
+      <p class="why-note" style="margin-top:0">All six use a per-deal account, a co-signer policy gate, neutral attesters, timers with default outcomes, and an arbiter. Settlement is in RLUSD.</p>
+      <div class="why-cases" style="margin-top:12px">
+        <article class="why-case flagship">
+          <span class="ystat live">Verified on XRPL Testnet</span>
+          <h3>Marketplace escrowed purchase</h3>
+          <p class="id">marketplace-escrow@1 · flagship</p>
+          <p>A buyer’s agent buys an item from a seller. The full price is locked at open, under a signed mandate that names the seller and a maximum amount. A carrier named at open is the shipment attester, beside the policy co-signer and an accredited arbiter.</p>
+          <p><strong>Confirm.</strong> Buyer, seller, and co-signer sign together. The seller is paid the price minus the service fee, and any surplus goes back to the buyer.</p>
+          <p><strong>shipBy missed.</strong> No receipted shipment, so the whole balance is swept back to the buyer. The arbiter signs that default with either party.</p>
+          <p><strong>inspectBy, no dispute.</strong> The seller is paid the price minus the fee, and any surplus is swept back to the buyer. The arbiter signs that default with either party, and the payout still goes to the seller.</p>
+          <p><strong>Dispute.</strong> The buyer posts a dispute credential and a bond before inspectBy. The release default is not proposed. The arbiter rules, and the bond goes to the winner.</p>
+          <p>The buyer gets delivery-based recourse without trusting the seller or the platform with custody. If the buyer goes quiet after a shipment, the seller is still paid. The payout is built live from the actual balance, so stray extra funds are swept back to the buyer instead of breaking the close.</p>
+        </article>
+        <article class="why-case">
+          <span class="ystat road">Roadmap template</span>
+          <h3>SLA-backed agent jobs</h3>
+          <p>A buyer’s agent hires a specialist for a dataset, a model evaluation, a code audit, or a research report. A verifier attests an artifact hash, a test or eval result, or an acceptance check. Missed delivery refunds the buyer. Passing verification, or a lapsed window, pays the provider. A disputed result goes to the arbiter. Most deals can settle with no human involved, the mandate caps the commitment, and the provider sees the funds locked before work starts.</p>
+        </article>
+        <article class="why-case">
+          <span class="ystat road">Roadmap template</span>
+          <h3>B2B trade and supplier invoices</h3>
+          <p>A procurement agent locks RLUSD against a supplier order: a programmable letter of credit. A carrier’s bill of lading, customs clearance, or an inspection firm attests the documents. Funds release when those documents are attested. A missed shipment refunds the importer, and discrepancies go to the arbiter. Deal size makes the per-deal cost negligible. Depending on jurisdiction, a licensed operator may need to run the arbiter or co-signer. The design has room for those roles to be run outside the service.</p>
+        </article>
+        <article class="why-case">
+          <span class="ystat road">Roadmap template</span>
+          <h3>Metered cloud, GPU, and API commitments</h3>
+          <p class="id">Made practical by live signing</p>
+          <p>An agent pre-funds a monthly compute, GPU, or API commitment. Independent metering and uptime monitors attest usage. At period end a live close pays the provider for exact usage minus attested downtime credits and sweeps the unused balance back to the buyer. The final split is not known at open. Live signing computes it and checks the policy at close, so the buyer does not pay for unused capacity and the provider’s committed revenue stays locked.</p>
+        </article>
+        <article class="why-case">
+          <span class="ystat road">Roadmap template</span>
+          <h3>Bounties, audits, and milestones</h3>
+          <p>A client funds a dev shop, an auditor, or a coding agent against a deliverable. Evidence comes from Git and CI: a merged pull request, a passing pipeline, or a signed audit report. A technical arbiter fits the dispute role. Release can be the exact amount. Staged milestones are one engagement per stage, opened together, because each account has a single signer quorum.</p>
+        </article>
+        <article class="why-case">
+          <span class="ystat road">Roadmap template</span>
+          <h3>Domains, data, and license transfers</h3>
+          <p>A domain, dataset, code repository, or enterprise license changes hands over hours or days. A registrar, WHOIS or registry record, or an organization-transfer record is the proof. A missed transfer refunds the buyer. A confirmed transfer releases payment. An optional holdback is a second engagement opened at the same time. Neither side goes first on trust, and a contested transfer has a route to the arbiter.</p>
+        </article>
+      </div>
+      <div class="why-not" style="margin-top:12px">
+        <h3>When not to use one</h3>
+        <ul>
+          <li><b>Sub-$20 payments and instant API calls.</b> Plain x402 is simpler and cheaper. A refundable reserve and a ~0.2 XRP close fee fit when the deal is large enough and fulfillment is delayed.</li>
+          <li><b>Subjective, in-person services with no neutral witness.</b> If no attester can say whether the service happened, every deadline is one side’s word against the other’s. Timeouts can’t be settled cleanly, and every case ends with the arbiter.</li>
+          <li><b>On-ledger swaps or mass-market consumer sales.</b> An atomic Batch or a DEX offer already handles a swap. Existing card protections serve thousands of small buyers better than one account per buyer.</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="why-doc"><a href="https://github.com/naory/xrpl-engagement-accounts/blob/main/docs/why-engagement-accounts.md" target="_blank" rel="noopener">Full doc on GitHub</a></p>
   </section>
 
   <footer id="footer"></footer>
@@ -640,7 +876,8 @@
   function renderScenario(){
     var scn = S.scn;
     var note = scn.research ? '<p class="research-note">'+esc(RESEARCH)+'</p>' : "";
-    $("#hero").innerHTML = note + "<h1>"+scn.heroTitle+"</h1><p>"+esc(scn.heroText)+' <button class="moreinfo" id="moreInfo">More info →</button></p>';
+    $("#hero").innerHTML = note + "<h1>"+scn.heroTitle+"</h1><p>"+esc(scn.heroText)+' <button class="moreinfo" id="moreInfo">More info →</button></p>'
+      + '<a class="why-jump" href="#why">Why Engagement Accounts — alternatives &amp; use cases ↓</a>';
     $("#moreInfo").addEventListener("click", function(){ openModal(scn); });
     $("#mandateTitle").textContent = scn.mandateTitle;
     var mc = $("#mandate"); mc.innerHTML = "";
@@ -1328,5 +1565,37 @@
   });
 
   renderScenario(); setStep("provision"); renderCTA(); setFooter();
+
+  // Comparison switcher: the five alternatives are already in the page. No fetch.
+  (function initWhy(){
+    var root = document.getElementById("why");
+    if (!root) return;
+    var tabs = Array.prototype.slice.call(root.querySelectorAll("[data-why-tab]"));
+    var panels = Array.prototype.slice.call(root.querySelectorAll("[data-why-panel]"));
+    var notes = Array.prototype.slice.call(root.querySelectorAll("[data-why-prose]"));
+    function select(id){
+      tabs.forEach(function(tab){
+        var on = tab.getAttribute("data-why-tab") === id;
+        tab.setAttribute("aria-selected", on ? "true" : "false");
+        tab.tabIndex = on ? 0 : -1;
+      });
+      panels.forEach(function(panel){ panel.hidden = panel.getAttribute("data-why-panel") !== id; });
+      notes.forEach(function(note){ note.hidden = note.getAttribute("data-why-prose") !== id; });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener("click", function(){ select(tab.getAttribute("data-why-tab")); });
+      tab.addEventListener("keydown", function(e){
+        var next = null;
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") next = tabs[(i + 1) % tabs.length];
+        else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = tabs[(i - 1 + tabs.length) % tabs.length];
+        else if (e.key === "Home") next = tabs[0];
+        else if (e.key === "End") next = tabs[tabs.length - 1];
+        if (!next) return;
+        e.preventDefault();
+        select(next.getAttribute("data-why-tab"));
+        next.focus();
+      });
+    });
+  })();
 })();
 </script>
