@@ -1296,8 +1296,7 @@
   document.addEventListener("keydown", function(e){ if(e.key==="Escape" && !modal.hidden) closeModal(); });
 
   // ---- scenario switch + boot --------------------------------------------
-  // Hotel (hotel@2) stays out of the dropdown unless the server injected enableHotel
-  // (DEMO_ENABLE_HOTEL=1 or --enable-hotel). SCENARIOS.hotel stays so the flag turns it back on.
+  // Hotel is shown only when the server enables it.
   function gateHotelScenario(){
     var on = !!(CFG && CFG.enableHotel);
     var sel = $("#scenario");

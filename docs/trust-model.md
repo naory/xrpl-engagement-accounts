@@ -24,8 +24,23 @@ The ledger stores Credential objects. It does not read spend caps, mandates, or 
 | `settlement-vault/hotel@1` | principal 2, counterparty 2, arbiter 3, co-signer 1 | 5 | the same three shapes |
 | `owner-wallet/procurement@1` | owner 2, agent 1, co-signer 1 | 2 | `{owner}`, `{agent, cosigner}` |
 | `owner-wallet/shopping@1` | owner 2, agent 1, co-signer 1 | 2 | `{owner}`, `{agent, cosigner}` |
+| `settlement-vault/marketplace-escrow@1` | principal 3, counterparty 3, arbiter 4, co-signer 2 | 7 | `{counterparty, arbiter}`, `{principal, arbiter}`, `{principal, counterparty, cosigner}` |
 
-Sources: `weight` (`templates/hotel@2.json:6`), `quorum` (`templates/hotel@2.json:11`), `weight` (`templates/hotel@1.json:6`), `quorum` (`templates/hotel@1.json:11`), `weight` (`templates/procurement@1.json:7`), `quorum` (`templates/procurement@1.json:11`), `weight` (`templates/shopping@1.json:7`), `quorum` (`templates/shopping@1.json:11`). The hotel@2 sets are the ones the template test expects (`minimalWinningSets` (`packages/core/test/core.test.ts:84`)). Arbiter plus co-signer is not one of those sets (`minimalWinningSets` (`packages/core/test/core.test.ts:86`)).
+Sources: `weight` (`templates/hotel@2.json:6`), `quorum` (`templates/hotel@2.json:11`), `weight` (`templates/hotel@1.json:6`), `quorum` (`templates/hotel@1.json:11`), `weight` (`templates/procurement@1.json:7`), `quorum` (`templates/procurement@1.json:11`), `weight` (`templates/shopping@1.json:7`), `quorum` (`templates/shopping@1.json:11`), `weight` (`templates/marketplace-escrow@1.json:9`), `quorum` (`templates/marketplace-escrow@1.json:31`). The hotel@2 sets are the ones the template test expects (`minimalWinningSets` (`packages/core/test/core.test.ts:84`)). Arbiter plus co-signer is not one of those sets (`minimalWinningSets` (`packages/core/test/core.test.ts:86`)).
+
+## marketplace-escrow@1: live timeouts
+
+`marketplace-escrow@1` uses the same weights and quorum as `hotel@2` (`weight` (`templates/marketplace-escrow@1.json:9`), `quorum` (`templates/marketplace-escrow@1.json:31`)). `signing` is `"live"` (`signing` (`templates/marketplace-escrow@1.json:185`)). There is no pre-signed default and no Ticket. Arbiter weight 4 plus either party's weight 3 meets quorum 7. Arbiter plus co-signer is 6 and does not.
+
+Missed deadlines are advisory (`enforcement` (`templates/marketplace-escrow@1.json:99`)). The co-signer emits a facts-only notice. It does not sign the close. The arbiter is on the critical path: a timeout waits until the arbiter verifies its own validated ledger and signs with one party. Option (a): either party may sign first. The payout is still checked for the winner. A refund sweeps the whole balance to the buyer. A release pays the seller the price less the fee, and sweeps any surplus to the buyer.
+
+The conduct rule is: the arbiter signs a timeout only after the nine checks in [`docs/specs/marketplace-escrow-at-1.md`](specs/marketplace-escrow-at-1.md). The ledger does not enforce that rule, because arbiter plus one party is not co-signed. The disclosed timing is: from a valid party-signed proposal reaching the arbiter to the signature being submitted, within the 30-ledger window (`maxLedgerWindow` (`policies/marketplace-escrow@1.1.0.json:34`)). An arbiter outage stalls timeouts. Funds wait. They are not moved by the outage.
+
+v1 mandate fields are `claim.payee` and `claim.maximum`. The mandate signer is `parties.principal` (`marketplaceEscrowTermsFindings` (`packages/cosigner/src/service.ts:1689`)). A separate `terms.mandator` is not implemented. See [ROADMAP](../ROADMAP.md).
+
+Credential params on `pol_marketplace-escrow@1.1.0`: `arbiterCredentialType` `ENG/ARBITER`, `disputeCredentialType` `ENG/DISPUTE`, `arbiterIssuers` the slot `$slot:arbiter.accreditor` (`arbiterCredentialType` (`policies/marketplace-escrow@1.1.0.json:38`), `disputeCredentialType` (`policies/marketplace-escrow@1.1.0.json:39`), `arbiterIssuers` (`policies/marketplace-escrow@1.1.0.json:40`)). An on-ledger dispute blocks release only when the arbiter's own snapshot shows the credential was created at or before `inspectBy` and the balance is at least the price plus `minDisputeBond` (`minDisputeBond` (`policies/marketplace-escrow@1.1.0.json:30`)). `XrplLedgerSource` dates that credential from `PreviousTxnID` (`credentialCreatedAt` (`packages/cosigner/src/snapshot.ts:79`)). The arbiter's node has to be a full-history node or a Clio node covering the deal window. A receipted `party.dispute/1` blocks release only with the same bond on that same ledger.
+
+The Testnet script builds an in-memory policy copy whose `version` is `1.1.0-demo` and whose floors are shorter (`library` (`packages/cosigner/demo/marketplace-escrow-testnet.ts:157`)). That copy must never be loaded by a production co-signer. `npm run cosigner` reads `policies/*.json` only.
 
 ## hotel@2: arbiter and counterparty reach quorum
 
