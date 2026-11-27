@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
-      - name: Assemble static site (landing → root, demo → /demo.html)
+      - name: Assemble static site (landing → root, why → /why.html, demo → /demo.html)
         run: |
           set -e
           src=packages/web/public
@@ -37,10 +37,12 @@ jobs:
           # the static pages render identically (charset + viewport for mobile).
           head='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Engagement Accounts</title>'
           wrap() { { printf '%s%s</head><body>' "$head" "$2"; cat "$1"; printf '</body></html>'; } > "$3"; }
-          # Landing = entry point; inject the demo-URL hook the page honours (→ the static demo file).
-          wrap "$src/landing.html"      '<script>window.__DEMO_URL__="demo.html"</script>' _site/index.html
-          # Demo: no config injection → window.__ENG_API__ undefined → runs in simulated (no-backend) mode.
-          wrap "$src/index.html"        '' _site/demo.html
+          # Same URL hooks the local server injects, pointed at the static files.
+          # Demo gets no __ENG_API__, so it stays in simulated (no-backend) mode.
+          nav='<script>window.__HOME_URL__="index.html";window.__WHY_URL__="why.html";window.__DEMO_URL__="demo.html"</script>'
+          wrap "$src/landing.html"      "$nav" _site/index.html
+          wrap "$src/why.html"          "$nav" _site/why.html
+          wrap "$src/index.html"        "$nav" _site/demo.html
           wrap "$src/architecture.html" '' _site/architecture.html
           # Static assets the pages fetch (e.g. hotel-sim.json, the simulated hotel transcript) are copied as-is.
           find "$src" -maxdepth 1 -type f ! -name '*.html' -exec cp {} _site/ \;

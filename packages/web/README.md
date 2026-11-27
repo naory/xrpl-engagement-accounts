@@ -100,7 +100,9 @@ pool when it runs, hands it to the run's service key and tops up its reserve for
 
 ## Landing page
 
-`public/landing.html` is a scroll-told launch page — the hard questions, the product reveal, then a
-single live-demo call to action. `npm run web` serves it at `/` and the interactive demo at `/demo`;
-the landing's **Demo** button points at `/demo` when served locally, or at the published demo
-artifact when the landing page is shared on its own.
+`public/landing.html` is a scroll-told launch page — the hard questions, the product reveal, then
+the demo and Why calls to action. `npm run web` serves it at `/`, the Why page at `/why`, and the
+interactive demo at `/demo`. GitHub Pages publishes the same three files as `index.html`,
+`why.html`, and `demo.html`. Each page's nav and buttons follow `window.__HOME_URL__`,
+`window.__WHY_URL__`, and `window.__DEMO_URL__` when those are injected, and the sibling HTML
+files when a fragment is opened on its own.
