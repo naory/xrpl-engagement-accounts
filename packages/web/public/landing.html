@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>Engagement Accounts</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -161,7 +162,14 @@
   .cta{text-align:center;position:relative;padding-block:clamp(90px,15vh,170px)}
   .cta h2{font-size:clamp(28px,5.4vw,52px);font-weight:700;letter-spacing:-.025em;margin:0;text-wrap:balance}
   .cta p{color:var(--muted);margin:18px auto 0;max-width:46ch;font-size:16.5px}
-  .cta-btn{display:inline-flex;align-items:center;gap:12px;margin-top:38px;
+  .sitetop{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-top:18px}
+  .sitebrand{font-weight:700;letter-spacing:-.01em;color:var(--fg);text-decoration:none}
+  .sitenav{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .sitenav a{font-size:13.5px;font-weight:600;color:var(--muted);text-decoration:none;padding:6px 11px;border-radius:999px;border:1px solid transparent}
+  .sitenav a:hover{color:var(--fg);border-color:var(--line)}
+  .sitenav a[aria-current="page"]{color:var(--fg);background:color-mix(in srgb,var(--panel) 72%,transparent);border-color:var(--line)}
+  .cta-row{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;align-items:stretch;margin-top:38px}
+  .cta-btn{display:inline-flex;align-items:center;gap:12px;margin-top:0;
     font-size:18px;font-weight:700;letter-spacing:-.01em;color:#04101f;
     background:linear-gradient(100deg,var(--accent),var(--accent2));
     padding:18px 32px;border-radius:14px;box-shadow:0 14px 44px color-mix(in srgb,var(--accent) 38%,transparent);
@@ -179,9 +187,20 @@
   @media (max-width:640px){
     .vps{grid-template-columns:1fr}
     .hero{min-height:auto}
+    .cta-row{flex-direction:column;align-items:stretch}
+    .cta-row .cta-btn{justify-content:center}
   }
   @media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} .scrollcue .chev{animation:none} .cta-note .pip{animation:none} }
 </style>
+
+<header class="sitetop wrap">
+  <a class="sitebrand" id="navBrand" href="landing.html">Engagement Accounts</a>
+  <nav class="sitenav" aria-label="Pages">
+    <a id="navOverview" href="landing.html" aria-current="page">Overview</a>
+    <a id="navWhy" href="why.html">Why Engagement Accounts</a>
+    <a id="navDemo" href="index.html">Demo</a>
+  </nav>
+</header>
 
 <section class="teaser wrap" id="teaser">
   <div class="teaser-stage" id="tStage">
@@ -419,9 +438,14 @@
 <section class="cta wrap">
   <h2 class="reveal">See it decide, in real time.</h2>
   <p class="reveal d1">An agent spends, gets blocked, settles a dispute, and pays across rails &mdash; on real XRP Ledger Testnet.</p>
-  <a class="cta-btn reveal d2" id="demoBtn" href="https://claude.ai/artifact/9UmuVMnNzE8Kay1tw2ZefE" target="_blank" rel="noopener">
-    Demo &mdash; live on XRPL Testnet <span class="arw">&rarr;</span>
-  </a>
+  <div class="cta-row reveal d2">
+    <a class="cta-btn" id="demoBtn" href="index.html">
+      Demo &mdash; live on XRPL Testnet <span class="arw">&rarr;</span>
+    </a>
+    <a class="cta-btn" id="whyBtn" href="why.html">
+      Why Engagement Accounts <span class="arw">&rarr;</span>
+    </a>
+  </div>
   <div class="cta-note reveal d3"><span class="pip"></span>real multisigned transactions &middot; public explorer links</div>
 </section>
 
@@ -456,9 +480,15 @@
     }, { threshold: 0.15, rootMargin: "0px 0px -6% 0px" });
     els.forEach(function(el){ io.observe(el); });
   }
-  // Demo link: the local backend injects window.__DEMO_URL__ ("/demo"); the standalone page opens the demo artifact in a new tab.
-  var btn = document.getElementById("demoBtn");
-  if (btn && window.__DEMO_URL__){ btn.setAttribute("href", window.__DEMO_URL__); btn.removeAttribute("target"); }
+  // URL hooks: Pages and npm run web inject __HOME_URL__, __WHY_URL__, and __DEMO_URL__.
+  // Opened as a file, the links stay the sibling fragments.
+  var home = window.__HOME_URL__ || "landing.html";
+  var why = window.__WHY_URL__ || "why.html";
+  var demo = window.__DEMO_URL__ || "index.html";
+  [["navBrand", home], ["navOverview", home], ["navWhy", why], ["navDemo", demo], ["whyBtn", why], ["demoBtn", demo]].forEach(function(pair){
+    var el = document.getElementById(pair[0]);
+    if (el) el.setAttribute("href", pair[1]);
+  });
 
   // Teaser cold-open: verb ticker building to "pay" + kicker, then the hook line — looping.
   (function(){

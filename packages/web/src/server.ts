@@ -17,6 +17,8 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 loadEnv([path.resolve(here, '../../..')]) // pick up repo-root .env before reading any config below
 const INDEX = path.join(here, '..', 'public', 'index.html')
 const LANDING = path.join(here, '..', 'public', 'landing.html')
+const WHY = path.join(here, '..', 'public', 'why.html')
+const NAV = '<script>window.__HOME_URL__="/";window.__WHY_URL__="/why";window.__DEMO_URL__="/demo"</script>'
 const PORT = Number(process.env.PORT ?? 8080)
 const HOST = process.env.WEB_BIND ?? '127.0.0.1'
 
@@ -63,8 +65,9 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost')
   const m = req.method ?? 'GET'
   try {
-    if (m === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) return servePage(res, LANDING, '<script>window.__DEMO_URL__="/demo"</script>')
-    if (m === 'GET' && (url.pathname === '/demo' || url.pathname === '/demo.html')) return servePage(res, INDEX, `<script>window.__ENG_API__=${JSON.stringify({ live: true, explorer: orch.explorer, pooled: process.env.ENG_USE_POOL === '1' || process.env.ENG_USE_POOL === 'true', enableHotel: hotelDemoEnabled() })}</script>`)
+    if (m === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) return servePage(res, LANDING, NAV)
+    if (m === 'GET' && (url.pathname === '/why' || url.pathname === '/why.html')) return servePage(res, WHY, NAV)
+    if (m === 'GET' && (url.pathname === '/demo' || url.pathname === '/demo.html')) return servePage(res, INDEX, `${NAV}<script>window.__ENG_API__=${JSON.stringify({ live: true, explorer: orch.explorer, pooled: process.env.ENG_USE_POOL === '1' || process.env.ENG_USE_POOL === 'true', enableHotel: hotelDemoEnabled() })}</script>`)
     if (url.pathname.startsWith('/api/')) {
       await ensureConnected()
       if (m === 'POST' && url.pathname === '/api/provision') {
