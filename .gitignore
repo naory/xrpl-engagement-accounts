@@ -25,6 +25,8 @@ eng-open.out
 /spike/
 packages/*/demo/results/
 packages/web/.web-decisions/
+# Local demo recordings. The shot list stays in docs/; the files stay on the machine.
+docs/video/
 
 # pre-created account pool: local seed + state store (never commit)
 .pool/
